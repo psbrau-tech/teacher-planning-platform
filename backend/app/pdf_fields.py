@@ -1,4 +1,4 @@
-"""Anniston HQI form-field contract and safe layout validation."""
+"""Anniston HQI form-field contract and content-size validation."""
 
 from dataclasses import dataclass
 
@@ -27,24 +27,28 @@ PAGE_ONE_FIELDS = (
 DAILY_FIELDS = tuple(f"{group}_{day}" for day in WEEKDAYS for group in DAILY_GROUPS)
 ALL_HQI_FIELDS = PAGE_ONE_FIELDS + DAILY_FIELDS + REFLECTION_FIELDS
 
+# These limits protect the application and generated document from accidental
+# unbounded input. They are intentionally much larger than the original PDF
+# widget limits. The generator removes PDF MaxLen restrictions, enables
+# multiline entry, and uses automatic font sizing for narrative fields.
 FIELD_CHARACTER_LIMITS: dict[str, int] = {
-    "teacher": 45,
-    "course": 55,
-    "grade": 20,
-    "week_of": 30,
-    "unit_topic": 90,
-    "standards": 220,
-    "know": 260,
-    "understand": 260,
-    "do": 260,
-    "plds": 260,
-    "misconceptions": 260,
-    "formative": 180,
-    "summative": 180,
-    "performance_task": 180,
-    "resources": 180,
-    **{field: 145 for field in DAILY_FIELDS},
-    **{field: 220 for field in REFLECTION_FIELDS},
+    "teacher": 120,
+    "course": 160,
+    "grade": 60,
+    "week_of": 60,
+    "unit_topic": 500,
+    "standards": 2_000,
+    "know": 2_000,
+    "understand": 2_000,
+    "do": 2_000,
+    "plds": 2_000,
+    "misconceptions": 2_000,
+    "formative": 1_500,
+    "summative": 1_500,
+    "performance_task": 1_500,
+    "resources": 1_500,
+    **{field: 1_200 for field in DAILY_FIELDS},
+    **{field: 2_000 for field in REFLECTION_FIELDS},
 }
 
 
