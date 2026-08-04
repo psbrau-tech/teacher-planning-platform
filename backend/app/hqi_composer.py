@@ -97,6 +97,6 @@ def compose_hqi_payload(plan: WeeklyPlanInput) -> dict[str, str]:
             f"{error.field}={error.character_count}/{error.character_limit}"
             for error in length_errors
         )
-        raise ValueError(f"HQI content exceeds safe layout limits: {detail}")
+        raise ValueError(f"HQI content exceeds application limits: {detail}")
 
     return payload
