@@ -1,5 +1,6 @@
-from dataclasses import dataclass
+"""Anniston HQI form-field contract and safe layout validation."""
 
+from dataclasses import dataclass
 
 WEEKDAYS = ("mon", "tue", "wed", "thu", "fri")
 DAILY_GROUPS = ("clt", "rrt", "cfu", "ri", "sic", "esl")
