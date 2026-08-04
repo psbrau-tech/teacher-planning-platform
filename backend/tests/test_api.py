@@ -59,7 +59,7 @@ def test_independent_document_adds_continuation_pages() -> None:
             "teacher": "Synthetic Teacher",
             "course": "LET 1",
             "week_of": "August 10, 2026",
-            "standards": "Official standard detail. " * 40,
+            "standards": "Official standard detail. " * 240,
         },
     )
     assert response.status_code == 200
@@ -74,8 +74,8 @@ def test_combined_packet_reports_three_documents() -> None:
         json={
             "teacher": "Synthetic Teacher",
             "course": "LET 1",
-            "standards": "Official standard detail. " * 40,
-            "reflect_1": "Reflection detail. " * 40,
+            "standards": "Official standard detail. " * 240,
+            "reflect_1": "Reflection detail. " * 240,
         },
     )
     assert response.status_code == 200
