@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
 from datetime import date
 from uuid import UUID
@@ -46,7 +44,8 @@ def apply_friday_validation(
 ) -> FridayValidationResult:
     missing_updates = sorted(str(item.id) for item in scheduled if item.id not in updates)
     if missing_updates:
-        raise ValueError(f"Every scheduled lesson requires validation: {', '.join(missing_updates)}")
+        missing = ", ".join(missing_updates)
+        raise ValueError(f"Every scheduled lesson requires validation: {missing}")
 
     validated: list[ValidatedLessonRecord] = []
     for item in sorted(scheduled, key=lambda record: (record.date, record.sequence)):
