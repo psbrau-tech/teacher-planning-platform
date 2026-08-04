@@ -11,7 +11,7 @@ from pypdf import PdfReader, PdfWriter
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
-from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
 from .document_sections import DOCUMENT_FIELDS, READABLE_PAGE_CAPACITY, HqiDocument
 from .pdf_generator import fill_hqi_pdf
@@ -46,7 +46,13 @@ FIELD_LABELS: dict[str, str] = {
     "resources": "Resources",
 }
 
-DAY_NAMES = {"mon": "Monday", "tue": "Tuesday", "wed": "Wednesday", "thu": "Thursday", "fri": "Friday"}
+DAY_NAMES = {
+    "mon": "Monday",
+    "tue": "Tuesday",
+    "wed": "Wednesday",
+    "thu": "Thursday",
+    "fri": "Friday",
+}
 DAILY_LABELS = {
     "clt": "Clear Learning Target",
     "rrt": "Rigorous and Relevant Task",
@@ -136,22 +142,29 @@ def _continuation_pdf(
     )
 
     def footer(canvas: object, doc: object) -> None:
+        del doc
         canvas.saveState()  # type: ignore[attr-defined]
         page = canvas.getPageNumber()  # type: ignore[attr-defined]
         canvas.setFont("Helvetica", 8)  # type: ignore[attr-defined]
-        canvas.drawRightString(7.5 * inch, 0.45 * inch, f"Continuation page {page}")  # type: ignore[attr-defined]
+        canvas.drawRightString(  # type: ignore[attr-defined]
+            7.5 * inch,
+            0.45 * inch,
+            f"Continuation page {page}",
+        )
         canvas.restoreState()  # type: ignore[attr-defined]
 
+    teacher_course = (
+        f"Teacher: {metadata.get('teacher', '')} &nbsp;&nbsp; "
+        f"Course: {metadata.get('course', '')}"
+    )
+    week_grade = (
+        f"Week of: {metadata.get('week_of', '')} &nbsp;&nbsp; "
+        f"Grade: {metadata.get('grade', '')}"
+    )
     story: list[object] = [
         Paragraph(f"{DOCUMENT_TITLES[document]} — Continuation", title_style),
-        Paragraph(
-            f"Teacher: {metadata.get('teacher', '')} &nbsp;&nbsp; Course: {metadata.get('course', '')}",
-            meta_style,
-        ),
-        Paragraph(
-            f"Week of: {metadata.get('week_of', '')} &nbsp;&nbsp; Grade: {metadata.get('grade', '')}",
-            meta_style,
-        ),
+        Paragraph(teacher_course, meta_style),
+        Paragraph(week_grade, meta_style),
         Spacer(1, 0.08 * inch),
     ]
     for field, value in overflow:
