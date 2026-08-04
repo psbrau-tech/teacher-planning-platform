@@ -16,8 +16,6 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import (
     Flowable,
-    KeepTogether,
-    PageBreak,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -138,12 +136,6 @@ def _styles() -> dict[str, ParagraphStyle]:
             leading=14,
             spaceAfter=5,
             splitLongWords=True,
-        ),
-        "footer": ParagraphStyle(
-            "TPPFooter",
-            parent=base["Normal"],
-            fontSize=8,
-            leading=10,
         ),
     }
 
@@ -309,12 +301,10 @@ def render_hqi_packet(
         for document in HqiDocument
     )
     writer = PdfWriter()
-    for index, rendered in enumerate(documents):
+    for rendered in documents:
         reader = PdfReader(BytesIO(rendered.pdf_bytes))
         for page in reader.pages:
             writer.add_page(page)
-        if index < len(documents) - 1:
-            writer.add_blank_page(width=letter[0], height=letter[1])
 
     output = BytesIO()
     writer.write(output)
