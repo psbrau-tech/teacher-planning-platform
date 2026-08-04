@@ -67,8 +67,8 @@ def test_long_daily_content_wraps_and_flows_without_shrinking() -> None:
 
 def test_combined_packet_preserves_document_order_and_page_counts() -> None:
     payload = base_payload()
-    payload["standards"] = "Standard detail. " * 240
-    payload["reflect_1"] = "Reflection detail. " * 240
+    payload["standards"] = "Standard detail with supporting instructional context. " * 800
+    payload["reflect_1"] = "Reflection detail with evidence and next-step analysis. " * 800
 
     packet, documents = render_hqi_packet(TEMPLATE_PATH, payload)
     packet_reader = PdfReader(BytesIO(packet))
