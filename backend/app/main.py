@@ -1,8 +1,11 @@
 from datetime import date
 from decimal import Decimal
+from io import BytesIO
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Body, FastAPI, HTTPException, Query
+from fastapi.responses import StreamingResponse
 
+from .document_service import DEFAULT_TEMPLATE_PATH, generate_anniston_hqi
 from .fixtures import (
     ASSIGNMENT_IDS,
     afternoon_block_pattern,
@@ -72,7 +75,31 @@ def anniston_hqi_fields() -> dict[str, object]:
         "template": "Anniston City Schools HQI Lesson Plan Framework",
         "field_count": len(ALL_HQI_FIELDS),
         "fields": ALL_HQI_FIELDS,
+        "template_installed": DEFAULT_TEMPLATE_PATH.exists(),
     }
+
+
+@app.post("/api/v1/documents/anniston-hqi", tags=["documents"])
+def generate_hqi_document(
+    payload: dict[str, str] = Body(),
+    flatten: bool = Query(default=False),
+) -> StreamingResponse:
+    if not DEFAULT_TEMPLATE_PATH.exists():
+        raise HTTPException(
+            status_code=503,
+            detail="The approved Anniston HQI PDF template is not installed.",
+        )
+    try:
+        document = generate_anniston_hqi(payload, flatten=flatten)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+    filename = "anniston-hqi-lesson-plan-flat.pdf" if flatten else "anniston-hqi-lesson-plan.pdf"
+    return StreamingResponse(
+        BytesIO(document),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/api/v1/admin/summary", tags=["administration"])
