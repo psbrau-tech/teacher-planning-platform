@@ -1,26 +1,31 @@
-"""Render the Anniston HQI source pages as three independent expandable documents."""
+"""Render the Anniston HQI set as three independent, flowing PDF documents."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 from pypdf import PdfReader, PdfWriter
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
-from reportlab.platypus import Flowable, Paragraph, SimpleDocTemplate, Spacer
+from reportlab.platypus import (
+    Flowable,
+    KeepTogether,
+    PageBreak,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
-from .document_sections import DOCUMENT_FIELDS, READABLE_PAGE_CAPACITY, HqiDocument
-from .pdf_generator import fill_hqi_pdf
-
-DOCUMENT_PAGE_INDEX: dict[HqiDocument, int] = {
-    HqiDocument.INSTRUCTIONAL_FRAMEWORK: 0,
-    HqiDocument.WEEK_AT_A_GLANCE: 1,
-    HqiDocument.WEEKLY_REFLECTION: 2,
-}
+from .document_sections import HqiDocument
 
 DOCUMENT_TITLES: dict[HqiDocument, str] = {
     HqiDocument.INSTRUCTIONAL_FRAMEWORK: "High Quality Instruction Planning Framework",
@@ -28,53 +33,51 @@ DOCUMENT_TITLES: dict[HqiDocument, str] = {
     HqiDocument.WEEKLY_REFLECTION: "Weekly Reflection / PLC Discussion",
 }
 
-FIELD_LABELS: dict[str, str] = {
-    "teacher": "Teacher",
-    "course": "Course",
-    "grade": "Grade",
-    "week_of": "Week of",
-    "unit_topic": "Unit / Topic",
-    "standards": "Standards",
-    "know": "Know",
-    "understand": "Understand",
-    "do": "Do",
-    "plds": "Performance-Level Descriptors / Proficiency Scale",
-    "misconceptions": "Likely Misconceptions",
-    "formative": "Formative Assessments",
-    "summative": "Summative Assessments",
-    "performance_task": "Performance Task",
-    "resources": "Resources",
-}
+FRAMEWORK_FIELDS: tuple[tuple[str, str], ...] = (
+    ("unit_topic", "Unit / Topic"),
+    ("standards", "Standards"),
+    ("know", "Know"),
+    ("understand", "Understand"),
+    ("do", "Do"),
+    ("plds", "Performance-Level Descriptors / Proficiency Scale"),
+    ("misconceptions", "Likely Misconceptions"),
+    ("formative", "Formative Assessments"),
+    ("summative", "Summative Assessments"),
+    ("performance_task", "Performance Task"),
+    ("resources", "Resources"),
+)
 
-DAY_NAMES = {
-    "mon": "Monday",
-    "tue": "Tuesday",
-    "wed": "Wednesday",
-    "thu": "Thursday",
-    "fri": "Friday",
-}
-DAILY_LABELS = {
-    "clt": "Clear Learning Target",
-    "rrt": "Rigorous and Relevant Task",
-    "cfu": "Checks for Understanding",
-    "ri": "Responsive Instruction",
-    "sic": "Strong Instructional Culture",
-    "esl": "Evidence of Student Learning",
-}
-REFLECTION_LABELS = {
-    1: "What knowledge has been building this week?",
-    2: "What understandings are being developed?",
-    3: "What evidence is demonstrating mastery?",
-    4: "What misconceptions emerged?",
-    5: "What standard(s) or parts of the standard need reteaching?",
-    6: "Which students need intervention?",
-    7: "What is the plan for intervention (Tier 2 and Tier 3)?",
-    8: "Which students need enrichment?",
-    9: "What is the plan for enrichment?",
-    10: "Which instructional moves worked?",
-    11: "What instructional adjustments will I make next week?",
-    12: "What are next week's instructional priorities?",
-}
+DAY_NAMES: tuple[tuple[str, str], ...] = (
+    ("mon", "Monday"),
+    ("tue", "Tuesday"),
+    ("wed", "Wednesday"),
+    ("thu", "Thursday"),
+    ("fri", "Friday"),
+)
+
+DAILY_FIELDS: tuple[tuple[str, str], ...] = (
+    ("clt", "Clear Learning Target"),
+    ("rrt", "Rigorous and Relevant Task"),
+    ("cfu", "Checks for Understanding"),
+    ("ri", "Responsive Instruction"),
+    ("sic", "Strong Instructional Culture"),
+    ("esl", "Evidence of Student Learning"),
+)
+
+REFLECTION_FIELDS: tuple[tuple[str, str], ...] = (
+    ("reflect_1", "What knowledge has been building this week?"),
+    ("reflect_2", "What understandings are being developed?"),
+    ("reflect_3", "What evidence is demonstrating mastery?"),
+    ("reflect_4", "What misconceptions emerged?"),
+    ("reflect_5", "What standard(s) or parts of the standard need reteaching?"),
+    ("reflect_6", "Which students need intervention?"),
+    ("reflect_7", "What is the plan for intervention (Tier 2 and Tier 3)?"),
+    ("reflect_8", "Which students need enrichment?"),
+    ("reflect_9", "What is the plan for enrichment?"),
+    ("reflect_10", "Which instructional moves worked?"),
+    ("reflect_11", "What instructional adjustments will I make next week?"),
+    ("reflect_12", "What are next week's instructional priorities?"),
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,105 +88,171 @@ class RenderedHqiDocument:
     continuation_page_count: int
 
 
-def _split_at_word_boundary(value: str, capacity: int) -> tuple[str, str]:
-    if len(value) <= capacity:
-        return value, ""
-    split_at = value.rfind(" ", 0, capacity + 1)
-    if split_at < max(1, capacity // 2):
-        split_at = capacity
-    return value[:split_at].rstrip(), value[split_at:].lstrip()
+def _paragraph_text(value: str) -> str:
+    escaped = escape(value.strip())
+    return escaped.replace("\n\n", "<br/><br/>").replace("\n", "<br/>") or "&nbsp;"
 
 
-def _field_label(field: str) -> str:
-    if field in FIELD_LABELS:
-        return FIELD_LABELS[field]
-    if field.startswith("reflect_"):
-        index = int(field.split("_")[1])
-        return REFLECTION_LABELS[index]
-    prefix, day = field.split("_", 1)
-    return f"{DAY_NAMES[day]} — {DAILY_LABELS[prefix]}"
+def _styles() -> dict[str, ParagraphStyle]:
+    base = getSampleStyleSheet()
+    return {
+        "title": ParagraphStyle(
+            "TPPTitle",
+            parent=base["Heading1"],
+            fontName="Helvetica-Bold",
+            fontSize=15,
+            leading=18,
+            alignment=TA_CENTER,
+            spaceAfter=10,
+        ),
+        "meta": ParagraphStyle(
+            "TPPMeta",
+            parent=base["Normal"],
+            fontSize=9,
+            leading=12,
+        ),
+        "section": ParagraphStyle(
+            "TPPSection",
+            parent=base["Heading2"],
+            fontName="Helvetica-Bold",
+            fontSize=10,
+            leading=13,
+            spaceBefore=7,
+            spaceAfter=3,
+            keepWithNext=True,
+        ),
+        "day": ParagraphStyle(
+            "TPPDay",
+            parent=base["Heading2"],
+            fontName="Helvetica-Bold",
+            fontSize=12,
+            leading=15,
+            spaceBefore=9,
+            spaceAfter=5,
+            keepWithNext=True,
+        ),
+        "body": ParagraphStyle(
+            "TPPBody",
+            parent=base["BodyText"],
+            fontSize=10,
+            leading=14,
+            spaceAfter=5,
+            splitLongWords=True,
+        ),
+        "footer": ParagraphStyle(
+            "TPPFooter",
+            parent=base["Normal"],
+            fontSize=8,
+            leading=10,
+        ),
+    }
 
 
-def _continuation_pdf(
+def _metadata_table(payload: Mapping[str, str], styles: dict[str, ParagraphStyle]) -> Table:
+    cells = [
+        Paragraph(f"<b>Teacher:</b> {_paragraph_text(payload.get('teacher', ''))}", styles["meta"]),
+        Paragraph(f"<b>Course:</b> {_paragraph_text(payload.get('course', ''))}", styles["meta"]),
+        Paragraph(f"<b>Grade:</b> {_paragraph_text(payload.get('grade', ''))}", styles["meta"]),
+        Paragraph(f"<b>Week of:</b> {_paragraph_text(payload.get('week_of', ''))}", styles["meta"]),
+    ]
+    table = Table([cells[:2], cells[2:]], colWidths=[3.55 * inch, 3.55 * inch])
+    table.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]
+        )
+    )
+    return table
+
+
+def _section_block(
+    label: str,
+    value: str,
+    styles: dict[str, ParagraphStyle],
+) -> list[Flowable]:
+    return [
+        Paragraph(label, styles["section"]),
+        Paragraph(_paragraph_text(value), styles["body"]),
+    ]
+
+
+def _framework_story(
+    payload: Mapping[str, str],
+    styles: dict[str, ParagraphStyle],
+) -> list[Flowable]:
+    story: list[Flowable] = []
+    for field, label in FRAMEWORK_FIELDS:
+        story.extend(_section_block(label, payload.get(field, ""), styles))
+    return story
+
+
+def _week_story(
+    payload: Mapping[str, str],
+    styles: dict[str, ParagraphStyle],
+) -> list[Flowable]:
+    story: list[Flowable] = []
+    for day_key, day_name in DAY_NAMES:
+        story.append(Paragraph(day_name, styles["day"]))
+        for prefix, label in DAILY_FIELDS:
+            field = f"{prefix}_{day_key}"
+            story.extend(_section_block(label, payload.get(field, ""), styles))
+        if day_key != "fri":
+            story.append(Spacer(1, 0.08 * inch))
+    return story
+
+
+def _reflection_story(
+    payload: Mapping[str, str],
+    styles: dict[str, ParagraphStyle],
+) -> list[Flowable]:
+    story: list[Flowable] = []
+    for field, label in REFLECTION_FIELDS:
+        story.extend(_section_block(label, payload.get(field, ""), styles))
+    return story
+
+
+def _document_story(
     document: HqiDocument,
-    overflow: Sequence[tuple[str, str]],
-    metadata: Mapping[str, str],
-) -> bytes:
-    output = BytesIO()
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        "TPPContinuationTitle",
-        parent=styles["Heading1"],
-        fontSize=14,
-        leading=17,
-        spaceAfter=8,
-    )
-    meta_style = ParagraphStyle(
-        "TPPContinuationMeta",
-        parent=styles["Normal"],
-        fontSize=9,
-        leading=12,
-        spaceAfter=3,
-    )
-    label_style = ParagraphStyle(
-        "TPPContinuationLabel",
-        parent=styles["Heading2"],
-        fontSize=10,
-        leading=13,
-        spaceBefore=8,
-        spaceAfter=3,
-    )
-    body_style = ParagraphStyle(
-        "TPPContinuationBody",
-        parent=styles["BodyText"],
-        fontSize=10,
-        leading=14,
-        spaceAfter=7,
-    )
+    payload: Mapping[str, str],
+    styles: dict[str, ParagraphStyle],
+) -> list[Flowable]:
+    if document == HqiDocument.INSTRUCTIONAL_FRAMEWORK:
+        return _framework_story(payload, styles)
+    if document == HqiDocument.WEEK_AT_A_GLANCE:
+        return _week_story(payload, styles)
+    return _reflection_story(payload, styles)
 
-    def footer(canvas: object, doc: object) -> None:
+
+def _page_decorator(document: HqiDocument, payload: Mapping[str, str]):
+    title = DOCUMENT_TITLES[document]
+    teacher = payload.get("teacher", "")
+    course = payload.get("course", "")
+    week_of = payload.get("week_of", "")
+
+    def decorate(canvas: object, doc: object) -> None:
         del doc
         canvas.saveState()  # type: ignore[attr-defined]
-        page = canvas.getPageNumber()  # type: ignore[attr-defined]
+        page_number = canvas.getPageNumber()  # type: ignore[attr-defined]
         canvas.setFont("Helvetica", 8)  # type: ignore[attr-defined]
+        canvas.drawString(  # type: ignore[attr-defined]
+            0.65 * inch,
+            0.42 * inch,
+            f"{teacher} | {course} | Week of {week_of}",
+        )
         canvas.drawRightString(  # type: ignore[attr-defined]
-            7.5 * inch,
-            0.45 * inch,
-            f"Continuation page {page}",
+            7.85 * inch,
+            0.42 * inch,
+            f"{title} | Page {page_number}",
         )
         canvas.restoreState()  # type: ignore[attr-defined]
 
-    teacher_course = (
-        f"Teacher: {metadata.get('teacher', '')} &nbsp;&nbsp; "
-        f"Course: {metadata.get('course', '')}"
-    )
-    week_grade = (
-        f"Week of: {metadata.get('week_of', '')} &nbsp;&nbsp; "
-        f"Grade: {metadata.get('grade', '')}"
-    )
-    story: list[Flowable] = [
-        Paragraph(f"{DOCUMENT_TITLES[document]} — Continuation", title_style),
-        Paragraph(teacher_course, meta_style),
-        Paragraph(week_grade, meta_style),
-        Spacer(1, 0.08 * inch),
-    ]
-    for field, value in overflow:
-        story.append(Paragraph(_field_label(field), label_style))
-        paragraphs = value.split("\n\n") or [value]
-        for paragraph in paragraphs:
-            story.append(Paragraph(paragraph.replace("\n", "<br/>"), body_style))
-
-    doc = SimpleDocTemplate(
-        output,
-        pagesize=letter,
-        rightMargin=0.65 * inch,
-        leftMargin=0.65 * inch,
-        topMargin=0.6 * inch,
-        bottomMargin=0.65 * inch,
-        title=f"{DOCUMENT_TITLES[document]} Continuation",
-    )
-    doc.build(story, onFirstPage=footer, onLaterPages=footer)
-    return output.getvalue()
+    return decorate
 
 
 def render_hqi_document(
@@ -193,45 +262,37 @@ def render_hqi_document(
     *,
     flatten: bool = False,
 ) -> RenderedHqiDocument:
-    fields = DOCUMENT_FIELDS[document]
-    source_values: dict[str, str] = {}
-    overflow: list[tuple[str, str]] = []
+    del flatten
+    if not template_path.exists():
+        raise FileNotFoundError(template_path)
 
-    for field in fields:
-        value = payload.get(field, "")
-        first_page, remainder = _split_at_word_boundary(value, READABLE_PAGE_CAPACITY[field])
-        source_values[field] = first_page
-        if remainder:
-            overflow.append((field, remainder))
-
-    filled_packet = PdfReader(BytesIO(fill_hqi_pdf(template_path, source_values, flatten=flatten)))
-    writer = PdfWriter()
-    writer.add_page(filled_packet.pages[DOCUMENT_PAGE_INDEX[document]])
-
-    if overflow:
-        continuation = PdfReader(
-            BytesIO(
-                _continuation_pdf(
-                    document,
-                    overflow,
-                    {
-                        "teacher": payload.get("teacher", ""),
-                        "course": payload.get("course", ""),
-                        "grade": payload.get("grade", ""),
-                        "week_of": payload.get("week_of", ""),
-                    },
-                )
-            )
-        )
-        for page in continuation.pages:
-            writer.add_page(page)
-
+    styles = _styles()
     output = BytesIO()
-    writer.write(output)
-    page_count = len(writer.pages)
+    doc = SimpleDocTemplate(
+        output,
+        pagesize=letter,
+        rightMargin=0.65 * inch,
+        leftMargin=0.65 * inch,
+        topMargin=0.6 * inch,
+        bottomMargin=0.7 * inch,
+        title=DOCUMENT_TITLES[document],
+        allowSplitting=True,
+    )
+
+    story: list[Flowable] = [
+        Paragraph(DOCUMENT_TITLES[document], styles["title"]),
+        _metadata_table(payload, styles),
+        Spacer(1, 0.12 * inch),
+    ]
+    story.extend(_document_story(document, payload, styles))
+
+    decorator = _page_decorator(document, payload)
+    doc.build(story, onFirstPage=decorator, onLaterPages=decorator)
+    pdf_bytes = output.getvalue()
+    page_count = len(PdfReader(BytesIO(pdf_bytes)).pages)
     return RenderedHqiDocument(
         document=document,
-        pdf_bytes=output.getvalue(),
+        pdf_bytes=pdf_bytes,
         page_count=page_count,
         continuation_page_count=max(0, page_count - 1),
     )
@@ -248,10 +309,13 @@ def render_hqi_packet(
         for document in HqiDocument
     )
     writer = PdfWriter()
-    for rendered in documents:
+    for index, rendered in enumerate(documents):
         reader = PdfReader(BytesIO(rendered.pdf_bytes))
         for page in reader.pages:
             writer.add_page(page)
+        if index < len(documents) - 1:
+            writer.add_blank_page(width=letter[0], height=letter[1])
+
     output = BytesIO()
     writer.write(output)
     return output.getvalue(), documents
