@@ -1,12 +1,20 @@
-# Anniston HQI PDF Mapping
+# Anniston HQI Document Mapping
 
 ## Source
 
-The Version 1 document target is the three-page fillable **HQI Lesson Plan Framework** supplied by Anniston City Schools. The original PDF contains 57 AcroForm text fields. The source template must be preserved unchanged and copied for every generated plan.
+Anniston City Schools supplied one three-page fillable PDF containing 57 AcroForm text fields. TPP treats that file as the source container for **three separate planning documents**, not as one fixed three-page output that must hold all content at any cost.
+
+The three document types are:
+
+1. **High Quality Instruction Planning Framework** — source page 1
+2. **Week at a Glance** — source page 2
+3. **Weekly Reflection / PLC Discussion** — source page 3
+
+Each document may remain one page when content fits at a normal readable font size or expand to two or more pages when continuation space is required. TPP must never truncate content or shrink text to an unreadable size merely to preserve a one-page boundary.
 
 ## Confirmed field inventory
 
-### Page 1 - High Quality Instruction Planning Framework
+### Document 1 - High Quality Instruction Planning Framework
 
 | PDF field | TPP source |
 |---|---|
@@ -26,7 +34,7 @@ The Version 1 document target is the three-page fillable **HQI Lesson Plan Frame
 | `performance_task` | Performance task or authentic application |
 | `resources` | Resources, materials, and links |
 
-### Page 2 - Week at a Glance
+### Document 2 - Week at a Glance
 
 Each weekday has six fields. Day suffixes are `mon`, `tue`, `wed`, `thu`, and `fri`.
 
@@ -41,7 +49,7 @@ Each weekday has six fields. Day suffixes are `mon`, `tue`, `wed`, `thu`, and `f
 
 Examples: `clt_mon`, `rrt_wed`, and `esl_fri`.
 
-### Page 3 - Weekly Reflection / PLC Discussion
+### Document 3 - Weekly Reflection / PLC Discussion
 
 The fields are `reflect_1` through `reflect_12`, in the order printed on the form:
 
@@ -58,20 +66,30 @@ The fields are `reflect_1` through `reflect_12`, in the order printed on the for
 11. What instructional adjustments will I make next week?
 12. What are next week's instructional priorities?
 
+## Pagination and readability rules
+
+1. Each source page establishes the visual first page of its own document.
+2. Narrative text uses a normal, readable body font size; automatic shrink-to-fit is not an accepted overflow strategy.
+3. When a field exceeds the readable space available on the first page, the complete text flows to a labeled continuation page for that same document.
+4. Continuation pages repeat the teacher, course, week, document title, field label, and page numbering needed to keep printed pages attributable.
+5. Content is never silently truncated.
+6. A combined packet may be offered as a convenience download, but it is assembled from the three independently generated documents.
+7. Teachers may download any of the three documents separately.
+
 ## Generation rules
 
 1. Teacher approval is required before export.
 2. Official standards wording must not be rewritten by AI.
 3. Student-specific reflection fields remain teacher-entered or teacher-approved.
 4. Missing optional content produces a blank field rather than invented content.
-5. The editable export retains AcroForm fields.
-6. The flattened export is produced only after the teacher approves the final plan.
-7. Every generated document records template version, payload hash, generating user, generation time, and whether the output was editable or flattened.
+5. Editable exports retain appropriate form fields on the source page; continuation pages retain full readable content.
+6. Flattened exports are produced only after the teacher approves the final plan.
+7. Every generated document records document type, template version, payload hash, generating user, generation time, page count, continuation-page count, and whether the output was editable or flattened.
 
 ## Template handling
 
-The binary source template is not yet committed to the repository. Before document-generation acceptance, place the district-approved original at:
+The district-approved source file is installed at:
 
 `backend/assets/anniston_hqi_lesson_plan.fillable.pdf`
 
-The application must verify at startup that the template exposes exactly the confirmed 57 fields. A visually similar or scanned copy is not an acceptable substitute.
+The application verifies that the source exposes the confirmed 57 fields and three source pages. A visually similar or scanned copy is not an acceptable substitute.
