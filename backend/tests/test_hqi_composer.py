@@ -58,6 +58,11 @@ def test_composer_requires_all_reflection_slots_without_inventing_content() -> N
         compose_hqi_payload(base_plan(reflections=("",) * 11))
 
 
-def test_composer_rejects_content_that_would_clip_in_pdf() -> None:
-    with pytest.raises(ValueError, match="safe layout limits"):
-        compose_hqi_payload(base_plan(unit_topic="x" * 91))
+def test_composer_accepts_substantive_narrative_content() -> None:
+    payload = compose_hqi_payload(base_plan(unit_topic="x" * 500))
+    assert len(payload["unit_topic"]) == 500
+
+
+def test_composer_rejects_unbounded_content() -> None:
+    with pytest.raises(ValueError, match="application limits"):
+        compose_hqi_payload(base_plan(unit_topic="x" * 501))
