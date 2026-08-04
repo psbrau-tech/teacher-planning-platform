@@ -11,7 +11,7 @@ from pypdf import PdfReader, PdfWriter
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+from reportlab.platypus import Flowable, Paragraph, SimpleDocTemplate, Spacer
 
 from .document_sections import DOCUMENT_FIELDS, READABLE_PAGE_CAPACITY, HqiDocument
 from .pdf_generator import fill_hqi_pdf
@@ -161,7 +161,7 @@ def _continuation_pdf(
         f"Week of: {metadata.get('week_of', '')} &nbsp;&nbsp; "
         f"Grade: {metadata.get('grade', '')}"
     )
-    story: list[object] = [
+    story: list[Flowable] = [
         Paragraph(f"{DOCUMENT_TITLES[document]} — Continuation", title_style),
         Paragraph(teacher_course, meta_style),
         Paragraph(week_grade, meta_style),
