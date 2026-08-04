@@ -34,16 +34,17 @@ def test_anniston_hqi_field_contract_is_exposed() -> None:
     assert payload["field_count"] == 57
     assert "clt_mon" in payload["fields"]
     assert "reflect_12" in payload["fields"]
-    assert payload["template_installed"] is False
+    assert payload["template_installed"] is True
 
 
-def test_document_generation_stays_closed_until_approved_template_is_installed() -> None:
+def test_document_generation_uses_approved_template() -> None:
     response = client.post(
         "/api/v1/documents/anniston-hqi",
-        json={"teacher": "Synthetic Teacher"},
+        json={"teacher": "Synthetic Teacher", "course": "LET 1"},
     )
-    assert response.status_code == 503
-    assert "not installed" in response.json()["detail"]
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF")
 
 
 def test_admin_and_cost_reports_preserve_synthetic_boundary() -> None:
