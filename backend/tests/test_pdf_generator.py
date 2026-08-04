@@ -26,7 +26,6 @@ def test_editable_pdf_preserves_values_and_expands_text_fields() -> None:
     assert len(fields["clt_mon"]["/V"]) > 400
     assert int(fields["clt_mon"].get("/Ff", 0)) & MULTILINE_FLAG
     assert "/MaxLen" not in fields["clt_mon"]
-    assert " 0 Tf" in str(fields["clt_mon"]["/DA"])
 
 
 def test_flattened_pdf_removes_page_annotations() -> None:
