@@ -25,7 +25,10 @@ def test_long_content_requires_continuation_instead_of_shrinking() -> None:
         HqiDocument.WEEK_AT_A_GLANCE,
         HqiDocument.WEEKLY_REFLECTION,
     }
-    assert all(requirement.character_count > requirement.first_page_capacity for requirement in requirements)
+    assert all(
+        requirement.character_count > requirement.first_page_capacity
+        for requirement in requirements
+    )
 
 
 def test_short_content_does_not_require_continuation() -> None:
