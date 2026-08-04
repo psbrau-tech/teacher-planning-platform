@@ -35,6 +35,11 @@ def test_anniston_hqi_field_contract_is_exposed() -> None:
     assert "clt_mon" in payload["fields"]
     assert "reflect_12" in payload["fields"]
     assert payload["template_installed"] is True
+    assert payload["documents"] == [
+        "instructional-framework",
+        "week-at-a-glance",
+        "weekly-reflection",
+    ]
 
 
 def test_document_generation_uses_approved_template() -> None:
@@ -45,6 +50,38 @@ def test_document_generation_uses_approved_template() -> None:
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/pdf"
     assert response.content.startswith(b"%PDF")
+
+
+def test_independent_document_adds_continuation_pages() -> None:
+    response = client.post(
+        "/api/v1/documents/anniston-hqi/instructional-framework",
+        json={
+            "teacher": "Synthetic Teacher",
+            "course": "LET 1",
+            "week_of": "August 10, 2026",
+            "standards": "Official standard detail. " * 40,
+        },
+    )
+    assert response.status_code == 200
+    assert response.content.startswith(b"%PDF")
+    assert int(response.headers["x-tpp-page-count"]) >= 2
+    assert int(response.headers["x-tpp-continuation-pages"]) >= 1
+
+
+def test_combined_packet_reports_three_documents() -> None:
+    response = client.post(
+        "/api/v1/documents/anniston-hqi-packet",
+        json={
+            "teacher": "Synthetic Teacher",
+            "course": "LET 1",
+            "standards": "Official standard detail. " * 40,
+            "reflect_1": "Reflection detail. " * 40,
+        },
+    )
+    assert response.status_code == 200
+    assert response.content.startswith(b"%PDF")
+    assert response.headers["x-tpp-document-count"] == "3"
+    assert int(response.headers["x-tpp-continuation-pages"]) >= 2
 
 
 def test_admin_and_cost_reports_preserve_synthetic_boundary() -> None:
