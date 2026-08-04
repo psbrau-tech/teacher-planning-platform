@@ -14,6 +14,7 @@ from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
+from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import (
     Flowable,
     Paragraph,
@@ -168,6 +169,8 @@ def _section_block(
     value: str,
     styles: dict[str, ParagraphStyle],
 ) -> list[Flowable]:
+    if not value.strip():
+        return []
     return [
         Paragraph(label, styles["section"]),
         Paragraph(_paragraph_text(value), styles["body"]),
@@ -189,13 +192,19 @@ def _week_story(
     styles: dict[str, ParagraphStyle],
 ) -> list[Flowable]:
     story: list[Flowable] = []
+    rendered_day_count = 0
     for day_key, day_name in DAY_NAMES:
-        story.append(Paragraph(day_name, styles["day"]))
+        day_blocks: list[Flowable] = []
         for prefix, label in DAILY_FIELDS:
             field = f"{prefix}_{day_key}"
-            story.extend(_section_block(label, payload.get(field, ""), styles))
-        if day_key != "fri":
+            day_blocks.extend(_section_block(label, payload.get(field, ""), styles))
+        if not day_blocks:
+            continue
+        if rendered_day_count:
             story.append(Spacer(1, 0.08 * inch))
+        story.append(Paragraph(day_name, styles["day"]))
+        story.extend(day_blocks)
+        rendered_day_count += 1
     return story
 
 
@@ -224,28 +233,28 @@ def _document_story(
 def _page_decorator(
     document: HqiDocument,
     payload: Mapping[str, str],
-) -> Callable[[object, object], None]:
+) -> Callable[[Canvas, SimpleDocTemplate], None]:
     title = DOCUMENT_TITLES[document]
     teacher = payload.get("teacher", "")
     course = payload.get("course", "")
     week_of = payload.get("week_of", "")
 
-    def decorate(canvas: object, doc: object) -> None:
+    def decorate(canvas: Canvas, doc: SimpleDocTemplate) -> None:
         del doc
-        canvas.saveState()  # type: ignore[attr-defined]
-        page_number = canvas.getPageNumber()  # type: ignore[attr-defined]
-        canvas.setFont("Helvetica", 8)  # type: ignore[attr-defined]
-        canvas.drawString(  # type: ignore[attr-defined]
+        canvas.saveState()
+        page_number = canvas.getPageNumber()
+        canvas.setFont("Helvetica", 8)
+        canvas.drawString(
             0.65 * inch,
             0.42 * inch,
             f"{teacher} | {course} | Week of {week_of}",
         )
-        canvas.drawRightString(  # type: ignore[attr-defined]
+        canvas.drawRightString(
             7.85 * inch,
             0.42 * inch,
             f"{title} | Page {page_number}",
         )
-        canvas.restoreState()  # type: ignore[attr-defined]
+        canvas.restoreState()
 
     return decorate
 
