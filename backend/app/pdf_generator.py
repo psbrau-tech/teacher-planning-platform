@@ -79,7 +79,7 @@ def fill_hqi_pdf(
     if flatten:
         for page in writer.pages:
             if page.get("/Annots"):
-                page["/Annots"] = ArrayObject()
+                page[NameObject("/Annots")] = ArrayObject()
 
     output = BytesIO()
     writer.write(output)
