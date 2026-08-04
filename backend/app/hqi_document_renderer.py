@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
@@ -221,7 +221,10 @@ def _document_story(
     return _reflection_story(payload, styles)
 
 
-def _page_decorator(document: HqiDocument, payload: Mapping[str, str]):
+def _page_decorator(
+    document: HqiDocument,
+    payload: Mapping[str, str],
+) -> Callable[[object, object], None]:
     title = DOCUMENT_TITLES[document]
     teacher = payload.get("teacher", "")
     course = payload.get("course", "")
