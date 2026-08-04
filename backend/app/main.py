@@ -6,7 +6,13 @@ from typing import Annotated
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
-from .document_service import DEFAULT_TEMPLATE_PATH, generate_anniston_hqi
+from .document_sections import HqiDocument
+from .document_service import (
+    DEFAULT_TEMPLATE_PATH,
+    generate_anniston_hqi,
+    generate_anniston_hqi_document,
+    generate_anniston_hqi_packet,
+)
 from .fixtures import (
     ASSIGNMENT_IDS,
     afternoon_block_pattern,
@@ -77,19 +83,25 @@ def anniston_hqi_fields() -> dict[str, object]:
         "field_count": len(ALL_HQI_FIELDS),
         "fields": ALL_HQI_FIELDS,
         "template_installed": DEFAULT_TEMPLATE_PATH.exists(),
+        "documents": [document.value for document in HqiDocument],
     }
 
 
-@app.post("/api/v1/documents/anniston-hqi", tags=["documents"])
-def generate_hqi_document(
-    payload: Annotated[dict[str, str], Body()],
-    flatten: Annotated[bool, Query()] = False,
-) -> StreamingResponse:
+def _require_template() -> None:
     if not DEFAULT_TEMPLATE_PATH.exists():
         raise HTTPException(
             status_code=503,
             detail="The approved Anniston HQI PDF template is not installed.",
         )
+
+
+@app.post("/api/v1/documents/anniston-hqi", tags=["documents"])
+def generate_hqi_document_legacy(
+    payload: Annotated[dict[str, str], Body()],
+    flatten: Annotated[bool, Query()] = False,
+) -> StreamingResponse:
+    """Legacy three-page export retained temporarily for compatibility."""
+    _require_template()
     try:
         document = generate_anniston_hqi(payload, flatten=flatten)
     except ValueError as error:
@@ -100,6 +112,57 @@ def generate_hqi_document(
         BytesIO(document),
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/api/v1/documents/anniston-hqi/{document}", tags=["documents"])
+def generate_hqi_section_document(
+    document: HqiDocument,
+    payload: Annotated[dict[str, str], Body()],
+    flatten: Annotated[bool, Query()] = False,
+) -> StreamingResponse:
+    _require_template()
+    try:
+        rendered = generate_anniston_hqi_document(payload, document, flatten=flatten)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+    suffix = "-flat" if flatten else ""
+    filename = f"anniston-hqi-{document.value}{suffix}.pdf"
+    return StreamingResponse(
+        BytesIO(rendered.pdf_bytes),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-TPP-Page-Count": str(rendered.page_count),
+            "X-TPP-Continuation-Pages": str(rendered.continuation_page_count),
+        },
+    )
+
+
+@app.post("/api/v1/documents/anniston-hqi-packet", tags=["documents"])
+def generate_hqi_packet(
+    payload: Annotated[dict[str, str], Body()],
+    flatten: Annotated[bool, Query()] = False,
+) -> StreamingResponse:
+    _require_template()
+    try:
+        packet, documents = generate_anniston_hqi_packet(payload, flatten=flatten)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+    continuation_pages = sum(item.continuation_page_count for item in documents)
+    suffix = "-flat" if flatten else ""
+    return StreamingResponse(
+        BytesIO(packet),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="anniston-hqi-combined-packet{suffix}.pdf"'
+            ),
+            "X-TPP-Document-Count": str(len(documents)),
+            "X-TPP-Continuation-Pages": str(continuation_pages),
+        },
     )
 
 
