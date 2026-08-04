@@ -1,13 +1,41 @@
 from collections.abc import Mapping
 from io import BytesIO
 from pathlib import Path
+from typing import Any
 
 from pypdf import PdfReader, PdfWriter
-from pypdf.generic import ArrayObject
+from pypdf.generic import ArrayObject, NameObject, NumberObject, TextStringObject
 
 from .pdf_fields import validate_field_lengths, validate_hqi_payload
 
 PdfFieldValue = str | list[str] | tuple[str, str, float]
+MULTILINE_FLAG = 1 << 12
+
+
+def _configure_text_field(field_reference: Any) -> None:
+    """Remove restrictive text limits and enable multiline, auto-sized text."""
+    field = field_reference.get_object()
+    if field.get("/FT") == "/Tx":
+        flags = int(field.get("/Ff", 0)) | MULTILINE_FLAG
+        field[NameObject("/Ff")] = NumberObject(flags)
+        if "/MaxLen" in field:
+            del field["/MaxLen"]
+        field[NameObject("/DA")] = TextStringObject("/Helv 0 Tf 0 g")
+
+    for child in field.get("/Kids", []):
+        _configure_text_field(child)
+
+
+def _configure_writer_form(writer: PdfWriter) -> None:
+    root = writer.root_object
+    acroform_reference = root.get("/AcroForm")
+    if acroform_reference is None:
+        raise ValueError("HQI template does not contain an AcroForm")
+
+    acroform = acroform_reference.get_object()
+    acroform[NameObject("/NeedAppearances")] = NumberObject(1)
+    for field_reference in acroform.get("/Fields", []):
+        _configure_text_field(field_reference)
 
 
 def fill_hqi_pdf(
@@ -27,7 +55,7 @@ def fill_hqi_pdf(
             f"{error.field}={error.character_count}/{error.character_limit}"
             for error in length_errors
         )
-        raise ValueError(f"HQI field content exceeds safe layout limits: {detail}")
+        raise ValueError(f"HQI field content exceeds application limits: {detail}")
 
     if not template_path.exists():
         raise FileNotFoundError(f"HQI template not found: {template_path}")
@@ -42,7 +70,7 @@ def fill_hqi_pdf(
 
     writer = PdfWriter()
     writer.clone_document_from_reader(reader)
-    writer.set_need_appearances_writer(True)
+    _configure_writer_form(writer)
     form_values: dict[str, PdfFieldValue] = dict(payload)
 
     for page in writer.pages:
