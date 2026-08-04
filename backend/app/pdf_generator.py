@@ -1,8 +1,6 @@
-from __future__ import annotations
-
+from collections.abc import Mapping
 from io import BytesIO
 from pathlib import Path
-from typing import Mapping
 
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import ArrayObject
