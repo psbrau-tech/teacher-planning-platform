@@ -1,4 +1,5 @@
 from datetime import date
+from decimal import Decimal
 
 from fastapi import FastAPI, HTTPException, Query
 
@@ -10,7 +11,15 @@ from .fixtures import (
     synthetic_jrotc_lessons,
 )
 from .models import PlannedLesson
+from .pdf_fields import ALL_HQI_FIELDS
 from .planner import build_weekly_plan
+from .reporting import (
+    AdminUsageEvent,
+    AiFeature,
+    AiUsageRecord,
+    summarize_admin_usage,
+    summarize_ai_cost,
+)
 
 app = FastAPI(
     title="Teacher Planning Platform API",
@@ -55,3 +64,70 @@ def weekly_plan(
         lessons=synthetic_jrotc_lessons(level),
         exceptions=anniston_exceptions(),
     )
+
+
+@app.get("/api/v1/templates/anniston-hqi/fields", tags=["documents"])
+def anniston_hqi_fields() -> dict[str, object]:
+    return {
+        "template": "Anniston City Schools HQI Lesson Plan Framework",
+        "field_count": len(ALL_HQI_FIELDS),
+        "fields": ALL_HQI_FIELDS,
+    }
+
+
+@app.get("/api/v1/admin/summary", tags=["administration"])
+def admin_summary() -> dict[str, object]:
+    summary = summarize_admin_usage(
+        [
+            AdminUsageEvent("synthetic-teacher", "assignment_configured", assignment_id)
+            for assignment_id in ASSIGNMENT_IDS.values()
+        ]
+        + [
+            AdminUsageEvent("synthetic-teacher", "plan_generated", ASSIGNMENT_IDS["LET 1"]),
+            AdminUsageEvent(
+                "synthetic-teacher",
+                "friday_validation_completed",
+                ASSIGNMENT_IDS["LET 1"],
+            ),
+        ]
+    )
+    return {
+        "teachers_active": summary.teachers_active,
+        "assignments_configured": summary.assignments_configured,
+        "plans_generated": summary.plans_generated,
+        "friday_validations_completed": summary.friday_validations_completed,
+        "lessons_carried_forward": summary.lessons_carried_forward,
+        "generation_failures": summary.generation_failures,
+        "data_boundary": "synthetic-only",
+    }
+
+
+@app.get("/api/v1/admin/costs", tags=["administration"])
+def cost_summary() -> dict[str, object]:
+    summary = summarize_ai_cost(
+        [
+            AiUsageRecord(
+                organization_id="anniston-city-schools",
+                school_id="anniston-high-school",
+                teacher_id="synthetic-teacher",
+                assignment_id=ASSIGNMENT_IDS["LET 1"],
+                feature=AiFeature.REFLECTION,
+                model="synthetic-model",
+                input_tokens=420,
+                output_tokens=160,
+                estimated_cost_usd=Decimal("0.0042"),
+                accepted_by_teacher=True,
+            )
+        ]
+    )
+    return {
+        "total_requests": summary.total_requests,
+        "successful_requests": summary.successful_requests,
+        "failed_requests": summary.failed_requests,
+        "total_input_tokens": summary.total_input_tokens,
+        "total_output_tokens": summary.total_output_tokens,
+        "total_estimated_cost_usd": str(summary.total_estimated_cost_usd),
+        "accepted_outputs": summary.accepted_outputs,
+        "discarded_outputs": summary.discarded_outputs,
+        "cost_basis": "estimated synthetic usage",
+    }
