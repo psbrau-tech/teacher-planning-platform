@@ -28,6 +28,15 @@ jobs:
         run: mypy app
       - name: Test
         run: pytest --cov=app --cov-report=term-missing
+      - name: Generate HQI acceptance samples
+        run: python scripts/generate_hqi_acceptance_samples.py
+      - name: Upload HQI acceptance samples
+        uses: actions/upload-artifact@v4
+        with:
+          name: anniston-hqi-acceptance-samples
+          path: backend/acceptance-output/*.pdf
+          if-no-files-found: error
+          retention-days: 14
 
   frontend:
     runs-on: ubuntu-latest
