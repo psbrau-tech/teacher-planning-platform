@@ -2,6 +2,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
+from uuid import UUID
 
 
 class AiFeature(StrEnum):
@@ -18,7 +19,7 @@ class AiUsageRecord:
     organization_id: str
     school_id: str
     teacher_id: str
-    assignment_id: str | None
+    assignment_id: UUID | str | None
     feature: AiFeature
     model: str
     input_tokens: int
@@ -34,7 +35,7 @@ class AiUsageRecord:
 class AdminUsageEvent:
     teacher_id: str
     event_type: str
-    assignment_id: str | None = None
+    assignment_id: UUID | str | None = None
 
 
 @dataclass(frozen=True, slots=True)
