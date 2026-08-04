@@ -1,7 +1,6 @@
-from __future__ import annotations
-
 from collections.abc import Iterable
 from datetime import date, timedelta
+from uuid import UUID
 
 from .models import CurriculumLesson, MeetingPattern, PlannedLesson, ScheduleException
 
@@ -42,7 +41,7 @@ def available_minutes_for_date(
 
 def build_weekly_plan(
     *,
-    assignment_id,
+    assignment_id: UUID,
     week_start: date,
     patterns: list[MeetingPattern],
     lessons: list[CurriculumLesson],
