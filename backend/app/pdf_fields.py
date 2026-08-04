@@ -17,12 +17,12 @@ PAGE_ONE_FIELDS = (
     "know",
     "understand",
     "do",
-    "proficiency_scale",
-    "common_misconceptions",
-    "formative_assessment",
-    "summative_assessment",
+    "plds",
+    "misconceptions",
+    "formative",
+    "summative",
     "performance_task",
-    "resources_materials_links",
+    "resources",
 )
 
 DAILY_FIELDS = tuple(f"{group}_{day}" for day in WEEKDAYS for group in DAILY_GROUPS)
