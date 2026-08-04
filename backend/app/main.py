@@ -1,6 +1,7 @@
 from datetime import date
 from decimal import Decimal
 from io import BytesIO
+from typing import Annotated
 
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -52,8 +53,8 @@ def list_assignments() -> list[dict[str, object]]:
 
 @app.get("/api/v1/weekly-plan", response_model=list[PlannedLesson], tags=["planning"])
 def weekly_plan(
-    level: str = Query(pattern=r"^LET [1-4]$"),
-    week_start: date = Query(description="Monday date for the requested week"),
+    level: Annotated[str, Query(pattern=r"^LET [1-4]$")],
+    week_start: Annotated[date, Query(description="Monday date for the requested week")],
 ) -> list[PlannedLesson]:
     assignment_id = ASSIGNMENT_IDS.get(level)
     if assignment_id is None:
@@ -81,8 +82,8 @@ def anniston_hqi_fields() -> dict[str, object]:
 
 @app.post("/api/v1/documents/anniston-hqi", tags=["documents"])
 def generate_hqi_document(
-    payload: dict[str, str] = Body(),
-    flatten: bool = Query(default=False),
+    payload: Annotated[dict[str, str], Body()],
+    flatten: Annotated[bool, Query()] = False,
 ) -> StreamingResponse:
     if not DEFAULT_TEMPLATE_PATH.exists():
         raise HTTPException(
