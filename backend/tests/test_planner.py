@@ -1,7 +1,12 @@
 from datetime import date, time
 from uuid import UUID
 
-from app.fixtures import ASSIGNMENT_IDS, afternoon_block_pattern, period_pattern, synthetic_jrotc_lessons
+from app.fixtures import (
+    ASSIGNMENT_IDS,
+    afternoon_block_pattern,
+    period_pattern,
+    synthetic_jrotc_lessons,
+)
 from app.models import MeetingPattern, ScheduleException, ScheduleType
 from app.planner import available_minutes_for_date, build_weekly_plan
 
