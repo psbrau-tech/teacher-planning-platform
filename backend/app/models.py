@@ -32,7 +32,7 @@ class MeetingPattern(BaseModel):
     rotation_label: str | None = None
 
     @model_validator(mode="after")
-    def validate_pattern(self) -> "MeetingPattern":
+    def validate_pattern(self) -> MeetingPattern:
         if any(day < 1 or day > 7 for day in self.weekdays):
             raise ValueError("weekdays must contain ISO values from 1 through 7")
         if self.end_time <= self.start_time:
@@ -109,7 +109,7 @@ class ValidationUpdate(BaseModel):
     carry_forward: bool = False
 
     @model_validator(mode="after")
-    def validate_status(self) -> "ValidationUpdate":
+    def validate_status(self) -> ValidationUpdate:
         if self.status == LessonStatus.MISSED and not self.reason:
             raise ValueError("reason is required when a lesson is missed")
         if self.status in {LessonStatus.COMPLETED, LessonStatus.SKIPPED} and self.carry_forward:
