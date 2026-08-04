@@ -45,13 +45,17 @@ def test_payload_validation_rejects_unknown_fields() -> None:
     assert validate_hqi_payload({"teacher": "Peter", "unknown": "value"}) == ("unknown",)
 
 
-def test_field_length_validation_flags_content_that_would_clip() -> None:
-    errors = validate_field_lengths({"clt_mon": "x" * 146, "teacher": "Peter"})
+def test_field_length_validation_allows_substantive_daily_content() -> None:
+    assert validate_field_lengths({"clt_mon": "x" * 1_200, "teacher": "Peter"}) == ()
+
+
+def test_field_length_validation_rejects_unbounded_content() -> None:
+    errors = validate_field_lengths({"clt_mon": "x" * 1_201, "teacher": "Peter"})
 
     assert len(errors) == 1
     assert errors[0].field == "clt_mon"
-    assert errors[0].character_count == 146
-    assert errors[0].character_limit == 145
+    assert errors[0].character_count == 1_201
+    assert errors[0].character_limit == 1_200
 
 
 def test_daily_mapping_rejects_weekend_key() -> None:
