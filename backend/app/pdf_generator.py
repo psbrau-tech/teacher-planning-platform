@@ -7,6 +7,8 @@ from pypdf.generic import ArrayObject
 
 from .pdf_fields import validate_field_lengths, validate_hqi_payload
 
+PdfFieldValue = str | list[str] | tuple[str, str, float]
+
 
 def fill_hqi_pdf(
     template_path: Path,
@@ -41,9 +43,10 @@ def fill_hqi_pdf(
     writer = PdfWriter()
     writer.clone_document_from_reader(reader)
     writer.set_need_appearances_writer(True)
+    form_values: dict[str, PdfFieldValue] = dict(payload)
 
     for page in writer.pages:
-        writer.update_page_form_field_values(page, payload, auto_regenerate=True)
+        writer.update_page_form_field_values(page, form_values, auto_regenerate=True)
 
     if flatten:
         for page in writer.pages:
