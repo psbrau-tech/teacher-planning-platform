@@ -1,8 +1,10 @@
+# ruff: noqa: E501
+
 from pathlib import Path
 
 from app.document_sections import HqiDocument
-from app.hqi_document_renderer import render_hqi_document, render_hqi_packet
 from app.document_service import DEFAULT_TEMPLATE_PATH
+from app.hqi_document_renderer import render_hqi_document, render_hqi_packet
 
 OUTPUT_DIR = Path(__file__).resolve().parents[1] / "acceptance-output"
 
