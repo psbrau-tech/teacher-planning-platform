@@ -31,9 +31,9 @@ def test_each_source_page_renders_as_an_independent_document() -> None:
         assert len(reader.pages) == 1
 
 
-def test_long_framework_content_flows_to_continuation_page() -> None:
+def test_long_framework_content_flows_to_additional_pages() -> None:
     payload = base_payload()
-    payload["standards"] = "Complete official standards wording. " * 30
+    payload["standards"] = "Complete official standards wording. " * 160
 
     rendered = render_hqi_document(
         TEMPLATE_PATH,
@@ -45,29 +45,30 @@ def test_long_framework_content_flows_to_continuation_page() -> None:
 
     assert rendered.page_count >= 2
     assert rendered.continuation_page_count >= 1
-    assert "Instruction Planning Framework" in text
-    assert "Continuation" in text
+    assert "High Quality Instruction Planning Framework" in text
     assert "Complete official standards wording" in text
+    assert "Page 2" in text
 
 
-def test_long_daily_content_flows_without_shrinking_to_fit() -> None:
+def test_long_daily_content_wraps_and_flows_without_shrinking() -> None:
     payload = base_payload()
-    payload["clt_mon"] = "Explain, demonstrate, and reflect on the learning target. " * 20
+    payload["clt_mon"] = "Explain, demonstrate, and reflect on the learning target. " * 120
 
     rendered = render_hqi_document(TEMPLATE_PATH, payload, HqiDocument.WEEK_AT_A_GLANCE)
     reader = PdfReader(BytesIO(rendered.pdf_bytes))
-    continuation_text = "\n".join(page.extract_text() or "" for page in reader.pages[1:])
+    all_text = "\n".join(page.extract_text() or "" for page in reader.pages)
 
     assert rendered.continuation_page_count >= 1
-    assert "Monday" in continuation_text
-    assert "Clear Learning Target" in continuation_text
-    assert "Explain, demonstrate" in continuation_text
+    assert "Monday" in all_text
+    assert "Clear Learning Target" in all_text
+    assert "Explain, demonstrate" in all_text
+    assert "Page 2" in all_text
 
 
 def test_combined_packet_preserves_document_order_and_page_counts() -> None:
     payload = base_payload()
-    payload["standards"] = "Standard detail. " * 40
-    payload["reflect_1"] = "Reflection detail. " * 40
+    payload["standards"] = "Standard detail. " * 240
+    payload["reflect_1"] = "Reflection detail. " * 240
 
     packet, documents = render_hqi_packet(TEMPLATE_PATH, payload)
     packet_reader = PdfReader(BytesIO(packet))
