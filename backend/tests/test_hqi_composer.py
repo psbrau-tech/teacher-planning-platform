@@ -16,14 +16,18 @@ def base_plan(**overrides: object) -> WeeklyPlanInput:
         "know": ("Cadet Creed", "program expectations"),
         "understand": ("Cadet responsibility supports team success",),
         "do": ("Demonstrate basic customs and courtesies",),
-        "proficiency_scale": "Cadet accurately explains expectations and demonstrates required procedures.",
+        "proficiency_scale": (
+            "Cadet accurately explains expectations and demonstrates required procedures."
+        ),
         "daily_lessons": (
             WeeklyLessonInput(
                 day_key="mon",
                 learning_target="Explain JROTC expectations and the Cadet Creed.",
                 task="Analyze scenarios and connect expectations to cadet responsibilities.",
                 check_for_understanding="Retrieval prompt, cold call, and exit ticket.",
-                responsive_instruction="Reteach vocabulary; extend with peer-led scenario analysis.",
+                responsive_instruction=(
+                    "Reteach vocabulary; extend with peer-led scenario analysis."
+                ),
                 instructional_culture="Think time, partner talk, and assigned group roles.",
                 evidence="Completed scenario response and exit ticket.",
             ),
