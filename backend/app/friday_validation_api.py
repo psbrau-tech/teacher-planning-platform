@@ -2,9 +2,10 @@ from datetime import date
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from .auth import AuthenticatedTeacher, require_teacher
 from .friday_validation_store import (
     FridayValidationRecord,
     friday_validation_store,
@@ -58,12 +59,6 @@ class FridayValidationRead(BaseModel):
     lessons: list[FridayLessonValidationRead]
 
 
-def _require_teacher_id(value: str | None) -> str:
-    if value is None or not value.strip():
-        raise HTTPException(status_code=401, detail="Teacher identity is required")
-    return value.strip()
-
-
 def _to_read_model(record: FridayValidationRecord) -> FridayValidationRead:
     return FridayValidationRead(
         teacher_id=record.teacher_id,
@@ -98,10 +93,9 @@ def _to_read_model(record: FridayValidationRecord) -> FridayValidationRead:
 def get_friday_validation(
     assignment_id: UUID,
     week_start: date,
-    teacher_id_header: Annotated[str | None, Header(alias="X-TPP-Teacher-ID")] = None,
+    teacher: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
 ) -> FridayValidationRead:
-    teacher_id = _require_teacher_id(teacher_id_header)
-    record = friday_validation_store.get(teacher_id, assignment_id, week_start)
+    record = friday_validation_store.get(teacher.subject, assignment_id, week_start)
     if record is None:
         raise HTTPException(status_code=404, detail="Friday validation not found")
     return _to_read_model(record)
@@ -110,9 +104,8 @@ def get_friday_validation(
 @router.put("", response_model=FridayValidationRead)
 def save_friday_validation(
     payload: FridayValidationWrite,
-    teacher_id_header: Annotated[str | None, Header(alias="X-TPP-Teacher-ID")] = None,
+    teacher: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
 ) -> FridayValidationRead:
-    teacher_id = _require_teacher_id(teacher_id_header)
     scheduled = [
         ScheduledLessonRecord(
             id=item.scheduled_lesson_id,
@@ -135,7 +128,7 @@ def save_friday_validation(
     try:
         result = apply_friday_validation(scheduled, updates)
         record = friday_validation_store.save(
-            teacher_id=teacher_id,
+            teacher_id=teacher.subject,
             assignment_id=payload.assignment_id,
             week_start=payload.week_start,
             result=result,
