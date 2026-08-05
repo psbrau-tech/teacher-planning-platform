@@ -45,6 +45,7 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.ruff.lint.per-file-ignores]
 "app/auth.py" = ["E501"]
 "app/supabase_persistence.py" = ["SIM105"]
+"scripts/provision_pilot.py" = ["SIM117"]
 
 [tool.mypy]
 python_version = "3.12"
