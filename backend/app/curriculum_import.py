@@ -23,7 +23,9 @@ class CurriculumLessonImport:
             raise ValueError("estimated minutes must be at least 1")
 
 
-def validate_curriculum_import(rows: list[CurriculumLessonImport]) -> tuple[CurriculumLessonImport, ...]:
+def validate_curriculum_import(
+    rows: list[CurriculumLessonImport],
+) -> tuple[CurriculumLessonImport, ...]:
     """Validate and normalize a teacher-owned curriculum import before persistence."""
     for row in rows:
         row.validate()
