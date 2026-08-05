@@ -49,8 +49,8 @@ def test_long_framework_content_flows_to_additional_pages() -> None:
     assert rendered.continuation_page_count >= 1
     assert "High Quality Instruction Planning Framework" in text
     assert "Complete official standards wording" in text
-    assert "Literacy Standards" in text
-    assert "ACT Preparation" in text
+    assert "LITERACY STANDARDS" in text
+    assert "ACT PREPARATION" in text
     assert "Page 2" in text
 
 
