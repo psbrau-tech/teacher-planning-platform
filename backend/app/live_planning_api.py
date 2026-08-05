@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
-from typing import Annotated, Any, cast
+from typing import Annotated, Any, NoReturn, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -74,7 +74,7 @@ def _client(identity: AuthenticatedTeacher, settings: Settings) -> SupabaseRestC
     return SupabaseRestClient.from_settings(settings, access_token=identity.access_token)
 
 
-def _raise_data_error(error: SupabaseRestError, operation: str) -> None:
+def _raise_data_error(error: SupabaseRestError, operation: str) -> NoReturn:
     if error.status_code in {401, 403}:
         raise HTTPException(status_code=403, detail="Pilot data access was denied") from error
     if error.status_code in {400, 409, 422}:
