@@ -31,6 +31,8 @@ class WeeklyPlanInput:
     understand: tuple[str, ...]
     do: tuple[str, ...]
     proficiency_scale: str
+    literacy_standards: tuple[str, ...] = ()
+    act_preparation: str = ""
     misconceptions: tuple[str, ...] = ()
     formative_assessments: tuple[str, ...] = ()
     summative_assessments: tuple[str, ...] = ()
@@ -62,6 +64,8 @@ def compose_hqi_payload(plan: WeeklyPlanInput) -> dict[str, str]:
         "week_of": plan.week_of.strftime("%B %-d, %Y"),
         "unit_topic": plan.unit_topic,
         "standards": _join(plan.standards),
+        "literacy_standards": _join(plan.literacy_standards),
+        "act_preparation": plan.act_preparation,
         "know": _join(plan.know),
         "understand": _join(plan.understand),
         "do": _join(plan.do),
