@@ -1,98 +1,111 @@
 # Teacher Planning Platform Pilot Secrets and DNS
 
-This document is the controlled setup checklist for `planner.guidedscholar.ai` while DNS remains in Cloudflare and the application is deployed in the existing AWS account in `us-east-2`.
+This is the controlled setup checklist for `planner.guidedscholar.ai` while authoritative DNS remains in Cloudflare and the isolated application stack is deployed in the existing AWS account in `us-east-2`.
 
-## Do not commit secrets
+## Security boundary
 
-Never place real keys in GitHub source files, `.env` files committed to the repository, screenshots, issues, pull-request comments, or chat messages.
+- Teacher and curriculum data only.
+- No student names, IDs, grades, IEP information, accommodations tied to named students, or other student-specific data.
+- Never place keys, connection strings, or staff access lists in source files, screenshots, issues, pull-request comments, workflow summaries, or chat messages.
+- GitHub Actions authenticates to AWS through OIDC. Long-lived AWS access keys are prohibited.
 
-Store production-preclearance and pilot secrets in **AWS Secrets Manager** in `us-east-2`. The ECS task definition should reference the secret ARNs and inject them as environment variables at runtime.
+## AWS Secrets Manager
 
-## Required runtime values
+The controlled workflows resolve these exact secret IDs unless the corresponding GitHub environment variable overrides the name:
 
-The backend uses the `TPP_` prefix.
+- `tpp/pilot/supabase-url`
+- `tpp/pilot/supabase-anon-key`
+- `tpp/pilot/supabase-service-role-key`
+- `tpp/pilot/database-url`
+- `tpp/pilot/openai-api-key`
+- `tpp/pilot/google-oauth-client-id`
+- `tpp/pilot/google-oauth-client-secret`
 
-| Environment variable | Source | AWS storage |
-|---|---|---|
-| `TPP_ENVIRONMENT` | literal value `pilot` | ECS environment variable, not secret |
-| `TPP_PUBLIC_BASE_URL` | `https://planner.guidedscholar.ai` | ECS environment variable, not secret |
-| `TPP_DATA_BOUNDARY` | `teacher-and-curriculum-only` | ECS environment variable, not secret |
-| `TPP_SUPABASE_URL` | Supabase Project Settings → API → Project URL | ECS environment variable; may also be stored with the Supabase secret bundle |
-| `TPP_SUPABASE_ANON_KEY` | Supabase Project Settings → API → publishable/anon key | AWS Secrets Manager |
-| `TPP_SUPABASE_SERVICE_ROLE_KEY` | Supabase Project Settings → API → service-role key | AWS Secrets Manager; backend only |
-| `TPP_DATABASE_URL` | Supabase Project Settings → Database → connection string | AWS Secrets Manager |
-| `TPP_OPENAI_API_KEY` | New dedicated OpenAI project key | AWS Secrets Manager |
-| `TPP_GOOGLE_OAUTH_CLIENT_ID` | Google Cloud OAuth web client | AWS Secrets Manager |
-| `TPP_GOOGLE_OAUTH_CLIENT_SECRET` | Google Cloud OAuth web client | AWS Secrets Manager |
-| `TPP_ALLOWED_EMAIL_DOMAINS` | approved district domains, comma-separated | ECS environment variable |
-| `TPP_ALLOWED_PILOT_EMAILS` | individually approved pilot accounts, comma-separated | ECS environment variable |
+Each secret contains only its raw value. The ECS task execution role receives `secretsmanager:GetSecretValue` only for the exact ARNs resolved during the approved deployment.
 
-Recommended secret names:
+## GitHub environment: `tpp-pilot`
 
-- `tpp/pilot/supabase`
-- `tpp/pilot/openai`
-- `tpp/pilot/google-oauth`
-- `tpp/pilot/database`
+### Required variables
 
-Each secret may be stored as JSON with clear keys, for example:
+- `TPP_AWS_REGION` = `us-east-2`
+- `TPP_AWS_ROLE_ARN`
+- `TPP_ECR_REPOSITORY`
+- `TPP_ECS_CLUSTER`
+- `TPP_ECS_SERVICE`
+- `TPP_TASK_DEFINITION_FAMILY`
+- `TPP_SUPABASE_URL`
+- `TPP_SUPABASE_ANON_KEY`
+- `TPP_PLATFORM_OWNER_EMAIL`
+
+Optional name overrides are documented in the workflow files. The defaults match the approved pilot resource names.
+
+### Required environment secret for provisioning
+
+`TPP_PILOT_ACCESS_JSON` contains the approved teacher and administrator list. It is materialized only in the runner's temporary directory, used inside one database transaction, and deleted in an `always()` cleanup step.
+
+Example structure with fictitious addresses only:
 
 ```json
-{
-  "TPP_SUPABASE_ANON_KEY": "...",
-  "TPP_SUPABASE_SERVICE_ROLE_KEY": "..."
-}
+[
+  {
+    "email": "platform.owner@anniston.k12.al.us",
+    "display_name": "Platform Owner",
+    "roles": ["platform_admin", "teacher"],
+    "is_active": true
+  },
+  {
+    "email": "pilot.teacher@anniston.k12.al.us",
+    "display_name": "Pilot Teacher",
+    "roles": ["teacher"],
+    "is_active": true
+  },
+  {
+    "email": "school.admin@anniston.k12.al.us",
+    "display_name": "School Administrator",
+    "roles": ["school_admin"],
+    "is_active": true
+  }
+]
 ```
 
-## Supabase setup
+The record matching `TPP_PLATFORM_OWNER_EMAIL` must contain both `platform_admin` and `teacher`. Provisioning fails rather than reducing that account to one role.
 
-1. Record the project URL, publishable/anon key, service-role key, and database connection string.
-2. Keep the service-role key server-side only.
-3. Apply the SQL migrations in `supabase/migrations` in filename order.
-4. Configure Google as an authentication provider only after the Google OAuth client exists.
-5. Add the eventual application callback URL required by the chosen authentication flow.
+## Controlled workflow order
 
-The exact callback path must match the deployed implementation. Do not guess it in Google or Supabase before the application route is finalized.
+1. Merge the reviewed release pull request.
+2. Run **Apply TPP Pilot Database Migrations** with `dry_run_only=true` and review the pending list.
+3. Approve a second migration run with `dry_run_only=false`.
+4. Run **Provision TPP Pilot Access** with the approved academic-year dates and access-list secret.
+5. Run **Bootstrap TPP Pilot**. It creates or updates the isolated AWS foundation, builds and pushes an exact commit image, deploys the first ECS service, verifies ALB health, and requests or reuses the ACM certificate.
+6. Add the ACM validation CNAME returned in the workflow summary to Cloudflare.
+7. After ACM reports `ISSUED`, run **Enable TPP Pilot TLS** with that certificate ARN.
+8. Add the Cloudflare application record: CNAME `planner` to the exact ALB DNS name, initially **DNS only**.
+9. Complete Supabase and Google redirect configuration, then perform live Google SSO acceptance.
+10. Use **Deploy TPP Pilot** for subsequent exact-image releases after approval.
 
-## OpenAI setup
+No workflow in this sequence changes Cloudflare or Route 53 directly.
 
-Create a dedicated OpenAI project for TPP rather than reusing the Guided Scholar project. Create one restricted API key for the backend and store it in AWS Secrets Manager as `TPP_OPENAI_API_KEY`.
+## Google and Supabase configuration
 
-Do not place the key in frontend code. OpenAI requests must originate from the backend.
+- Enable Google in the dedicated Supabase project.
+- Configure the Google OAuth client with the callback URL displayed by Supabase for that project.
+- Set the Supabase Site URL to `https://planner.guidedscholar.ai` after TLS is attached.
+- Add `https://planner.guidedscholar.ai` to the allowed redirect URLs.
+- Add the application origin to the Google OAuth web-client configuration where required.
+- Keep the school domain restriction and database allowlist in force.
 
-## Temporary Cloudflare subdomain
+Authentication is not authorization. A valid Google school account receives no application data unless its lowercase email is active in `private.pilot_access_allowlist`; the database then creates the governed profile and all approved concurrent roles.
 
-Because the `guidedscholar.ai` authoritative DNS is still hosted in Cloudflare, create the subdomain in **Cloudflare DNS** for now.
+## Cloudflare and ACM
 
-1. Open Cloudflare → `guidedscholar.ai` → DNS → Records.
-2. Add a `CNAME` record.
-3. Name: `planner`.
-4. Target: the AWS Application Load Balancer DNS name created for TPP.
-5. Initially set Proxy status to **DNS only** while TLS, redirects, health checks, and host routing are validated directly against AWS.
-6. After AWS validation, Cloudflare proxying may be enabled only if it is intentionally retained for the interim period and no authentication or websocket behavior is disrupted.
+The bootstrap workflow returns:
 
-Do not create the record until the AWS ALB target and certificate are ready. A premature record will only point users to an incomplete service.
+- the ACM certificate ARN;
+- the ACM DNS-validation CNAME name and value;
+- the ALB DNS name.
 
-## TLS certificate
+Keep the ACM validation CNAME in place. Add the application CNAME only after the certificate is issued and the HTTPS listener is attached. Use DNS-only mode during direct AWS acceptance.
 
-Request or extend an AWS Certificate Manager certificate in `us-east-2` for:
+## Route 53 migration rule
 
-- `planner.guidedscholar.ai`
-
-While DNS remains in Cloudflare, ACM DNS validation records must be added to Cloudflare. Keep those validation CNAME records when the application CNAME is later migrated to Route 53.
-
-## Final DNS migration
-
-When `guidedscholar.ai` moves to Route 53, recreate the `planner` record in the Route 53 hosted zone and validate resolution before removing the Cloudflare zone from the production path.
-
-## Manual handoff values
-
-The developer needs the following values entered into AWS, not posted in GitHub or chat:
-
-- Supabase project URL
-- Supabase anon/publishable key
-- Supabase service-role key
-- Supabase database URL
-- OpenAI API key
-- Google OAuth client ID and secret
-- approved district email domain and/or pilot email allowlist
-- final AWS ALB DNS target for the Cloudflare `planner` CNAME
+Do not migrate `planner.guidedscholar.ai` by itself. When Cloudflare is removed from the production path, move the `guidedscholar.ai` hosted zone and the `planner.guidedscholar.ai` record together, validate the full Route 53 record set, lower and restore TTLs deliberately, and change the registrar nameservers only after both Guided Scholar and TPP records are represented.
