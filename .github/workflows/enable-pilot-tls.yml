@@ -1,0 +1,171 @@
+name: Enable TPP Pilot TLS
+
+on:
+  workflow_dispatch:
+    inputs:
+      certificate_arn:
+        description: Issued ACM certificate ARN for planner.guidedscholar.ai
+        required: true
+        type: string
+      reason:
+        description: Reason for attaching the issued certificate
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: tpp-pilot-infrastructure
+  cancel-in-progress: false
+
+jobs:
+  enable-tls:
+    name: Attach issued ACM certificate
+    runs-on: ubuntu-latest
+    environment: tpp-pilot
+    env:
+      AWS_REGION: ${{ vars.TPP_AWS_REGION || 'us-east-2' }}
+      AWS_ROLE_ARN: ${{ vars.TPP_AWS_ROLE_ARN }}
+      STACK_NAME: ${{ vars.TPP_CLOUDFORMATION_STACK || 'TeacherPlanningPlatformPilot' }}
+      ECR_REPOSITORY: ${{ vars.TPP_ECR_REPOSITORY || 'teacher-planning-platform-pilot' }}
+      ECS_CLUSTER: ${{ vars.TPP_ECS_CLUSTER || 'teacher-planning-platform-pilot' }}
+      ECS_SERVICE: ${{ vars.TPP_ECS_SERVICE || 'teacher-planning-platform-pilot' }}
+      TASK_DEFINITION_FAMILY: ${{ vars.TPP_TASK_DEFINITION_FAMILY || 'teacher-planning-platform-pilot' }}
+      SUPABASE_URL_SECRET_ID: ${{ vars.TPP_SUPABASE_URL_SECRET_ID || 'tpp/pilot/supabase-url' }}
+      SUPABASE_ANON_KEY_SECRET_ID: ${{ vars.TPP_SUPABASE_ANON_KEY_SECRET_ID || 'tpp/pilot/supabase-anon-key' }}
+      SUPABASE_SERVICE_ROLE_KEY_SECRET_ID: ${{ vars.TPP_SUPABASE_SERVICE_ROLE_KEY_SECRET_ID || 'tpp/pilot/supabase-service-role-key' }}
+      DATABASE_URL_SECRET_ID: ${{ vars.TPP_DATABASE_URL_SECRET_ID || 'tpp/pilot/database-url' }}
+      OPENAI_API_KEY_SECRET_ID: ${{ vars.TPP_OPENAI_API_KEY_SECRET_ID || 'tpp/pilot/openai-api-key' }}
+      GOOGLE_OAUTH_CLIENT_ID_SECRET_ID: ${{ vars.TPP_GOOGLE_OAUTH_CLIENT_ID_SECRET_ID || 'tpp/pilot/google-oauth-client-id' }}
+      GOOGLE_OAUTH_CLIENT_SECRET_SECRET_ID: ${{ vars.TPP_GOOGLE_OAUTH_CLIENT_SECRET_SECRET_ID || 'tpp/pilot/google-oauth-client-secret' }}
+    steps:
+      - name: Validate controlled TLS configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$AWS_ROLE_ARN" ]]; then
+            echo "TPP_AWS_ROLE_ARN is required in the tpp-pilot environment." >&2
+            exit 1
+          fi
+          if [[ "$AWS_REGION" != "us-east-2" ]]; then
+            echo "The pilot certificate and load balancer must remain in us-east-2." >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials through GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify certificate is issued for the pilot hostname
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(aws acm describe-certificate \
+            --certificate-arn "${{ inputs.certificate_arn }}" \
+            --query Certificate.Status \
+            --output text)"
+          domain="$(aws acm describe-certificate \
+            --certificate-arn "${{ inputs.certificate_arn }}" \
+            --query Certificate.DomainName \
+            --output text)"
+          if [[ "$status" != "ISSUED" ]]; then
+            echo "The ACM certificate is not issued. Current status: $status" >&2
+            exit 1
+          fi
+          if [[ "$domain" != "planner.guidedscholar.ai" ]]; then
+            echo "Certificate domain mismatch: $domain" >&2
+            exit 1
+          fi
+
+      - name: Resolve existing exact image and pilot secrets
+        id: values
+        shell: bash
+        run: |
+          set -euo pipefail
+          task_definition="$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --query 'services[0].taskDefinition' \
+            --output text)"
+          image="$(aws ecs describe-task-definition \
+            --task-definition "$task_definition" \
+            --query 'taskDefinition.containerDefinitions[0].image' \
+            --output text)"
+          if [[ -z "$image" || "$image" == "None" || "$image" != *@sha256:* ]]; then
+            echo "The active pilot service is not using an immutable ECR digest." >&2
+            exit 1
+          fi
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "task_definition=$task_definition" >> "$GITHUB_OUTPUT"
+
+          resolve_secret() {
+            local output_name="$1"
+            local secret_id="$2"
+            local arn
+            arn="$(aws secretsmanager describe-secret \
+              --secret-id "$secret_id" \
+              --query ARN \
+              --output text)"
+            echo "$output_name=$arn" >> "$GITHUB_OUTPUT"
+          }
+          resolve_secret supabase_url "$SUPABASE_URL_SECRET_ID"
+          resolve_secret supabase_anon_key "$SUPABASE_ANON_KEY_SECRET_ID"
+          resolve_secret supabase_service_role_key "$SUPABASE_SERVICE_ROLE_KEY_SECRET_ID"
+          resolve_secret database_url "$DATABASE_URL_SECRET_ID"
+          resolve_secret openai_api_key "$OPENAI_API_KEY_SECRET_ID"
+          resolve_secret google_oauth_client_id "$GOOGLE_OAUTH_CLIENT_ID_SECRET_ID"
+          resolve_secret google_oauth_client_secret "$GOOGLE_OAUTH_CLIENT_SECRET_SECRET_ID"
+
+      - name: Attach HTTPS listener and HTTP redirect through CloudFormation
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws cloudformation deploy \
+            --stack-name "$STACK_NAME" \
+            --template-file infra/pilot-stack.yml \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              EcrRepositoryName="$ECR_REPOSITORY" \
+              EcsClusterName="$ECS_CLUSTER" \
+              EcsServiceName="$ECS_SERVICE" \
+              TaskDefinitionFamily="$TASK_DEFINITION_FAMILY" \
+              ImageUri="${{ steps.values.outputs.image }}" \
+              DeployService=true \
+              CertificateArn="${{ inputs.certificate_arn }}" \
+              PublicBaseUrl=https://planner.guidedscholar.ai \
+              AllowedEmailDomains=anniston.k12.al.us \
+              SupabaseUrlSecretArn="${{ steps.values.outputs.supabase_url }}" \
+              SupabaseAnonKeySecretArn="${{ steps.values.outputs.supabase_anon_key }}" \
+              SupabaseServiceRoleKeySecretArn="${{ steps.values.outputs.supabase_service_role_key }}" \
+              DatabaseUrlSecretArn="${{ steps.values.outputs.database_url }}" \
+              OpenAiApiKeySecretArn="${{ steps.values.outputs.openai_api_key }}" \
+              GoogleOauthClientIdSecretArn="${{ steps.values.outputs.google_oauth_client_id }}" \
+              GoogleOauthClientSecretSecretArn="${{ steps.values.outputs.google_oauth_client_secret }}"
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
+
+      - name: Publish DNS handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          alb_dns="$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='LoadBalancerDnsName'].OutputValue | [0]" \
+            --output text)"
+          {
+            echo "## TPP pilot TLS enabled"
+            echo "- Reason: ${{ inputs.reason }}"
+            echo "- Certificate: \`${{ inputs.certificate_arn }}\`"
+            echo "- Active image preserved: \`${{ steps.values.outputs.image }}\`"
+            echo "- Prior task definition: \`${{ steps.values.outputs.task_definition }}\`"
+            echo "- ALB DNS target: \`$alb_dns\`"
+            echo "- Manual Cloudflare record now required: CNAME \`planner\` → \`$alb_dns\`, DNS only during acceptance."
+            echo "- Keep the ACM validation CNAME in place."
+            echo "- Route 53 migration remains deferred and must move \`guidedscholar.ai\` and \`planner.guidedscholar.ai\` together."
+          } >> "$GITHUB_STEP_SUMMARY"

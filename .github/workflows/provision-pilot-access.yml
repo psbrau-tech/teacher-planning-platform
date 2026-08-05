@@ -1,0 +1,145 @@
+name: Provision TPP Pilot Access
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: Reason for provisioning or updating the controlled pilot access list
+        required: true
+        type: string
+      academic_year_name:
+        description: Academic year label
+        required: true
+        default: 2026-2027
+        type: string
+      starts_on:
+        description: First governed date for the active academic year (YYYY-MM-DD)
+        required: true
+        type: string
+      ends_on:
+        description: Last governed date for the active academic year (YYYY-MM-DD)
+        required: true
+        type: string
+      replace_access:
+        description: Deactivate existing school access records not present in the approved JSON list
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: tpp-pilot-provisioning
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    name: Provision governed school and staff access
+    runs-on: ubuntu-latest
+    environment: tpp-pilot
+    env:
+      AWS_REGION: ${{ vars.TPP_AWS_REGION || 'us-east-2' }}
+      AWS_ROLE_ARN: ${{ vars.TPP_AWS_ROLE_ARN }}
+      DATABASE_URL_SECRET_ID: ${{ vars.TPP_DATABASE_URL_SECRET_ID || 'tpp/pilot/database-url' }}
+      PLATFORM_OWNER_EMAIL: ${{ vars.TPP_PLATFORM_OWNER_EMAIL }}
+      PILOT_ACCESS_JSON: ${{ secrets.TPP_PILOT_ACCESS_JSON }}
+    steps:
+      - name: Validate controlled provisioning configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in AWS_ROLE_ARN PLATFORM_OWNER_EMAIL PILOT_ACCESS_JSON; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Missing required tpp-pilot environment value: $name" >&2
+              exit 1
+            fi
+          done
+          if [[ "$AWS_REGION" != "us-east-2" ]]; then
+            echo "TPP pilot provisioning is governed through us-east-2." >&2
+            exit 1
+          fi
+          if [[ "$PLATFORM_OWNER_EMAIL" != *@anniston.k12.al.us ]]; then
+            echo "TPP_PLATFORM_OWNER_EMAIL must use anniston.k12.al.us." >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Configure AWS credentials through GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Retrieve database connection without exposing it
+        id: database
+        shell: bash
+        run: |
+          set -euo pipefail
+          database_url="$(aws secretsmanager get-secret-value \
+            --secret-id "$DATABASE_URL_SECRET_ID" \
+            --query SecretString \
+            --output text)"
+          if [[ "$database_url" != postgres://* && "$database_url" != postgresql://* ]]; then
+            echo "The configured database secret is not a PostgreSQL connection URL." >&2
+            exit 1
+          fi
+          echo "::add-mask::$database_url"
+          printf 'database_url=%s\n' "$database_url" >> "$GITHUB_OUTPUT"
+
+      - name: Install provisioning dependency
+        run: python -m pip install 'psycopg[binary]>=3.2,<4'
+
+      - name: Materialize approved access list securely
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$PILOT_ACCESS_JSON" > "$RUNNER_TEMP/tpp-pilot-access.json"
+          python -m json.tool "$RUNNER_TEMP/tpp-pilot-access.json" >/dev/null
+
+      - name: Provision pilot tenant and access
+        env:
+          DATABASE_URL: ${{ steps.database.outputs.database_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          replace_argument=()
+          if [[ "${{ inputs.replace_access }}" == "true" ]]; then
+            replace_argument=(--replace-access)
+          fi
+          python backend/scripts/provision_pilot.py \
+            --database-url "$DATABASE_URL" \
+            --access-json "$RUNNER_TEMP/tpp-pilot-access.json" \
+            --platform-owner-email "$PLATFORM_OWNER_EMAIL" \
+            --academic-year-name "${{ inputs.academic_year_name }}" \
+            --starts-on "${{ inputs.starts_on }}" \
+            --ends-on "${{ inputs.ends_on }}" \
+            "${replace_argument[@]}"
+
+      - name: Remove materialized access list
+        if: always()
+        run: rm -f "$RUNNER_TEMP/tpp-pilot-access.json"
+
+      - name: Publish governed provisioning record
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## TPP pilot provisioning"
+            echo "- Reason: ${{ inputs.reason }}"
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- School: Anniston High School"
+            echo "- Academic year: \`${{ inputs.academic_year_name }}\`"
+            echo "- Governed dates: \`${{ inputs.starts_on }}\` through \`${{ inputs.ends_on }}\`"
+            echo "- Replace access mode: \`${{ inputs.replace_access }}\`"
+            echo "- Platform owner concurrency requirement verified: \`platform_admin + teacher\`"
+            echo "- Data boundary: teacher and curriculum data only; no student data"
+            echo "- Staff email addresses were read from an environment secret and were not written to repository files or the job summary."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,111 @@
+name: Apply TPP Pilot Database Migrations
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: Reason for applying the reviewed pilot migrations
+        required: true
+        type: string
+      dry_run_only:
+        description: List pending migrations without applying them
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: tpp-pilot-database
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Validate and apply Supabase migrations
+    runs-on: ubuntu-latest
+    environment: tpp-pilot
+    env:
+      AWS_REGION: ${{ vars.TPP_AWS_REGION || 'us-east-2' }}
+      AWS_ROLE_ARN: ${{ vars.TPP_AWS_ROLE_ARN }}
+      DATABASE_URL_SECRET_ID: ${{ vars.TPP_DATABASE_URL_SECRET_ID || 'tpp/pilot/database-url' }}
+    steps:
+      - name: Validate controlled migration configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$AWS_ROLE_ARN" ]]; then
+            echo "TPP_AWS_ROLE_ARN is required in the tpp-pilot environment." >&2
+            exit 1
+          fi
+          if [[ "$AWS_REGION" != "us-east-2" ]]; then
+            echo "TPP pilot database operations are governed through us-east-2." >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Configure AWS credentials through GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Retrieve database connection without exposing it
+        id: database
+        shell: bash
+        run: |
+          set -euo pipefail
+          database_url="$(aws secretsmanager get-secret-value \
+            --secret-id "$DATABASE_URL_SECRET_ID" \
+            --query SecretString \
+            --output text)"
+          if [[ "$database_url" != postgres://* && "$database_url" != postgresql://* ]]; then
+            echo "The configured database secret is not a PostgreSQL connection URL." >&2
+            exit 1
+          fi
+          echo "::add-mask::$database_url"
+          printf 'database_url=%s\n' "$database_url" >> "$GITHUB_OUTPUT"
+
+      - name: Validate migration history and preview pending changes
+        env:
+          DATABASE_URL: ${{ steps.database.outputs.database_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes supabase@latest migration list --db-url "$DATABASE_URL"
+          npx --yes supabase@latest db push --db-url "$DATABASE_URL" --dry-run
+
+      - name: Apply reviewed migrations
+        if: ${{ !inputs.dry_run_only }}
+        env:
+          DATABASE_URL: ${{ steps.database.outputs.database_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes supabase@latest db push --db-url "$DATABASE_URL" --yes
+          npx --yes supabase@latest migration list --db-url "$DATABASE_URL"
+
+      - name: Publish migration handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## TPP pilot database migration"
+            echo "- Reason: ${{ inputs.reason }}"
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- Dry run only: \`${{ inputs.dry_run_only }}\`"
+            echo "- Region governance: \`$AWS_REGION\`"
+            echo "- Migration source: \`supabase/migrations\`"
+            echo "- Data boundary: teacher and curriculum data only; no student data"
+            if [[ "${{ inputs.dry_run_only }}" == "true" ]]; then
+              echo "- No database mutation was authorized by this run."
+            else
+              echo "- Pending migrations were applied in timestamp order through the Supabase migration history."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,484 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Isolated Teacher Planning Platform controlled-pilot infrastructure in us-east-2.
+  Teacher and curriculum data only; no student data.
+
+Parameters:
+  ResourceNamePrefix:
+    Type: String
+    Default: tpp-pilot
+    AllowedPattern: '^[a-z0-9-]+$'
+  EcrRepositoryName:
+    Type: String
+    Default: teacher-planning-platform-pilot
+  EcsClusterName:
+    Type: String
+    Default: teacher-planning-platform-pilot
+  EcsServiceName:
+    Type: String
+    Default: teacher-planning-platform-pilot
+  TaskDefinitionFamily:
+    Type: String
+    Default: teacher-planning-platform-pilot
+  ImageUri:
+    Type: String
+    Default: ''
+  DeployService:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+  CertificateArn:
+    Type: String
+    Default: ''
+  PublicBaseUrl:
+    Type: String
+    Default: https://planner.guidedscholar.ai
+  AllowedEmailDomains:
+    Type: String
+    Default: anniston.k12.al.us
+  DesiredCount:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    MaxValue: 3
+  VpcCidr:
+    Type: String
+    Default: 10.48.0.0/16
+  PublicSubnetACidr:
+    Type: String
+    Default: 10.48.10.0/24
+  PublicSubnetBCidr:
+    Type: String
+    Default: 10.48.20.0/24
+  SupabaseUrlSecretArn:
+    Type: String
+    Default: ''
+  SupabaseAnonKeySecretArn:
+    Type: String
+    Default: ''
+  SupabaseServiceRoleKeySecretArn:
+    Type: String
+    Default: ''
+  DatabaseUrlSecretArn:
+    Type: String
+    Default: ''
+  OpenAiApiKeySecretArn:
+    Type: String
+    Default: ''
+  GoogleOauthClientIdSecretArn:
+    Type: String
+    Default: ''
+  GoogleOauthClientSecretSecretArn:
+    Type: String
+    Default: ''
+
+Conditions:
+  CreateService: !Equals [!Ref DeployService, 'true']
+  UseCertificate: !Not [!Equals [!Ref CertificateArn, '']]
+
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${ResourceNamePrefix}-vpc
+        - Key: DataBoundary
+          Value: teacher-and-curriculum-only
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub ${ResourceNamePrefix}-igw
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: !Ref PublicSubnetACidr
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${ResourceNamePrefix}-public-a
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: !Ref PublicSubnetBCidr
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${ResourceNamePrefix}-public-b
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${ResourceNamePrefix}-public-routes
+
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetARouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetBRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicRouteTable
+
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Public HTTP and HTTPS access to the TPP pilot load balancer
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${ResourceNamePrefix}-alb-sg
+
+  TaskSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow TPP application traffic only from the pilot load balancer
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8000
+          ToPort: 8000
+          SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${ResourceNamePrefix}-task-sg
+
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub ${ResourceNamePrefix}-alb
+      Scheme: internet-facing
+      Type: application
+      IpAddressType: ipv4
+      SecurityGroups:
+        - !Ref LoadBalancerSecurityGroup
+      Subnets:
+        - !Ref PublicSubnetA
+        - !Ref PublicSubnetB
+      Tags:
+        - Key: DataBoundary
+          Value: teacher-and-curriculum-only
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub ${ResourceNamePrefix}-tg
+      VpcId: !Ref Vpc
+      Port: 8000
+      Protocol: HTTP
+      TargetType: ip
+      HealthCheckEnabled: true
+      HealthCheckPath: /health
+      HealthCheckProtocol: HTTP
+      HealthCheckPort: traffic-port
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      HealthCheckIntervalSeconds: 20
+      HealthCheckTimeoutSeconds: 5
+      Matcher:
+        HttpCode: '200'
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: '30'
+
+  HttpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions: !If
+        - UseCertificate
+        - - Type: redirect
+            RedirectConfig:
+              Protocol: HTTPS
+              Port: '443'
+              StatusCode: HTTP_301
+        - - Type: forward
+            TargetGroupArn: !Ref TargetGroup
+
+  HttpsListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: UseCertificate
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !Ref CertificateArn
+      SslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+  EcrRepository:
+    Type: AWS::ECR::Repository
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      RepositoryName: !Ref EcrRepositoryName
+      ImageTagMutability: IMMUTABLE
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Retain the most recent 30 pilot images",
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 30
+                },
+                "action": { "type": "expire" }
+              }
+            ]
+          }
+
+  EcsCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Ref EcsClusterName
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+      Tags:
+        - Key: DataBoundary
+          Value: teacher-and-curriculum-only
+
+  ApplicationLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/ecs/${TaskDefinitionFamily}
+      RetentionInDays: 30
+
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ResourceNamePrefix}-task-execution
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: ExactPilotSecrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref SupabaseUrlSecretArn
+                  - !Ref SupabaseAnonKeySecretArn
+                  - !Ref SupabaseServiceRoleKeySecretArn
+                  - !Ref DatabaseUrlSecretArn
+                  - !Ref OpenAiApiKeySecretArn
+                  - !Ref GoogleOauthClientIdSecretArn
+                  - !Ref GoogleOauthClientSecretSecretArn
+
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ResourceNamePrefix}-task
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Condition: CreateService
+    Properties:
+      Family: !Ref TaskDefinitionFamily
+      Cpu: '512'
+      Memory: '1024'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      RuntimePlatform:
+        CpuArchitecture: X86_64
+        OperatingSystemFamily: LINUX
+      ContainerDefinitions:
+        - Name: tpp
+          Image: !Ref ImageUri
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8000
+              HostPort: 8000
+              Protocol: tcp
+          Environment:
+            - Name: TPP_ENVIRONMENT
+              Value: pilot
+            - Name: TPP_PUBLIC_BASE_URL
+              Value: !Ref PublicBaseUrl
+            - Name: TPP_DATA_BOUNDARY
+              Value: teacher-and-curriculum-only
+            - Name: TPP_ALLOWED_EMAIL_DOMAINS
+              Value: !Ref AllowedEmailDomains
+          Secrets:
+            - Name: TPP_SUPABASE_URL
+              ValueFrom: !Ref SupabaseUrlSecretArn
+            - Name: TPP_SUPABASE_ANON_KEY
+              ValueFrom: !Ref SupabaseAnonKeySecretArn
+            - Name: TPP_SUPABASE_SERVICE_ROLE_KEY
+              ValueFrom: !Ref SupabaseServiceRoleKeySecretArn
+            - Name: TPP_DATABASE_URL
+              ValueFrom: !Ref DatabaseUrlSecretArn
+            - Name: TPP_OPENAI_API_KEY
+              ValueFrom: !Ref OpenAiApiKeySecretArn
+            - Name: TPP_GOOGLE_OAUTH_CLIENT_ID
+              ValueFrom: !Ref GoogleOauthClientIdSecretArn
+            - Name: TPP_GOOGLE_OAUTH_CLIENT_SECRET
+              ValueFrom: !Ref GoogleOauthClientSecretSecretArn
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref ApplicationLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: tpp
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - >-
+                python -c "import urllib.request;
+                urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"
+                || exit 1
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 30
+          ReadonlyRootFilesystem: false
+
+  EcsService:
+    Type: AWS::ECS::Service
+    Condition: CreateService
+    DependsOn:
+      - HttpListener
+    Properties:
+      ServiceName: !Ref EcsServiceName
+      Cluster: !Ref EcsCluster
+      TaskDefinition: !Ref TaskDefinition
+      DesiredCount: !Ref DesiredCount
+      LaunchType: FARGATE
+      PlatformVersion: LATEST
+      EnableECSManagedTags: true
+      PropagateTags: SERVICE
+      HealthCheckGracePeriodSeconds: 60
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 100
+        MaximumPercent: 200
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref TaskSecurityGroup
+          Subnets:
+            - !Ref PublicSubnetA
+            - !Ref PublicSubnetB
+      LoadBalancers:
+        - ContainerName: tpp
+          ContainerPort: 8000
+          TargetGroupArn: !Ref TargetGroup
+      Tags:
+        - Key: DataBoundary
+          Value: teacher-and-curriculum-only
+        - Key: Environment
+          Value: pilot
+
+Outputs:
+  VpcId:
+    Value: !Ref Vpc
+  PublicSubnetIds:
+    Value: !Join [',', [!Ref PublicSubnetA, !Ref PublicSubnetB]]
+  LoadBalancerDnsName:
+    Value: !GetAtt ApplicationLoadBalancer.DNSName
+  LoadBalancerCanonicalHostedZoneId:
+    Value: !GetAtt ApplicationLoadBalancer.CanonicalHostedZoneID
+  LoadBalancerArn:
+    Value: !Ref ApplicationLoadBalancer
+  TargetGroupArn:
+    Value: !Ref TargetGroup
+  EcrRepositoryName:
+    Value: !Ref EcrRepository
+  EcrRepositoryUri:
+    Value: !GetAtt EcrRepository.RepositoryUri
+  EcsClusterName:
+    Value: !Ref EcsCluster
+  EcsServiceName:
+    Value: !If [CreateService, !GetAtt EcsService.Name, not-deployed]
+  TaskDefinitionFamily:
+    Value: !Ref TaskDefinitionFamily
+  TaskDefinitionArn:
+    Value: !If [CreateService, !Ref TaskDefinition, not-deployed]
+  HttpEndpoint:
+    Value: !Sub http://${ApplicationLoadBalancer.DNSName}
+  PilotHostname:
+    Value: planner.guidedscholar.ai
+  DataBoundary:
+    Value: teacher-and-curriculum-only
