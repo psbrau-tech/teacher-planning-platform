@@ -23,6 +23,7 @@ from .fixtures import (
 )
 from .friday_validation_api import router as friday_validation_router
 from .identity_api import router as identity_router
+from .live_planning_api import router as live_planning_router
 from .models import PlannedLesson
 from .pdf_fields import ALL_HQI_FIELDS
 from .planner import build_weekly_plan
@@ -46,6 +47,7 @@ app.include_router(identity_router)
 app.include_router(readiness_router)
 app.include_router(curriculum_router)
 app.include_router(teaching_assignment_router)
+app.include_router(live_planning_router)
 app.include_router(weekly_draft_router)
 app.include_router(friday_validation_router)
 
