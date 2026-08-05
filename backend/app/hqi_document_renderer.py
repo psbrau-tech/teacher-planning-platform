@@ -345,20 +345,27 @@ def _week_story(
         repeatRows=1,
         splitByRow=1,
     )
-    commands: list[tuple[object, ...]] = [
-        ("BACKGROUND", (0, 0), (-1, 0), AHS_BLACK),
-        ("BACKGROUND", (0, 1), (0, -1), AHS_LIGHT_GRAY),
-        ("ROWBACKGROUNDS", (1, 1), (-1, -1), [AHS_WHITE, AHS_PALE_GRAY]),
-        ("GRID", (0, 0), (-1, -1), 0.55, AHS_DARK_GRAY),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 4),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-        ("TOPPADDING", (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-    ]
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), AHS_BLACK),
+                ("BACKGROUND", (0, 1), (0, -1), AHS_LIGHT_GRAY),
+                ("ROWBACKGROUNDS", (1, 1), (-1, -1), [AHS_WHITE, AHS_PALE_GRAY]),
+                ("GRID", (0, 0), (-1, -1), 0.55, AHS_DARK_GRAY),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]
+        )
+    )
     for row_index in component_starts:
-        commands.append(("LINEABOVE", (0, row_index), (-1, row_index), 1.1, AHS_RED))
-    table.setStyle(TableStyle(commands))
+        table.setStyle(
+            TableStyle(
+                [("LINEABOVE", (0, row_index), (-1, row_index), 1.1, AHS_RED)]
+            )
+        )
     return [table]
 
 
@@ -370,7 +377,12 @@ def _reflection_story(
     for index, (field, prompt) in enumerate(REFLECTION_FIELDS, start=1):
         response = payload.get(field, "") or " "
         header = Table(
-            [[Paragraph(str(index), styles["reflection_number"]), Paragraph(prompt, styles["reflection_prompt"])]],
+            [
+                [
+                    Paragraph(str(index), styles["reflection_number"]),
+                    Paragraph(prompt, styles["reflection_prompt"]),
+                ]
+            ],
             colWidths=[0.42 * inch, 6.66 * inch],
             style=TableStyle(
                 [
