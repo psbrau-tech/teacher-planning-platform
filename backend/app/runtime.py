@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from fastapi import Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
@@ -29,7 +30,10 @@ def _frontend_dist_path() -> Path:
 
 
 @app.middleware("http")
-async def protect_legacy_production_routes(request: Request, call_next: object) -> object:
+async def protect_legacy_production_routes(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
     """Require governed authentication for legacy routes without router dependencies.
 
     The live workflow routers enforce the same requirement through FastAPI dependencies.
