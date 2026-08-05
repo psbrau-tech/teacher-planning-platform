@@ -3,6 +3,7 @@ import pytest
 from app.pdf_fields import (
     ALL_HQI_FIELDS,
     DAILY_FIELDS,
+    TEMPLATE_HQI_FIELDS,
     DailyPlanContent,
     map_daily_content,
     validate_field_lengths,
@@ -10,12 +11,15 @@ from app.pdf_fields import (
 )
 
 
-def test_hqi_contract_contains_57_fields() -> None:
-    assert len(ALL_HQI_FIELDS) == 57
+def test_hqi_contract_contains_districtwide_fields() -> None:
+    assert len(TEMPLATE_HQI_FIELDS) == 57
+    assert len(ALL_HQI_FIELDS) == 59
     assert len(DAILY_FIELDS) == 30
     assert "plds" in ALL_HQI_FIELDS
     assert "misconceptions" in ALL_HQI_FIELDS
     assert "resources" in ALL_HQI_FIELDS
+    assert "literacy_standards" in ALL_HQI_FIELDS
+    assert "act_preparation" in ALL_HQI_FIELDS
 
 
 def test_daily_mapping_uses_anniston_field_prefixes() -> None:
