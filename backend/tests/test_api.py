@@ -31,9 +31,11 @@ def test_anniston_hqi_field_contract_is_exposed() -> None:
     response = client.get("/api/v1/templates/anniston-hqi/fields")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["field_count"] == 57
+    assert payload["field_count"] == 59
     assert "clt_mon" in payload["fields"]
     assert "reflect_12" in payload["fields"]
+    assert "literacy_standards" in payload["fields"]
+    assert "act_preparation" in payload["fields"]
     assert payload["template_installed"] is True
     assert payload["documents"] == [
         "instructional-framework",
