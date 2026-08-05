@@ -20,6 +20,7 @@ from .fixtures import (
     period_pattern,
     synthetic_jrotc_lessons,
 )
+from .friday_validation_api import router as friday_validation_router
 from .models import PlannedLesson
 from .pdf_fields import ALL_HQI_FIELDS
 from .planner import build_weekly_plan
@@ -38,6 +39,7 @@ app = FastAPI(
     description="Version 1 pilot API for Anniston City Schools.",
 )
 app.include_router(weekly_draft_router)
+app.include_router(friday_validation_router)
 
 
 @app.get("/health", tags=["operations"])
