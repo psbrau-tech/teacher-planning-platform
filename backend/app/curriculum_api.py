@@ -182,7 +182,10 @@ def create_curriculum(
                 )
             )
             if not unit_rows:
-                raise HTTPException(status_code=503, detail="Curriculum unit save returned no record")
+                raise HTTPException(
+                    status_code=503,
+                    detail="Curriculum unit save returned no record",
+                )
             unit_id = _text(unit_rows[0], "id")
             client.request(
                 "POST",
