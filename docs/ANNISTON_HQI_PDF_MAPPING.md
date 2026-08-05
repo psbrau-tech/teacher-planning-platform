@@ -12,6 +12,30 @@ The three document types are:
 
 Each document may remain one page when content fits at a normal readable font size or expand to two or more pages when continuation space is required. TPP must never truncate content or shrink text to an unreadable size merely to preserve a one-page boundary.
 
+## Visual identity is part of the contract
+
+The source PDF is not merely a field inventory. Its visual structure is required output behavior.
+
+The generated first page for each document must preserve the corresponding source page's:
+
+- dark-green title and section bars;
+- gold accent line and Wright Way Leadership Group attribution;
+- bordered teacher, course, grade, week, and topic fields;
+- section boxes, labels, instructional prompts, and page geometry;
+- Week at a Glance matrix structure, weekday columns, and component rows;
+- Weekly Reflection two-column question/response grid;
+- footer treatment and source-document identity.
+
+A plain text report with headings is not an acceptable substitute, even when all text is present and wrapped correctly.
+
+The required rendering model is hybrid:
+
+1. Use the district-approved source page as the exact branded first-page background.
+2. Overlay readable, wrapped content inside the mapped source regions.
+3. When content cannot fit at the approved minimum font size, move the excess and any following section(s) to a continuation page.
+4. Continuation pages must use the same visual language: dark-green section bars, bordered content regions, matching typography, attribution, and document identity.
+5. The combined packet is assembled from the three independently rendered, visually faithful documents.
+
 ## Confirmed field inventory
 
 ### Document 1 - High Quality Instruction Planning Framework
@@ -68,13 +92,16 @@ The fields are `reflect_1` through `reflect_12`, in the order printed on the for
 
 ## Pagination and readability rules
 
-1. Each source page establishes the visual first page of its own document.
+1. Each source page establishes the exact visual first page of its own document.
 2. Narrative text uses a normal, readable body font size; automatic shrink-to-fit is not an accepted overflow strategy.
-3. When a field exceeds the readable space available on the first page, the complete text flows to a labeled continuation page for that same document.
-4. Continuation pages repeat the teacher, course, week, document title, field label, and page numbering needed to keep printed pages attributable.
-5. Content is never silently truncated.
-6. A combined packet may be offered as a convenience download, but it is assembled from the three independently generated documents.
-7. Teachers may download any of the three documents separately.
+3. Text wraps inside its assigned region.
+4. A section may expand vertically when space remains on the page.
+5. If expansion would collide with the next section, the next section moves to the following page.
+6. If one section itself exceeds a page, it continues in a matching labeled content region on the next page.
+7. Continuation pages repeat the teacher, course, week, document title, section label, and page numbering needed to keep printed pages attributable.
+8. Content is never silently truncated.
+9. A combined packet may be offered as a convenience download, but it is assembled from the three independently generated documents.
+10. Teachers may download any of the three documents separately.
 
 ## Generation rules
 
@@ -85,6 +112,19 @@ The fields are `reflect_1` through `reflect_12`, in the order printed on the for
 5. Editable exports retain appropriate form fields on the source page; continuation pages retain full readable content.
 6. Flattened exports are produced only after the teacher approves the final plan.
 7. Every generated document records document type, template version, payload hash, generating user, generation time, page count, continuation-page count, and whether the output was editable or flattened.
+
+## Acceptance requirements
+
+Automated tests must verify text preservation, wrapping, page counts, and document order. Visual acceptance must separately verify:
+
+- source-page formatting parity;
+- correct placement within the original boxes and grids;
+- no overlaps or clipped content;
+- matching continuation-page branding;
+- readable typography;
+- correct independent-document and combined-packet order.
+
+Passing text-based tests alone does not constitute document acceptance.
 
 ## Template handling
 
