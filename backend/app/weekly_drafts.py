@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from threading import RLock
 from uuid import uuid4
 
@@ -54,7 +54,7 @@ class WeeklyDraftStore:
                 week_start=week_start,
                 content=dict(content),
                 revision=(current.revision + 1) if current else 1,
-                updated_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(UTC),
             )
             self._drafts[key] = draft
             return draft
