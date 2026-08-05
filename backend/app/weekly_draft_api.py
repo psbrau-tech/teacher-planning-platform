@@ -1,9 +1,10 @@
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from .auth import AuthenticatedTeacher, require_teacher
 from .weekly_drafts import WeeklyDraft, weekly_draft_store
 
 router = APIRouter(prefix="/api/v1/weekly-drafts", tags=["planning"])
@@ -38,20 +39,13 @@ def _to_read_model(draft: WeeklyDraft) -> WeeklyDraftRead:
     )
 
 
-def _require_teacher_id(value: str | None) -> str:
-    if value is None or not value.strip():
-        raise HTTPException(status_code=401, detail="Teacher identity is required")
-    return value.strip()
-
-
 @router.get("", response_model=WeeklyDraftRead)
 def get_weekly_draft(
     assignment_id: Annotated[str, Query(min_length=1)],
     week_start: date,
-    teacher_id_header: Annotated[str | None, Header(alias="X-TPP-Teacher-ID")] = None,
+    teacher: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
 ) -> WeeklyDraftRead:
-    teacher_id = _require_teacher_id(teacher_id_header)
-    draft = weekly_draft_store.get(teacher_id, assignment_id, week_start)
+    draft = weekly_draft_store.get(teacher.subject, assignment_id, week_start)
     if draft is None:
         raise HTTPException(status_code=404, detail="Weekly draft not found")
     return _to_read_model(draft)
@@ -60,12 +54,11 @@ def get_weekly_draft(
 @router.put("", response_model=WeeklyDraftRead)
 def save_weekly_draft(
     payload: WeeklyDraftWrite,
-    teacher_id_header: Annotated[str | None, Header(alias="X-TPP-Teacher-ID")] = None,
+    teacher: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
 ) -> WeeklyDraftRead:
-    teacher_id = _require_teacher_id(teacher_id_header)
     try:
         draft = weekly_draft_store.save(
-            teacher_id=teacher_id,
+            teacher_id=teacher.subject,
             assignment_id=payload.assignment_id,
             week_start=payload.week_start,
             content=payload.content,
