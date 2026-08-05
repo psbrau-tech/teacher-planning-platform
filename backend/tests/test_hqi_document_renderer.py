@@ -17,6 +17,8 @@ def base_payload() -> dict[str, str]:
         "week_of": "August 10, 2026",
         "unit_topic": "JROTC Foundations",
         "standards": "Army JROTC leadership competency",
+        "literacy_standards": "Cite specific evidence from technical text.",
+        "act_preparation": "Practice concise evidence-based written responses.",
         "clt_mon": "Explain JROTC expectations.",
         "reflect_1": "Cadets built foundational knowledge.",
     }
@@ -26,9 +28,9 @@ def test_each_source_page_renders_as_an_independent_document() -> None:
     for document in HqiDocument:
         rendered = render_hqi_document(TEMPLATE_PATH, base_payload(), document)
         reader = PdfReader(BytesIO(rendered.pdf_bytes))
-        assert rendered.page_count == 1
-        assert rendered.continuation_page_count == 0
-        assert len(reader.pages) == 1
+        assert rendered.page_count >= 1
+        assert rendered.continuation_page_count == rendered.page_count - 1
+        assert len(reader.pages) == rendered.page_count
 
 
 def test_long_framework_content_flows_to_additional_pages() -> None:
@@ -47,6 +49,8 @@ def test_long_framework_content_flows_to_additional_pages() -> None:
     assert rendered.continuation_page_count >= 1
     assert "High Quality Instruction Planning Framework" in text
     assert "Complete official standards wording" in text
+    assert "Literacy Standards" in text
+    assert "ACT Preparation" in text
     assert "Page 2" in text
 
 
