@@ -1,8 +1,9 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from .auth import AuthenticatedTeacher, require_teacher
 from .models import MeetingPattern
 from .teaching_assignments import TeachingAssignmentRecord, teaching_assignment_store
 
@@ -32,12 +33,6 @@ class TeachingAssignmentRead(BaseModel):
     updated_at: str
 
 
-def _require_teacher_id(value: str | None) -> str:
-    if value is None or not value.strip():
-        raise HTTPException(status_code=401, detail="Teacher identity is required")
-    return value.strip()
-
-
 def _to_read_model(record: TeachingAssignmentRecord) -> TeachingAssignmentRead:
     return TeachingAssignmentRead(
         id=record.id,
@@ -55,24 +50,22 @@ def _to_read_model(record: TeachingAssignmentRecord) -> TeachingAssignmentRead:
 
 @router.get("", response_model=list[TeachingAssignmentRead])
 def list_teaching_assignments(
-    teacher_id_header: Annotated[str | None, Header(alias="X-TPP-Teacher-ID")] = None,
+    teacher: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
 ) -> list[TeachingAssignmentRead]:
-    teacher_id = _require_teacher_id(teacher_id_header)
     return [
         _to_read_model(record)
-        for record in teaching_assignment_store.list_for_teacher(teacher_id)
+        for record in teaching_assignment_store.list_for_teacher(teacher.subject)
     ]
 
 
 @router.post("", response_model=TeachingAssignmentRead, status_code=201)
 def create_teaching_assignment(
     payload: TeachingAssignmentWrite,
-    teacher_id_header: Annotated[str | None, Header(alias="X-TPP-Teacher-ID")] = None,
+    teacher: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
 ) -> TeachingAssignmentRead:
-    teacher_id = _require_teacher_id(teacher_id_header)
     try:
         record = teaching_assignment_store.save(
-            teacher_id=teacher_id,
+            teacher_id=teacher.subject,
             school_id=payload.school_id,
             course_name=payload.course_name,
             course_code=payload.course_code,
@@ -89,10 +82,9 @@ def create_teaching_assignment(
 @router.get("/{assignment_id}", response_model=TeachingAssignmentRead)
 def get_teaching_assignment(
     assignment_id: str,
-    teacher_id_header: Annotated[str | None, Header(alias="X-TPP-Teacher-ID")] = None,
+    teacher: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
 ) -> TeachingAssignmentRead:
-    teacher_id = _require_teacher_id(teacher_id_header)
-    record = teaching_assignment_store.get(teacher_id, assignment_id)
+    record = teaching_assignment_store.get(teacher.subject, assignment_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Teaching assignment not found")
     return _to_read_model(record)
@@ -102,12 +94,11 @@ def get_teaching_assignment(
 def update_teaching_assignment(
     assignment_id: str,
     payload: TeachingAssignmentWrite,
-    teacher_id_header: Annotated[str | None, Header(alias="X-TPP-Teacher-ID")] = None,
+    teacher: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
 ) -> TeachingAssignmentRead:
-    teacher_id = _require_teacher_id(teacher_id_header)
     try:
         record = teaching_assignment_store.save(
-            teacher_id=teacher_id,
+            teacher_id=teacher.subject,
             school_id=payload.school_id,
             course_name=payload.course_name,
             course_code=payload.course_code,
