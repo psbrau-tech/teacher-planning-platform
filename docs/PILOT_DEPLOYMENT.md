@@ -1,102 +1,94 @@
 # TPP Controlled Pilot Deployment
 
-## Approved pilot decisions
+## Locked pilot decisions
 
 - Hostname: `planner.guidedscholar.ai`
 - AWS account: existing Brau Consulting / Guided Scholar AWS account
 - AWS region: `us-east-2`
-- Environment isolation: separate TPP pilot stack and runtime resources
-- Supabase project: `teacher-planning-platform-pilot`
-- Authentication: Google SSO using approved school accounts
-- OpenAI: separate TPP API project
+- Isolation: separate TPP pilot VPC, ALB, ECR repository, ECS cluster/service, task roles, and log group
+- Supabase: dedicated Teacher Planning Platform project
+- Authentication: Google SSO through Supabase Auth using approved `anniston.k12.al.us` accounts
+- OpenAI: separate TPP project and key
 - Data boundary: teacher and curriculum data only; no student data
+- Platform owner: one governed account must hold concurrent `platform_admin` and `teacher` roles
+- DNS: Cloudflare remains authoritative for the pilot; a future Route 53 migration moves `guidedscholar.ai` and `planner.guidedscholar.ai` together
 
-## Monday pilot gate
+## Release artifacts in this repository
 
-A volunteer teacher must be able to:
+- `Dockerfile` — combined React/FastAPI production image, non-root runtime, application health check
+- `infra/pilot-stack.yml` — isolated AWS pilot stack
+- `.github/workflows/apply-pilot-database.yml` — reviewed Supabase migration preview/application
+- `.github/workflows/provision-pilot-access.yml` — transaction-safe school, academic-year, and staff-access provisioning
+- `.github/workflows/bootstrap-pilot.yml` — first infrastructure and exact-image deployment plus ACM request
+- `.github/workflows/enable-pilot-tls.yml` — issued-certificate attachment and DNS handoff
+- `.github/workflows/deploy-pilot.yml` — subsequent exact-digest ECS deployments with rollback evidence
+
+All mutating workflows use the protected `tpp-pilot` GitHub environment. No application, database, DNS, or certificate mutation occurs merely because code is pushed or a pull request is opened.
+
+## Controlled release sequence
+
+1. Review CI, the pull-request diff, and the approved Anniston PDF artifacts.
+2. Approve and merge the release pull request.
+3. Preview and then apply the Supabase migrations through the protected migration workflow.
+4. Provision Anniston High School, the active academic year, and the approved staff allowlist through the protected provisioning workflow.
+5. Bootstrap the AWS stack and first exact image.
+6. Add the returned ACM validation CNAME to Cloudflare.
+7. When ACM is `ISSUED`, attach TLS through the protected TLS workflow.
+8. Add Cloudflare CNAME `planner` to the returned ALB DNS target, initially DNS only.
+9. Complete Supabase Site URL / redirect configuration and Google OAuth origin / callback configuration.
+10. Perform owner, administrator, and volunteer-teacher browser acceptance.
+11. Retain the exact deployed image digest and task-definition revision in the acceptance record.
+
+## Monday volunteer-teacher acceptance
+
+The volunteer teacher must be able to:
 
 1. authenticate with an approved Google school account;
-2. configure one or more teaching assignments;
-3. configure period, block, or mixed schedules;
-4. load or enter curriculum lessons;
-5. prepare and edit the following week's plan;
-6. validate completed, modified, missed, or skipped instruction;
-7. carry missed instruction forward without changing unrelated curricula;
-8. export the three Anniston-themed planning documents and combined packet.
+2. see only the roles granted by the governed access list;
+3. import or select a sequenced curriculum;
+4. configure one or more independent teaching assignments;
+5. configure period, block, selected-weekday, or custom meeting patterns;
+6. generate a week using actual instructional minutes and calendar exceptions;
+7. save and reopen a weekly draft;
+8. complete nonblank Literacy Standards and ACT Preparation fields;
+9. export each approved Anniston document and the combined packet;
+10. validate every scheduled lesson as completed, modified, missed, or skipped;
+11. carry missed instruction into the next week without changing unrelated curricula;
+12. see the teacher-and-curriculum-only boundary throughout the workflow.
 
-## Secret placement
+The platform-owner account must separately confirm that it retains both Platform Owner and Teacher capabilities in the same authenticated session.
 
-### GitHub Actions environment: `tpp-pilot`
+## Operational acceptance
 
-Only deployment identifiers and non-privileged public configuration belong in GitHub:
+Before volunteer access:
 
-- `TPP_AWS_REGION`
-- `TPP_AWS_ROLE_ARN`
-- `TPP_ECR_REPOSITORY`
-- `TPP_ECS_CLUSTER`
-- `TPP_ECS_SERVICE`
-- `TPP_TASK_DEFINITION_FAMILY`
-- `TPP_SUPABASE_URL`
-- `TPP_SUPABASE_ANON_KEY`
+- ALB `/health` returns HTTP 200;
+- ECS desired and running counts match;
+- the active task definition references the exact ECR digest produced from the accepted commit;
+- the container serves the authenticated React application and governed API from one origin;
+- Supabase migration history matches the repository migration set;
+- the approved access list is active and no unapproved school account receives a profile;
+- application logs are present in the dedicated 30-day CloudWatch log group;
+- no secret value appears in workflow logs, task-definition plaintext environment variables, issues, or pull-request comments;
+- no student table, roster, student account, or student-specific field is used in the pilot.
 
-The deployment workflow must use GitHub OIDC. Long-lived AWS access keys are prohibited.
+## Rollback
 
-### AWS Secrets Manager
+Each subsequent deployment records the prior ECS task-definition ARN before mutation. A failed ECS deployment uses the service deployment circuit breaker; a manual rollback uses the recorded prior task definition. Database migrations require separate review and are not automatically rolled back by an application rollback.
 
-Runtime secrets belong in AWS Secrets Manager under the pilot namespace:
+## Human-controlled gates
 
-- `tpp/pilot/supabase-url`
-- `tpp/pilot/supabase-anon-key`
-- `tpp/pilot/supabase-service-role-key`
-- `tpp/pilot/database-url`
-- `tpp/pilot/openai-api-key`
-- `tpp/pilot/google-oauth-client-id`
-- `tpp/pilot/google-oauth-client-secret`
+The following are intentionally not automated from source control:
 
-The ECS task execution role receives only `secretsmanager:GetSecretValue` access to these exact secret ARNs. Secret values must not be committed, printed in CI logs, placed in task-definition plaintext environment variables, or pasted into issues or pull requests.
+- pull-request merge approval;
+- protected-environment approval for database, provisioning, infrastructure, TLS, and application deployment workflows;
+- the actual staff access-list secret and academic-year dates;
+- ACM DNS-validation record creation in Cloudflare;
+- the final Cloudflare application CNAME;
+- Supabase and Google console redirect/origin changes;
+- live browser acceptance with approved school accounts;
+- the later coordinated Route 53 nameserver migration.
 
-## Google SSO configuration
+## Rollout boundary
 
-TPP uses a separate OAuth application configuration from Guided Scholar even when the implementation pattern is reused.
-
-Required configuration:
-
-- Supabase Google provider enabled;
-- Google OAuth client ID and secret stored in the approved secret locations;
-- Supabase callback URL added to the Google OAuth client;
-- `https://planner.guidedscholar.ai` added to authorized origins when applicable;
-- access restricted to approved school-domain accounts or an explicit pilot allowlist;
-- authenticated identity linked to a governed TPP teacher profile before application access is granted.
-
-Authentication alone does not create authorization. A valid Google account without an active TPP teacher or administrator record receives no application data.
-
-## DNS and TLS
-
-DNS is not changed until the pilot service endpoint and certificate validation records are known.
-
-Expected final record:
-
-- name: `planner.guidedscholar.ai`
-- type: Alias A/AAAA to the TPP application load balancer, or CNAME when the selected AWS service requires it
-- TLS: AWS Certificate Manager certificate covering `planner.guidedscholar.ai`
-
-## Pilot boundary notice
-
-Display during onboarding and in the application footer:
-
-> This controlled pilot is limited to teacher lesson-planning and curriculum data. Do not enter student names, student IDs, grades, IEP information, accommodations tied to named students, or other personally identifiable student information.
-
-## Human-owned prerequisites
-
-- create the Supabase project;
-- create the separate OpenAI API project and budget alert;
-- obtain the approved ACS/Bulldog logo asset;
-- provide the pilot teacher and administrator allowlists;
-- identify the school Google Workspace domain;
-- approve the final Anniston-themed document samples;
-- create DNS records after exact values are supplied;
-- approve and merge the release pull request.
-
-## Release boundary
-
-Monday is a controlled volunteer-teacher pilot. Schoolwide deployment is a separate gate after pilot defects, onboarding, administrator controls, and operational monitoring are validated.
+The Monday exercise is a controlled volunteer-teacher pilot. Full-school rollout remains a separate decision at the end of the following week and is contingent on pilot acceptance, defect resolution, administrator validation, monitoring, and explicit authorization.
