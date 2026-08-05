@@ -1,3 +1,5 @@
+from typing import Annotated
+
 from fastapi import APIRouter, Depends
 
 from .readiness import evaluate_runtime_readiness
@@ -7,7 +9,9 @@ router = APIRouter(prefix="/api/v1/operations", tags=["operations"])
 
 
 @router.get("/readiness")
-def runtime_readiness(settings: Settings = Depends(get_settings)) -> dict[str, object]:
+def runtime_readiness(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, object]:
     readiness = evaluate_runtime_readiness(settings)
     return {
         "environment": readiness.environment,
