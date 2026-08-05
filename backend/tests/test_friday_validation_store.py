@@ -5,7 +5,11 @@ import pytest
 
 from app.friday_validation_store import FridayValidationStore
 from app.models import LessonStatus, ValidationUpdate
-from app.validation import ScheduledLessonRecord, apply_friday_validation
+from app.validation import (
+    FridayValidationResult,
+    ScheduledLessonRecord,
+    apply_friday_validation,
+)
 
 
 ASSIGNMENT_ID = UUID("11111111-1111-1111-1111-111111111111")
@@ -14,7 +18,7 @@ LESSON_ID = UUID("33333333-3333-3333-3333-333333333333")
 WEEK_START = date(2026, 8, 10)
 
 
-def result_with(status: LessonStatus = LessonStatus.COMPLETED):
+def result_with(status: LessonStatus = LessonStatus.COMPLETED) -> FridayValidationResult:
     scheduled = [
         ScheduledLessonRecord(
             id=SCHEDULED_ID,
