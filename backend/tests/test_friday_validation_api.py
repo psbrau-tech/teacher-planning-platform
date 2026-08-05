@@ -1,3 +1,4 @@
+from typing import Any
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -7,11 +8,13 @@ from app.main import app
 client = TestClient(app)
 
 
-def payload(*, expected_revision: int | None = None, status: str = "completed"):
+def payload(
+    *, expected_revision: int | None = None, status: str = "completed"
+) -> dict[str, Any]:
     assignment_id = str(uuid4())
     scheduled_lesson_id = str(uuid4())
     curriculum_lesson_id = str(uuid4())
-    body = {
+    body: dict[str, Any] = {
         "assignment_id": assignment_id,
         "week_start": "2026-08-10",
         "lessons": [
