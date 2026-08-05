@@ -31,6 +31,7 @@ from .reporting import (
     summarize_admin_usage,
     summarize_ai_cost,
 )
+from .teaching_assignment_api import router as teaching_assignment_router
 from .weekly_draft_api import router as weekly_draft_router
 
 app = FastAPI(
@@ -38,6 +39,7 @@ app = FastAPI(
     version="0.1.0",
     description="Version 1 pilot API for Anniston City Schools.",
 )
+app.include_router(teaching_assignment_router)
 app.include_router(weekly_draft_router)
 app.include_router(friday_validation_router)
 
