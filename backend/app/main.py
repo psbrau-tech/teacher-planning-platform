@@ -21,9 +21,11 @@ from .fixtures import (
     synthetic_jrotc_lessons,
 )
 from .friday_validation_api import router as friday_validation_router
+from .identity_api import router as identity_router
 from .models import PlannedLesson
 from .pdf_fields import ALL_HQI_FIELDS
 from .planner import build_weekly_plan
+from .readiness_api import router as readiness_router
 from .reporting import (
     AdminUsageEvent,
     AiFeature,
@@ -39,6 +41,8 @@ app = FastAPI(
     version="0.1.0",
     description="Version 1 pilot API for Anniston City Schools.",
 )
+app.include_router(identity_router)
+app.include_router(readiness_router)
 app.include_router(teaching_assignment_router)
 app.include_router(weekly_draft_router)
 app.include_router(friday_validation_router)
@@ -51,7 +55,7 @@ def health() -> dict[str, str]:
 
 @app.get("/api/v1/assignments", tags=["teacher"])
 def list_assignments() -> list[dict[str, object]]:
-    """Synthetic pilot endpoint until Supabase persistence is connected."""
+    """Synthetic pilot endpoint until the live teacher workflow replaces it."""
     return [
         {
             "id": assignment_id,
