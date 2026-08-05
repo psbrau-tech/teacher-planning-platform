@@ -9,6 +9,7 @@ description = "Teacher Planning Platform Version 1 API"
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.116,<1",
+  "pyjwt[crypto]>=2.10,<3",
   "pydantic>=2.11,<3",
   "pydantic-settings>=2.10,<3",
   "pypdf>=5.9,<6",
