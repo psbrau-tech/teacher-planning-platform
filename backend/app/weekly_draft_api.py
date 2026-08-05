@@ -5,7 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from .auth import AuthenticatedTeacher, require_teacher
-from .weekly_drafts import WeeklyDraft, weekly_draft_store
+from .settings import Settings, get_settings
+from .supabase_persistence import PersistenceError, SupabaseWeeklyDraftStore
+from .supabase_rest import SupabaseRestClient
+from .weekly_drafts import WeeklyDraft, WeeklyDraftStore, weekly_draft_store
 
 router = APIRouter(prefix="/api/v1/weekly-drafts", tags=["planning"])
 
@@ -39,13 +42,36 @@ def _to_read_model(draft: WeeklyDraft) -> WeeklyDraftRead:
     )
 
 
+def _store_for(
+    teacher: AuthenticatedTeacher,
+    settings: Settings,
+) -> WeeklyDraftStore | SupabaseWeeklyDraftStore:
+    if teacher.access_token is None:
+        return weekly_draft_store
+    return SupabaseWeeklyDraftStore(
+        client=SupabaseRestClient.from_settings(
+            settings,
+            access_token=teacher.access_token,
+        ),
+        authenticated_teacher_id=teacher.subject,
+    )
+
+
 @router.get("", response_model=WeeklyDraftRead)
 def get_weekly_draft(
     assignment_id: Annotated[str, Query(min_length=1)],
     week_start: date,
     teacher: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> WeeklyDraftRead:
-    draft = weekly_draft_store.get(teacher.subject, assignment_id, week_start)
+    try:
+        draft = _store_for(teacher, settings).get(
+            teacher.subject,
+            assignment_id,
+            week_start,
+        )
+    except PersistenceError as error:
+        raise HTTPException(status_code=error.status_code, detail=str(error)) from error
     if draft is None:
         raise HTTPException(status_code=404, detail="Weekly draft not found")
     return _to_read_model(draft)
@@ -55,15 +81,18 @@ def get_weekly_draft(
 def save_weekly_draft(
     payload: WeeklyDraftWrite,
     teacher: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> WeeklyDraftRead:
     try:
-        draft = weekly_draft_store.save(
+        draft = _store_for(teacher, settings).save(
             teacher_id=teacher.subject,
             assignment_id=payload.assignment_id,
             week_start=payload.week_start,
             content=payload.content,
             expected_revision=payload.expected_revision,
         )
+    except PersistenceError as error:
+        raise HTTPException(status_code=error.status_code, detail=str(error)) from error
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
     return _to_read_model(draft)
