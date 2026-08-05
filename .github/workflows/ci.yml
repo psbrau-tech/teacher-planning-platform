@@ -68,7 +68,7 @@ jobs:
         # W1030 evaluates the intentionally empty bootstrap defaults for secret ARN
         # parameters. Both controlled deployment workflows resolve and pass exact
         # Secrets Manager ARNs before CloudFormation is invoked.
-        run: cfn-lint -i W1030 infra/pilot-stack.yml
+        run: cfn-lint infra/pilot-stack.yml -i W1030
       - name: Parse GitHub workflow YAML
         run: |
           ruby -ryaml -e '
