@@ -8,9 +8,13 @@ from pydantic import BaseModel, Field
 from .auth import AuthenticatedTeacher, require_teacher
 from .friday_validation_store import (
     FridayValidationRecord,
+    FridayValidationStore,
     friday_validation_store,
 )
 from .models import LessonStatus, ValidationUpdate
+from .settings import Settings, get_settings
+from .supabase_persistence import PersistenceError, SupabaseFridayValidationStore
+from .supabase_rest import SupabaseRestClient
 from .validation import ScheduledLessonRecord, apply_friday_validation
 
 router = APIRouter(prefix="/api/v1/friday-validations", tags=["planning"])
@@ -89,13 +93,36 @@ def _to_read_model(record: FridayValidationRecord) -> FridayValidationRead:
     )
 
 
+def _store_for(
+    teacher: AuthenticatedTeacher,
+    settings: Settings,
+) -> FridayValidationStore | SupabaseFridayValidationStore:
+    if teacher.access_token is None:
+        return friday_validation_store
+    return SupabaseFridayValidationStore(
+        client=SupabaseRestClient.from_settings(
+            settings,
+            access_token=teacher.access_token,
+        ),
+        authenticated_teacher_id=teacher.subject,
+    )
+
+
 @router.get("", response_model=FridayValidationRead)
 def get_friday_validation(
     assignment_id: UUID,
     week_start: date,
     teacher: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> FridayValidationRead:
-    record = friday_validation_store.get(teacher.subject, assignment_id, week_start)
+    try:
+        record = _store_for(teacher, settings).get(
+            teacher.subject,
+            assignment_id,
+            week_start,
+        )
+    except PersistenceError as error:
+        raise HTTPException(status_code=error.status_code, detail=str(error)) from error
     if record is None:
         raise HTTPException(status_code=404, detail="Friday validation not found")
     return _to_read_model(record)
@@ -105,6 +132,7 @@ def get_friday_validation(
 def save_friday_validation(
     payload: FridayValidationWrite,
     teacher: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> FridayValidationRead:
     scheduled = [
         ScheduledLessonRecord(
@@ -127,13 +155,15 @@ def save_friday_validation(
     }
     try:
         result = apply_friday_validation(scheduled, updates)
-        record = friday_validation_store.save(
+        record = _store_for(teacher, settings).save(
             teacher_id=teacher.subject,
             assignment_id=payload.assignment_id,
             week_start=payload.week_start,
             result=result,
             expected_revision=payload.expected_revision,
         )
+    except PersistenceError as error:
+        raise HTTPException(status_code=error.status_code, detail=str(error)) from error
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
     return _to_read_model(record)
