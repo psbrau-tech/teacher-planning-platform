@@ -6,7 +6,7 @@ WEEKDAYS = ("mon", "tue", "wed", "thu", "fri")
 DAILY_GROUPS = ("clt", "rrt", "cfu", "ri", "sic", "esl")
 REFLECTION_FIELDS = tuple(f"reflect_{index}" for index in range(1, 13))
 
-PAGE_ONE_FIELDS = (
+TEMPLATE_PAGE_ONE_FIELDS = (
     "teacher",
     "course",
     "grade",
@@ -24,13 +24,19 @@ PAGE_ONE_FIELDS = (
     "resources",
 )
 
+DISTRICTWIDE_FIELDS = (
+    "literacy_standards",
+    "act_preparation",
+)
+
+PAGE_ONE_FIELDS = TEMPLATE_PAGE_ONE_FIELDS + DISTRICTWIDE_FIELDS
 DAILY_FIELDS = tuple(f"{group}_{day}" for day in WEEKDAYS for group in DAILY_GROUPS)
+TEMPLATE_HQI_FIELDS = TEMPLATE_PAGE_ONE_FIELDS + DAILY_FIELDS + REFLECTION_FIELDS
 ALL_HQI_FIELDS = PAGE_ONE_FIELDS + DAILY_FIELDS + REFLECTION_FIELDS
 
 # These limits protect the application and generated document from accidental
 # unbounded input. They are intentionally much larger than the original PDF
-# widget limits. The generator removes PDF MaxLen restrictions, enables
-# multiline entry, and uses automatic font sizing for narrative fields.
+# widget limits because the branded renderer supports flowing continuation pages.
 FIELD_CHARACTER_LIMITS: dict[str, int] = {
     "teacher": 120,
     "course": 160,
@@ -38,6 +44,8 @@ FIELD_CHARACTER_LIMITS: dict[str, int] = {
     "week_of": 60,
     "unit_topic": 500,
     "standards": 2_000,
+    "literacy_standards": 2_000,
+    "act_preparation": 2_000,
     "know": 2_000,
     "understand": 2_000,
     "do": 2_000,
