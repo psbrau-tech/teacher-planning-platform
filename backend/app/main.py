@@ -6,6 +6,7 @@ from typing import Annotated
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
+from .curriculum_api import router as curriculum_router
 from .document_sections import HqiDocument
 from .document_service import (
     DEFAULT_TEMPLATE_PATH,
@@ -43,6 +44,7 @@ app = FastAPI(
 )
 app.include_router(identity_router)
 app.include_router(readiness_router)
+app.include_router(curriculum_router)
 app.include_router(teaching_assignment_router)
 app.include_router(weekly_draft_router)
 app.include_router(friday_validation_router)
