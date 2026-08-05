@@ -1,0 +1,229 @@
+name: Deploy TPP Pilot
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: Reason for this controlled pilot deployment
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: tpp-pilot-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and deploy exact image
+    runs-on: ubuntu-latest
+    environment: tpp-pilot
+    env:
+      AWS_REGION: ${{ vars.TPP_AWS_REGION }}
+      AWS_ROLE_ARN: ${{ vars.TPP_AWS_ROLE_ARN }}
+      ECR_REPOSITORY: ${{ vars.TPP_ECR_REPOSITORY }}
+      ECS_CLUSTER: ${{ vars.TPP_ECS_CLUSTER }}
+      ECS_SERVICE: ${{ vars.TPP_ECS_SERVICE }}
+      TASK_DEFINITION_FAMILY: ${{ vars.TPP_TASK_DEFINITION_FAMILY }}
+      VITE_SUPABASE_URL: ${{ vars.TPP_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ vars.TPP_SUPABASE_ANON_KEY }}
+    steps:
+      - name: Validate controlled deployment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(
+            AWS_REGION
+            AWS_ROLE_ARN
+            ECR_REPOSITORY
+            ECS_CLUSTER
+            ECS_SERVICE
+            TASK_DEFINITION_FAMILY
+            VITE_SUPABASE_URL
+            VITE_SUPABASE_ANON_KEY
+          )
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Missing required tpp-pilot environment variable: ${name}" >&2
+              exit 1
+            fi
+          done
+          if [[ "$AWS_REGION" != "us-east-2" ]]; then
+            echo "TPP pilot deployment is locked to us-east-2." >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials through GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Resolve current service and rollback task definition
+        id: baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          current_task_definition="$({
+            aws ecs describe-services \
+              --cluster "$ECS_CLUSTER" \
+              --services "$ECS_SERVICE" \
+              --query 'services[0].taskDefinition' \
+              --output text
+          })"
+          if [[ -z "$current_task_definition" || "$current_task_definition" == "None" ]]; then
+            echo "The configured ECS service does not have a task definition." >&2
+            exit 1
+          fi
+          echo "task_definition=$current_task_definition" >> "$GITHUB_OUTPUT"
+          echo "Rollback task definition: $current_task_definition" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build exact pilot image
+        id: image
+        env:
+          ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="$ECR_REGISTRY/$ECR_REPOSITORY:${GITHUB_SHA}"
+          docker build \
+            --build-arg "VITE_SUPABASE_URL=$VITE_SUPABASE_URL" \
+            --build-arg "VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --tag "$image" \
+            .
+          docker push "$image"
+          digest="$(aws ecr describe-images \
+            --repository-name "$ECR_REPOSITORY" \
+            --image-ids imageTag="$GITHUB_SHA" \
+            --query 'imageDetails[0].imageDigest' \
+            --output text)"
+          if [[ -z "$digest" || "$digest" == "None" ]]; then
+            echo "ECR did not return an image digest for $GITHUB_SHA." >&2
+            exit 1
+          fi
+          immutable_image="$ECR_REGISTRY/$ECR_REPOSITORY@$digest"
+          echo "tagged_image=$image" >> "$GITHUB_OUTPUT"
+          echo "immutable_image=$immutable_image" >> "$GITHUB_OUTPUT"
+          echo "image_digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Create exact-image task definition revision
+        id: task
+        env:
+          IMMUTABLE_IMAGE: ${{ steps.image.outputs.immutable_image }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws ecs describe-task-definition \
+            --task-definition "$TASK_DEFINITION_FAMILY" \
+            --query taskDefinition \
+            --output json > task-definition-source.json
+
+          container_count="$(jq '.containerDefinitions | length' task-definition-source.json)"
+          if [[ "$container_count" != "1" ]]; then
+            echo "TPP pilot deployment requires exactly one application container; found $container_count." >&2
+            exit 1
+          fi
+
+          jq --arg image "$IMMUTABLE_IMAGE" '
+            .containerDefinitions[0].image = $image
+            | del(
+                .taskDefinitionArn,
+                .revision,
+                .status,
+                .requiresAttributes,
+                .compatibilities,
+                .registeredAt,
+                .registeredBy
+              )
+          ' task-definition-source.json > task-definition.json
+
+          registered_arn="$(aws ecs register-task-definition \
+            --cli-input-json file://task-definition.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)"
+          echo "task_definition=$registered_arn" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy exact task definition to pilot service
+        env:
+          NEW_TASK_DEFINITION: ${{ steps.task.outputs.task_definition }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$ECS_SERVICE" \
+            --task-definition "$NEW_TASK_DEFINITION" \
+            --force-new-deployment \
+            --query 'service.taskDefinition' \
+            --output text
+          aws ecs wait services-stable \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE"
+
+      - name: Verify exact deployed task definition and image
+        env:
+          EXPECTED_TASK_DEFINITION: ${{ steps.task.outputs.task_definition }}
+          EXPECTED_IMAGE: ${{ steps.image.outputs.immutable_image }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          deployed_task_definition="$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --query 'services[0].taskDefinition' \
+            --output text)"
+          if [[ "$deployed_task_definition" != "$EXPECTED_TASK_DEFINITION" ]]; then
+            echo "ECS service task definition mismatch." >&2
+            echo "Expected: $EXPECTED_TASK_DEFINITION" >&2
+            echo "Actual:   $deployed_task_definition" >&2
+            exit 1
+          fi
+
+          deployed_image="$(aws ecs describe-task-definition \
+            --task-definition "$deployed_task_definition" \
+            --query 'taskDefinition.containerDefinitions[0].image' \
+            --output text)"
+          if [[ "$deployed_image" != "$EXPECTED_IMAGE" ]]; then
+            echo "ECS task image mismatch." >&2
+            echo "Expected: $EXPECTED_IMAGE" >&2
+            echo "Actual:   $deployed_image" >&2
+            exit 1
+          fi
+
+          running_count="$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --query 'services[0].runningCount' \
+            --output text)"
+          desired_count="$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --query 'services[0].desiredCount' \
+            --output text)"
+          if [[ "$running_count" -lt 1 || "$running_count" -ne "$desired_count" ]]; then
+            echo "ECS service is not fully running: desired=$desired_count running=$running_count" >&2
+            exit 1
+          fi
+
+          {
+            echo "## TPP pilot deployment"
+            echo "- Reason: ${{ inputs.reason }}"
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- Image: \`$EXPECTED_IMAGE\`"
+            echo "- Task definition: \`$deployed_task_definition\`"
+            echo "- ECS cluster/service: \`$ECS_CLUSTER / $ECS_SERVICE\`"
+            echo "- Region: \`$AWS_REGION\`"
+            echo "- Rollback task definition: \`${{ steps.baseline.outputs.task_definition }}\`"
+            echo "- Data boundary: teacher and curriculum data only; no student data"
+          } >> "$GITHUB_STEP_SUMMARY"
