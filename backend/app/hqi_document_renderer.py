@@ -1,4 +1,4 @@
-"""Render the Anniston HQI set as three independent, flowing PDF documents."""
+"""Render the Anniston HQI set as three branded, flowing PDF documents."""
 
 from __future__ import annotations
 
@@ -10,13 +10,15 @@ from xml.sax.saxutils import escape
 
 from pypdf import PdfReader, PdfWriter
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import (
     Flowable,
+    LongTable,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -26,6 +28,15 @@ from reportlab.platypus import (
 
 from .document_sections import HqiDocument
 
+AHS_RED = colors.HexColor("#B5121B")
+AHS_DARK_RED = colors.HexColor("#7F0C12")
+AHS_BLACK = colors.HexColor("#151515")
+AHS_DARK_GRAY = colors.HexColor("#4A4A4A")
+AHS_LIGHT_GRAY = colors.HexColor("#ECECEC")
+AHS_PALE_GRAY = colors.HexColor("#F7F7F7")
+AHS_WHITE = colors.white
+LOGO_PATH = Path(__file__).parents[1] / "assets" / "ahs_logo.png"
+
 DOCUMENT_TITLES: dict[HqiDocument, str] = {
     HqiDocument.INSTRUCTIONAL_FRAMEWORK: "High Quality Instruction Planning Framework",
     HqiDocument.WEEK_AT_A_GLANCE: "Week at a Glance",
@@ -34,7 +45,9 @@ DOCUMENT_TITLES: dict[HqiDocument, str] = {
 
 FRAMEWORK_FIELDS: tuple[tuple[str, str], ...] = (
     ("unit_topic", "Unit / Topic"),
-    ("standards", "Standards"),
+    ("standards", "Content Standards"),
+    ("literacy_standards", "Literacy Standards"),
+    ("act_preparation", "ACT Preparation"),
     ("know", "Know"),
     ("understand", "Understand"),
     ("do", "Do"),
@@ -95,69 +108,141 @@ def _paragraph_text(value: str) -> str:
 def _styles() -> dict[str, ParagraphStyle]:
     base = getSampleStyleSheet()
     return {
-        "title": ParagraphStyle(
-            "TPPTitle",
-            parent=base["Heading1"],
-            fontName="Helvetica-Bold",
-            fontSize=15,
-            leading=18,
-            alignment=TA_CENTER,
-            spaceAfter=10,
-        ),
         "meta": ParagraphStyle(
-            "TPPMeta",
+            "AHSMetadata",
             parent=base["Normal"],
-            fontSize=9,
+            fontName="Helvetica",
+            fontSize=8.5,
+            leading=11,
+            textColor=AHS_BLACK,
+        ),
+        "meta_label": ParagraphStyle(
+            "AHSMetadataLabel",
+            parent=base["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=7.5,
+            leading=9,
+            textColor=AHS_DARK_RED,
+            spaceAfter=2,
+        ),
+        "band": ParagraphStyle(
+            "AHSSectionBand",
+            parent=base["Heading2"],
+            fontName="Helvetica-Bold",
+            fontSize=9.5,
             leading=12,
+            textColor=AHS_WHITE,
+            leftIndent=2,
         ),
-        "section": ParagraphStyle(
-            "TPPSection",
-            parent=base["Heading2"],
-            fontName="Helvetica-Bold",
-            fontSize=10,
-            leading=13,
-            spaceBefore=7,
-            spaceAfter=3,
-            keepWithNext=True,
-        ),
-        "day": ParagraphStyle(
-            "TPPDay",
-            parent=base["Heading2"],
-            fontName="Helvetica-Bold",
-            fontSize=12,
-            leading=15,
-            spaceBefore=9,
-            spaceAfter=5,
-            keepWithNext=True,
-        ),
-        "body": ParagraphStyle(
-            "TPPBody",
+        "body_box": ParagraphStyle(
+            "AHSBodyBox",
             parent=base["BodyText"],
-            fontSize=10,
-            leading=14,
-            spaceAfter=5,
+            fontName="Helvetica",
+            fontSize=9.2,
+            leading=12.5,
+            textColor=AHS_BLACK,
+            borderWidth=0.65,
+            borderColor=AHS_DARK_GRAY,
+            borderPadding=7,
+            backColor=AHS_PALE_GRAY,
+            splitLongWords=True,
+            allowWidows=1,
+            allowOrphans=1,
+        ),
+        "grid_header": ParagraphStyle(
+            "AHSGridHeader",
+            parent=base["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=7.2,
+            leading=9,
+            alignment=TA_CENTER,
+            textColor=AHS_WHITE,
+        ),
+        "grid_label": ParagraphStyle(
+            "AHSGridLabel",
+            parent=base["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=7,
+            leading=8.5,
+            textColor=AHS_BLACK,
+        ),
+        "grid_body": ParagraphStyle(
+            "AHSGridBody",
+            parent=base["Normal"],
+            fontName="Helvetica",
+            fontSize=6.6,
+            leading=8.2,
+            alignment=TA_LEFT,
+            textColor=AHS_BLACK,
+            splitLongWords=True,
+        ),
+        "reflection_number": ParagraphStyle(
+            "AHSReflectionNumber",
+            parent=base["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=9,
+            leading=11,
+            alignment=TA_CENTER,
+            textColor=AHS_WHITE,
+        ),
+        "reflection_prompt": ParagraphStyle(
+            "AHSReflectionPrompt",
+            parent=base["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=8.5,
+            leading=11,
+            textColor=AHS_BLACK,
+        ),
+        "reflection_body": ParagraphStyle(
+            "AHSReflectionBody",
+            parent=base["Normal"],
+            fontName="Helvetica",
+            fontSize=8.5,
+            leading=11.5,
+            textColor=AHS_BLACK,
             splitLongWords=True,
         ),
     }
 
 
 def _metadata_table(payload: Mapping[str, str], styles: dict[str, ParagraphStyle]) -> Table:
-    cells = [
-        Paragraph(f"<b>Teacher:</b> {_paragraph_text(payload.get('teacher', ''))}", styles["meta"]),
-        Paragraph(f"<b>Course:</b> {_paragraph_text(payload.get('course', ''))}", styles["meta"]),
-        Paragraph(f"<b>Grade:</b> {_paragraph_text(payload.get('grade', ''))}", styles["meta"]),
-        Paragraph(f"<b>Week of:</b> {_paragraph_text(payload.get('week_of', ''))}", styles["meta"]),
-    ]
-    table = Table([cells[:2], cells[2:]], colWidths=[3.55 * inch, 3.55 * inch])
+    fields = (
+        ("Teacher", payload.get("teacher", "")),
+        ("Course", payload.get("course", "")),
+        ("Grade", payload.get("grade", "")),
+        ("Week of", payload.get("week_of", "")),
+    )
+    cells: list[Flowable] = []
+    for label, value in fields:
+        cells.append(
+            Table(
+                [
+                    [Paragraph(label.upper(), styles["meta_label"])],
+                    [Paragraph(_paragraph_text(value), styles["meta"])],
+                ],
+                colWidths=[1.73 * inch],
+                style=TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), AHS_LIGHT_GRAY),
+                        ("BOX", (0, 0), (-1, -1), 0.7, AHS_DARK_GRAY),
+                        ("LINEBELOW", (0, 0), (-1, 0), 0.5, AHS_DARK_GRAY),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                        ("TOPPADDING", (0, 0), (-1, -1), 4),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                    ]
+                ),
+            )
+        )
+    table = Table([cells], colWidths=[1.78 * inch] * 4)
     table.setStyle(
         TableStyle(
             [
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-                ("TOPPADDING", (0, 0), (-1, -1), 5),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("LEFTPADDING", (0, 0), (-1, -1), 2),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
             ]
         )
     )
@@ -170,10 +255,24 @@ def _section_block(
     styles: dict[str, ParagraphStyle],
 ) -> list[Flowable]:
     if not value.strip():
-        return []
+        value = " "
+    band = Table(
+        [[Paragraph(label.upper(), styles["band"])]],
+        colWidths=[7.08 * inch],
+        style=TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), AHS_RED),
+                ("LEFTPADDING", (0, 0), (-1, -1), 7),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        ),
+    )
     return [
-        Paragraph(label, styles["section"]),
-        Paragraph(_paragraph_text(value), styles["body"]),
+        band,
+        Paragraph(_paragraph_text(value), styles["body_box"]),
+        Spacer(1, 0.09 * inch),
     ]
 
 
@@ -191,21 +290,38 @@ def _week_story(
     payload: Mapping[str, str],
     styles: dict[str, ParagraphStyle],
 ) -> list[Flowable]:
-    story: list[Flowable] = []
-    rendered_day_count = 0
-    for day_key, day_name in DAY_NAMES:
-        day_blocks: list[Flowable] = []
-        for prefix, label in DAILY_FIELDS:
-            field = f"{prefix}_{day_key}"
-            day_blocks.extend(_section_block(label, payload.get(field, ""), styles))
-        if not day_blocks:
-            continue
-        if rendered_day_count:
-            story.append(Spacer(1, 0.08 * inch))
-        story.append(Paragraph(day_name, styles["day"]))
-        story.extend(day_blocks)
-        rendered_day_count += 1
-    return story
+    header = [Paragraph("Instructional Component", styles["grid_header"])]
+    header.extend(Paragraph(day_name, styles["grid_header"]) for _, day_name in DAY_NAMES)
+    data: list[list[Flowable]] = [header]
+    for prefix, label in DAILY_FIELDS:
+        row: list[Flowable] = [Paragraph(label, styles["grid_label"])]
+        for day_key, _ in DAY_NAMES:
+            value = payload.get(f"{prefix}_{day_key}", "")
+            row.append(Paragraph(_paragraph_text(value), styles["grid_body"]))
+        data.append(row)
+
+    table = LongTable(
+        data,
+        colWidths=[1.35 * inch] + [1.146 * inch] * 5,
+        repeatRows=1,
+        splitByRow=1,
+    )
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), AHS_BLACK),
+                ("BACKGROUND", (0, 1), (0, -1), AHS_LIGHT_GRAY),
+                ("ROWBACKGROUNDS", (1, 1), (-1, -1), [AHS_WHITE, AHS_PALE_GRAY]),
+                ("GRID", (0, 0), (-1, -1), 0.55, AHS_DARK_GRAY),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]
+        )
+    )
+    return [table]
 
 
 def _reflection_story(
@@ -213,8 +329,36 @@ def _reflection_story(
     styles: dict[str, ParagraphStyle],
 ) -> list[Flowable]:
     story: list[Flowable] = []
-    for field, label in REFLECTION_FIELDS:
-        story.extend(_section_block(label, payload.get(field, ""), styles))
+    for index, (field, prompt) in enumerate(REFLECTION_FIELDS, start=1):
+        response = payload.get(field, "") or " "
+        table = Table(
+            [
+                [
+                    Paragraph(str(index), styles["reflection_number"]),
+                    Paragraph(prompt, styles["reflection_prompt"]),
+                ],
+                ["", Paragraph(_paragraph_text(response), styles["reflection_body"])],
+            ],
+            colWidths=[0.42 * inch, 6.66 * inch],
+        )
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (0, -1), AHS_RED),
+                    ("BACKGROUND", (1, 0), (1, 0), AHS_LIGHT_GRAY),
+                    ("BACKGROUND", (1, 1), (1, 1), AHS_WHITE),
+                    ("BOX", (0, 0), (-1, -1), 0.7, AHS_DARK_GRAY),
+                    ("LINEBELOW", (1, 0), (1, 0), 0.5, AHS_DARK_GRAY),
+                    ("SPAN", (0, 0), (0, 1)),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                    ("TOPPADDING", (0, 0), (-1, -1), 6),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ]
+            )
+        )
+        story.extend([table, Spacer(1, 0.09 * inch)])
     return story
 
 
@@ -243,16 +387,39 @@ def _page_decorator(
         del doc
         canvas.saveState()
         page_number = canvas.getPageNumber()
-        canvas.setFont("Helvetica", 8)
+        canvas.setFillColor(AHS_BLACK)
+        canvas.rect(0, 10.02 * inch, 8.5 * inch, 0.98 * inch, fill=1, stroke=0)
+        canvas.setFillColor(AHS_RED)
+        canvas.rect(0, 9.94 * inch, 8.5 * inch, 0.08 * inch, fill=1, stroke=0)
+        if LOGO_PATH.exists():
+            canvas.drawImage(
+                ImageReader(str(LOGO_PATH)),
+                0.48 * inch,
+                10.17 * inch,
+                width=0.62 * inch,
+                height=0.62 * inch,
+                preserveAspectRatio=True,
+                anchor="c",
+                mask="auto",
+            )
+        canvas.setFillColor(AHS_WHITE)
+        canvas.setFont("Helvetica-Bold", 13)
+        canvas.drawString(1.25 * inch, 10.56 * inch, "ANNISTON HIGH SCHOOL")
+        canvas.setFont("Helvetica-Bold", 9.5)
+        canvas.drawString(1.25 * inch, 10.30 * inch, title.upper())
+        canvas.setFillColor(AHS_DARK_GRAY)
+        canvas.rect(0, 0, 8.5 * inch, 0.48 * inch, fill=1, stroke=0)
+        canvas.setFillColor(AHS_WHITE)
+        canvas.setFont("Helvetica", 7.5)
         canvas.drawString(
-            0.65 * inch,
-            0.42 * inch,
+            0.48 * inch,
+            0.19 * inch,
             f"{teacher} | {course} | Week of {week_of}",
         )
         canvas.drawRightString(
-            7.85 * inch,
-            0.42 * inch,
-            f"{title} | Page {page_number}",
+            8.02 * inch,
+            0.19 * inch,
+            f"Page {page_number}",
         )
         canvas.restoreState()
 
@@ -277,16 +444,15 @@ def render_hqi_document(
         pagesize=letter,
         rightMargin=0.65 * inch,
         leftMargin=0.65 * inch,
-        topMargin=0.6 * inch,
-        bottomMargin=0.7 * inch,
+        topMargin=1.23 * inch,
+        bottomMargin=0.66 * inch,
         title=DOCUMENT_TITLES[document],
         allowSplitting=True,
     )
 
     story: list[Flowable] = [
-        Paragraph(DOCUMENT_TITLES[document], styles["title"]),
         _metadata_table(payload, styles),
-        Spacer(1, 0.12 * inch),
+        Spacer(1, 0.16 * inch),
     ]
     story.extend(_document_story(document, payload, styles))
 
