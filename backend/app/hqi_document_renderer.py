@@ -290,7 +290,9 @@ def _week_story(
     payload: Mapping[str, str],
     styles: dict[str, ParagraphStyle],
 ) -> list[Flowable]:
-    header = [Paragraph("Instructional Component", styles["grid_header"])]
+    header: list[Flowable] = [
+        Paragraph("Instructional Component", styles["grid_header"])
+    ]
     header.extend(Paragraph(day_name, styles["grid_header"]) for _, day_name in DAY_NAMES)
     data: list[list[Flowable]] = [header]
     for prefix, label in DAILY_FIELDS:
