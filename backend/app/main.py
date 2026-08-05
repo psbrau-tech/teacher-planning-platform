@@ -30,12 +30,14 @@ from .reporting import (
     summarize_admin_usage,
     summarize_ai_cost,
 )
+from .weekly_draft_api import router as weekly_draft_router
 
 app = FastAPI(
     title="Teacher Planning Platform API",
     version="0.1.0",
     description="Version 1 pilot API for Anniston City Schools.",
 )
+app.include_router(weekly_draft_router)
 
 
 @app.get("/health", tags=["operations"])
