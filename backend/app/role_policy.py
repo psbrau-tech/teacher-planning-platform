@@ -1,6 +1,3 @@
-from __future__ import annotations
-
-
 _RETIRED_LEGACY_REPLACEMENTS = {
     "/api/v1/admin/costs": "/api/v1/administration/costs",
     "/api/v1/admin/summary": "/api/v1/administration/usage",
