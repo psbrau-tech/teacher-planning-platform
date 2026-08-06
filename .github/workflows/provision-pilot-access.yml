@@ -50,12 +50,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          missing=()
           for name in AWS_ROLE_ARN PLATFORM_OWNER_EMAIL PILOT_ACCESS_JSON; do
             if [[ -z "${!name:-}" ]]; then
-              echo "Missing required tpp-pilot environment value: $name" >&2
-              exit 1
+              missing+=("$name")
             fi
           done
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing required tpp-pilot values: %s\n' "${missing[*]}" >&2
+            echo "Run Preflight TPP Pilot Release after correcting the protected environment." >&2
+            exit 1
+          fi
           if [[ "$AWS_REGION" != "us-east-2" ]]; then
             echo "TPP pilot provisioning is governed through us-east-2." >&2
             exit 1
