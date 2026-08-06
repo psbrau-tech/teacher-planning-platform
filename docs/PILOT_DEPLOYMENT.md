@@ -15,6 +15,8 @@
 
 ## Release artifacts in this repository
 
+### Application and infrastructure
+
 - `Dockerfile` — combined React/FastAPI production image, non-root runtime, application health check
 - `infra/pilot-stack.yml` — isolated AWS pilot stack
 - `.github/workflows/apply-pilot-database.yml` — reviewed Supabase migration preview/application
@@ -23,23 +25,45 @@
 - `.github/workflows/enable-pilot-tls.yml` — issued-certificate attachment and DNS handoff
 - `.github/workflows/deploy-pilot.yml` — subsequent exact-digest ECS deployments with rollback evidence
 
-All mutating workflows use the protected `tpp-pilot` GitHub environment. No application, database, DNS, or certificate mutation occurs merely because code is pushed or a pull request is opened.
+### Read-only release controls
+
+- `.github/workflows/preflight-pilot.yml` — validates protected configuration, staff-access JSON, AWS OIDC, secret metadata, CloudFormation, and migration inventory before mutation
+- `.github/workflows/verify-pilot-deployment.yml` — verifies stack stability, ECS counts, exact image digest, ECR provenance, target health, log retention, certificate metadata, and optional public HTTPS
+- `backend/scripts/preflight_pilot.py` — validates the governed staff list and academic-year inputs without connecting to Supabase
+- `docs/PILOT_PREFLIGHT.md` — failure-specific preflight remediation
+
+### Acceptance, DNS, and recovery
+
+- `docs/PILOT_BROWSER_ACCEPTANCE.md` — owner, administrator, volunteer-teacher, negative-authorization, export, and Friday-validation evidence package
+- `docs/VOLUNTEER_TEACHER_PILOT_GUIDE.md` — controlled teacher exercise and feedback guide
+- `docs/PILOT_ROLLBACK.md` — layered application, database, access, OAuth, TLS, DNS, and Route 53 rollback runbook
+- `docs/ROUTE53_MIGRATION_PREPARATION.md` — coordinated preparation with Cloudflare retained as the rollback path
+- `docs/ROUTE53_RECORD_INVENTORY.csv` — record-by-record Cloudflare-to-Route 53 comparison template
+
+All mutating workflows use the protected `tpp-pilot` GitHub environment. Read-only verification workflows also use that environment so they test the actual protected configuration. No application, database, DNS, or certificate mutation occurs merely because code is pushed or a pull request is opened.
 
 ## Controlled release sequence
 
 1. Review CI, the pull-request diff, and the approved Anniston PDF artifacts.
 2. Approve and merge the release pull request.
 3. Preview and then apply the Supabase migrations through the protected migration workflow.
-4. Provision Anniston High School, the active academic year, and the approved staff allowlist through the protected provisioning workflow.
-5. Bootstrap the AWS stack and first exact image.
-6. Add the returned ACM validation CNAME to Cloudflare.
-7. When ACM is `ISSUED`, attach TLS through the protected TLS workflow.
-8. Add Cloudflare CNAME `planner` to the returned ALB DNS target, initially DNS only.
-9. Complete Supabase Site URL / redirect configuration and Google OAuth origin / callback configuration.
-10. Perform owner, administrator, and volunteer-teacher browser acceptance.
-11. Retain the exact deployed image digest and task-definition revision in the acceptance record.
+4. Populate or correct the protected `tpp-pilot` variables and `TPP_PILOT_ACCESS_JSON` secret.
+5. Run **Preflight TPP Pilot Release** with the approved academic-year dates.
+6. Provision Anniston High School, the active academic year, and the approved staff allowlist.
+7. Run the preflight again before infrastructure bootstrap if configuration changed.
+8. Bootstrap the AWS stack and first exact image.
+9. Run **Verify TPP Pilot Deployment** using the exact deployed commit, with public-hostname verification disabled until DNS and TLS are complete.
+10. Add the returned ACM validation CNAME to Cloudflare.
+11. When ACM is `ISSUED`, attach TLS through the protected TLS workflow.
+12. Add Cloudflare CNAME `planner` to the returned ALB DNS target, initially DNS only.
+13. Complete Supabase Site URL / redirect configuration and Google OAuth origin / callback configuration.
+14. Run **Verify TPP Pilot Deployment** again with public HTTPS verification enabled.
+15. Perform Platform Owner, administrator, volunteer-teacher, and negative-authorization browser acceptance.
+16. Retain the exact deployed image digest, task-definition revision, verification runs, and browser evidence in the acceptance record.
 
-## Monday volunteer-teacher acceptance
+Do not bypass a failed preflight by weakening validation or moving protected values into repository files.
+
+## Volunteer-teacher acceptance
 
 The volunteer teacher must be able to:
 
@@ -56,32 +80,38 @@ The volunteer teacher must be able to:
 11. carry missed instruction into the next week without changing unrelated curricula;
 12. see the teacher-and-curriculum-only boundary throughout the workflow.
 
-The platform-owner account must separately confirm that it retains both Platform Owner and Teacher capabilities in the same authenticated session.
+The Platform Owner account must separately confirm that it retains both Platform Owner and Teacher capabilities in the same authenticated session. An unapproved school account and a non-school account must receive no application data.
 
 ## Operational acceptance
 
 Before volunteer access:
 
-- ALB `/health` returns HTTP 200;
-- ECS desired and running counts match;
-- the active task definition references the exact ECR digest produced from the accepted commit;
+- **Verify TPP Pilot Deployment** passes for the exact accepted commit;
+- public HTTPS `/health` returns HTTP 200 without a certificate warning;
+- ECS desired and running counts match with no pending task;
+- the active task definition references an immutable ECR digest tagged with the accepted commit;
+- all load-balancer targets are healthy;
 - the container serves the authenticated React application and governed API from one origin;
 - Supabase migration history matches the repository migration set;
 - the approved access list is active and no unapproved school account receives a profile;
 - application logs are present in the dedicated 30-day CloudWatch log group;
-- no secret value appears in workflow logs, task-definition plaintext environment variables, issues, or pull-request comments;
+- no secret-bearing variable appears in task-definition plaintext environment values;
+- all required runtime secrets are mapped through ECS secret references;
+- no secret value appears in workflow logs, issues, pull-request comments, or acceptance evidence;
 - no student table, roster, student account, or student-specific field is used in the pilot.
 
 ## Rollback
 
-Each subsequent deployment records the prior ECS task-definition ARN before mutation. A failed ECS deployment uses the service deployment circuit breaker; a manual rollback uses the recorded prior task definition. Database migrations require separate review and are not automatically rolled back by an application rollback.
+Use `docs/PILOT_ROLLBACK.md` to identify and recover the failing layer.
+
+Each subsequent deployment records the prior ECS task-definition ARN before mutation. A failed ECS deployment uses the service deployment circuit breaker; a manual application rollback uses the recorded prior task definition and exact image. Database migrations require separate review and are not automatically reversed by an application rollback. DNS, TLS, OAuth, access-list, and later Route 53 rollback are separate controlled actions.
 
 ## Human-controlled gates
 
 The following are intentionally not automated from source control:
 
 - pull-request merge approval;
-- protected-environment approval for database, provisioning, infrastructure, TLS, and application deployment workflows;
+- protected-environment approval for database, provisioning, infrastructure, TLS, application deployment, preflight, and verification workflows;
 - the actual staff access-list secret and academic-year dates;
 - ACM DNS-validation record creation in Cloudflare;
 - the final Cloudflare application CNAME;
@@ -89,6 +119,18 @@ The following are intentionally not automated from source control:
 - live browser acceptance with approved school accounts;
 - the later coordinated Route 53 nameserver migration.
 
+## Route 53 preparation boundary
+
+The Route 53 hosted zone and record inventory may be prepared while Cloudflare remains authoritative. Do not change registrar nameservers until:
+
+- Guided Scholar and TPP are both in accepted stable states;
+- every Cloudflare record has been inventoried and reproduced;
+- email, OAuth, Supabase, ACM, verification, and application records are validated;
+- DNSSEC handling and rollback nameservers are documented;
+- an explicit coordinated migration is authorized.
+
+Do not migrate `planner.guidedscholar.ai` independently from the `guidedscholar.ai` parent zone.
+
 ## Rollout boundary
 
-The Monday exercise is a controlled volunteer-teacher pilot. Full-school rollout remains a separate decision at the end of the following week and is contingent on pilot acceptance, defect resolution, administrator validation, monitoring, and explicit authorization.
+The first teacher exercise is a controlled volunteer-teacher pilot. Full-school rollout remains a separate decision and is contingent on pilot acceptance, defect resolution, administrator validation, monitoring review, and explicit authorization.
