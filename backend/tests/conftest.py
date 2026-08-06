@@ -22,7 +22,6 @@ def authenticated_teacher_override() -> Iterator[None]:
             subject=subject,
             email=f"{subject}@example.test",
             display_name=subject,
-            school_id="test-school",
             roles=frozenset({"teacher"}),
         )
 
