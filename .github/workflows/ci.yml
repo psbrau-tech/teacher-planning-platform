@@ -91,9 +91,32 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build production image
         run: docker build --tag "tpp-ci:${{ github.sha }}" .
-      - name: Start production image
+      - name: Verify PDF generation with a read-only root
         run: |
-          docker run --detach --rm --name tpp-ci -p 8000:8000 "tpp-ci:${{ github.sha }}"
+          docker run --rm \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+            "tpp-ci:${{ github.sha }}" \
+            python -c '
+          from app.document_service import generate_anniston_hqi_packet
+          packet, documents = generate_anniston_hqi_packet({
+              "teacher": "CI Teacher",
+              "course": "CI Course",
+              "week_of": "2026-08-10",
+              "literacy_standards": "Synthetic literacy standard",
+              "act_preparation": "Synthetic ACT preparation",
+          })
+          assert packet.startswith(b"%PDF")
+          assert len(documents) == 3
+          '
+      - name: Start production image with a read-only root
+        run: |
+          docker run --detach --rm \
+            --name tpp-ci \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+            -p 8000:8000 \
+            "tpp-ci:${{ github.sha }}"
           for attempt in {1..20}; do
             if curl --fail --silent http://127.0.0.1:8000/health >/dev/null; then
               exit 0
