@@ -147,7 +147,10 @@ def validate_preflight(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Validate TPP pilot access and academic-year inputs without mutating AWS or Supabase."
+        description=(
+            "Validate TPP pilot access and academic-year inputs without mutating AWS or "
+            "Supabase."
+        )
     )
     parser.add_argument("--access-json", required=True, type=Path)
     parser.add_argument("--platform-owner-email", required=True)
