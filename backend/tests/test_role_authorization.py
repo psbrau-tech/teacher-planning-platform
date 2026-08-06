@@ -10,7 +10,7 @@ from app.auth import (
     require_school_reporting_admin,
     require_teacher,
 )
-from app.role_policy import required_legacy_roles
+from app.role_policy import required_legacy_roles, retired_legacy_replacement
 from app.settings import Settings
 
 
@@ -61,6 +61,22 @@ def test_legacy_route_roles_are_explicit() -> None:
     assert required_legacy_roles(
         "/api/v1/documents/anniston-hqi-packet"
     ) == frozenset({"teacher"})
+
+
+def test_synthetic_legacy_routes_have_governed_replacements() -> None:
+    assert retired_legacy_replacement("/api/v1/assignments") == (
+        "/api/v1/teaching-assignments"
+    )
+    assert retired_legacy_replacement("/api/v1/weekly-plan?level=LET%201") == (
+        "/api/v1/plans"
+    )
+    assert retired_legacy_replacement("/api/v1/admin/summary") == (
+        "/api/v1/administration/usage"
+    )
+    assert retired_legacy_replacement("/api/v1/admin/costs") == (
+        "/api/v1/administration/costs"
+    )
+    assert retired_legacy_replacement("/api/v1/documents/anniston-hqi-packet") is None
 
 
 class _FakeReportingClient:
