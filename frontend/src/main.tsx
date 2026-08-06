@@ -3,8 +3,18 @@ import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
 import "./styles.css";
 
-type View = "dashboard" | "curriculum" | "assignment" | "plan" | "validation";
+type View =
+  | "dashboard"
+  | "curriculum"
+  | "assignment"
+  | "plan"
+  | "validation"
+  | "administration";
 type LessonStatus = "completed" | "modified" | "missed" | "skipped";
+type DocumentKind =
+  | "instructional-framework"
+  | "week-at-a-glance"
+  | "weekly-reflection";
 
 type Identity = {
   id: string;
@@ -76,6 +86,35 @@ type ValidationEntry = {
   carryForward: boolean;
 };
 
+type AdminUsage = {
+  school_id: string;
+  teachers_configured: number;
+  teachers_with_assignments: number;
+  assignments_configured: number;
+  weekly_plans_created: number;
+  weekly_plans_approved: number;
+  instruction_records_validated: number;
+  lessons_carried_forward: number;
+  documents_requested: number;
+  documents_generated: number;
+  document_generation_failures: number;
+  data_boundary: string;
+};
+
+type AdminCost = {
+  school_id: string;
+  usage_month: string;
+  request_count: number;
+  successful_requests: number;
+  failed_requests: number;
+  input_tokens: number;
+  output_tokens: number;
+  cached_tokens: number;
+  estimated_cost_usd: string;
+  accepted_outputs: number;
+  discarded_outputs: number;
+};
+
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ?? "";
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
 const supabase = supabaseUrl && supabaseAnonKey
@@ -137,11 +176,22 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+async function responseDetail(response: Response, fallback: string): Promise<string> {
+  try {
+    const payload = await response.json() as { detail?: string };
+    return payload.detail ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [identity, setIdentity] = useState<Identity | null>(null);
   const [curricula, setCurricula] = useState<Curriculum[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [adminUsage, setAdminUsage] = useState<AdminUsage | null>(null);
+  const [adminCosts, setAdminCosts] = useState<AdminCost[]>([]);
   const [view, setView] = useState<View>("dashboard");
   const [selectedAssignmentId, setSelectedAssignmentId] = useState("");
   const [weekStart, setWeekStart] = useState(mondayFor());
@@ -152,6 +202,11 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  const isTeacher = identity?.roles.includes("teacher") ?? false;
+  const isSchoolAdmin = identity?.roles.includes("school_admin") ?? false;
+  const isPlatformAdmin = identity?.roles.includes("platform_admin") ?? false;
+  const canViewAdministration = isSchoolAdmin || isPlatformAdmin;
 
   const selectedAssignment = useMemo(
     () => assignments.find((assignment) => assignment.id === selectedAssignmentId) ?? null,
@@ -171,6 +226,8 @@ function App() {
         setIdentity(null);
         setAssignments([]);
         setCurricula([]);
+        setAdminUsage(null);
+        setAdminCosts([]);
       }
     });
     return () => data.subscription.unsubscribe();
@@ -199,14 +256,7 @@ function App() {
     if (init?.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
     const response = await fetch(path, { ...init, headers });
     if (!response.ok) {
-      let detail = `${response.status} ${response.statusText}`;
-      try {
-        const payload = await response.json() as { detail?: string };
-        if (payload.detail) detail = payload.detail;
-      } catch {
-        // Preserve the HTTP status when the response has no JSON body.
-      }
-      throw new Error(detail);
+      throw new Error(await responseDetail(response, `${response.status} ${response.statusText}`));
     }
     return await response.json() as T;
   }
@@ -215,27 +265,58 @@ function App() {
     setBusy(true);
     setError("");
     try {
-      const authHeader = { Authorization: `Bearer ${activeSession.access_token}` };
-      const [identityResponse, curriculaResponse, assignmentResponse] = await Promise.all([
-        fetch("/api/v1/session", { headers: authHeader }),
-        fetch("/api/v1/curricula", { headers: authHeader }),
-        fetch("/api/v1/teaching-assignments", { headers: authHeader }),
-      ]);
-      for (const response of [identityResponse, curriculaResponse, assignmentResponse]) {
-        if (!response.ok) {
-          const payload = await response.json() as { detail?: string };
-          throw new Error(payload.detail ?? "Pilot access could not be loaded.");
-        }
+      const headers = { Authorization: `Bearer ${activeSession.access_token}` };
+      const identityResponse = await fetch("/api/v1/session", { headers });
+      if (!identityResponse.ok) {
+        throw new Error(await responseDetail(identityResponse, "Pilot access could not be loaded."));
       }
       const nextIdentity = await identityResponse.json() as Identity;
-      const nextCurricula = await curriculaResponse.json() as Curriculum[];
-      const nextAssignments = await assignmentResponse.json() as Assignment[];
       setIdentity(nextIdentity);
-      setCurricula(nextCurricula);
-      setAssignments(nextAssignments);
-      if (!selectedAssignmentId && nextAssignments.length > 0) {
-        setSelectedAssignmentId(nextAssignments[0].id);
+
+      if (nextIdentity.roles.includes("teacher")) {
+        const [curriculaResponse, assignmentsResponse] = await Promise.all([
+          fetch("/api/v1/curricula", { headers }),
+          fetch("/api/v1/teaching-assignments", { headers }),
+        ]);
+        for (const response of [curriculaResponse, assignmentsResponse]) {
+          if (!response.ok) {
+            throw new Error(await responseDetail(response, "Teacher planning data could not be loaded."));
+          }
+        }
+        const nextCurricula = await curriculaResponse.json() as Curriculum[];
+        const nextAssignments = await assignmentsResponse.json() as Assignment[];
+        setCurricula(nextCurricula);
+        setAssignments(nextAssignments);
+        if (!selectedAssignmentId && nextAssignments.length > 0) {
+          setSelectedAssignmentId(nextAssignments[0].id);
+        }
+      } else {
+        setCurricula([]);
+        setAssignments([]);
+        setSelectedAssignmentId("");
       }
+
+      if (nextIdentity.roles.some((role) => role === "school_admin" || role === "platform_admin")) {
+        const usageResponse = await fetch("/api/v1/administration/usage", { headers });
+        if (!usageResponse.ok) {
+          throw new Error(await responseDetail(usageResponse, "School reporting could not be loaded."));
+        }
+        setAdminUsage(await usageResponse.json() as AdminUsage);
+      } else {
+        setAdminUsage(null);
+      }
+
+      if (nextIdentity.roles.includes("platform_admin")) {
+        const costsResponse = await fetch("/api/v1/administration/costs", { headers });
+        if (!costsResponse.ok) {
+          throw new Error(await responseDetail(costsResponse, "Cost reporting could not be loaded."));
+        }
+        setAdminCosts(await costsResponse.json() as AdminCost[]);
+      } else {
+        setAdminCosts([]);
+      }
+
+      if (!nextIdentity.roles.includes("teacher")) setView("administration");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Pilot access could not be loaded.");
     } finally {
@@ -404,14 +485,13 @@ function App() {
       const text = caught instanceof Error ? caught.message : "Weekly draft could not be loaded.";
       if (text.toLowerCase().includes("not found")) {
         setDraftRevision(null);
-        setDraft((current) => ({
+        setDraft({
           ...emptyDraft,
           teacher: identity?.display_name ?? "",
           course: selectedAssignment?.course_name ?? "",
           grade: selectedAssignment?.grade_band ?? "",
           week_of: weekStart,
-          unit_topic: current.unit_topic,
-        }));
+        });
         if (showNotFound) setMessage("No saved draft exists for this week yet.");
       } else {
         throw caught;
@@ -443,12 +523,15 @@ function App() {
     }
   }
 
-  async function exportPacket() {
+  async function exportDocument(document: DocumentKind | "packet") {
     setBusy(true);
     setError("");
     try {
       if (!session?.access_token) throw new Error("Your authenticated session is unavailable.");
-      const response = await fetch("/api/v1/documents/anniston-hqi-packet", {
+      const path = document === "packet"
+        ? "/api/v1/documents/anniston-hqi-packet"
+        : `/api/v1/documents/anniston-hqi/${document}`;
+      const response = await fetch(path, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${session.access_token}`,
@@ -457,11 +540,10 @@ function App() {
         body: JSON.stringify(draft),
       });
       if (!response.ok) {
-        const payload = await response.json() as { detail?: string };
-        throw new Error(payload.detail ?? "The planning packet could not be generated.");
+        throw new Error(await responseDetail(response, "The planning document could not be generated."));
       }
-      downloadBlob(await response.blob(), `anniston-hqi-${weekStart}.pdf`);
-      setMessage("The Anniston HQI combined packet was generated.");
+      downloadBlob(await response.blob(), `anniston-hqi-${document}-${weekStart}.pdf`);
+      setMessage(`${document === "packet" ? "Combined packet" : document} was generated.`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Document export failed.");
     } finally {
@@ -478,9 +560,15 @@ function App() {
 
   async function saveValidation() {
     if (!selectedAssignmentId) return;
-    const incomplete = plan.some((lesson) => !validations[lesson.scheduled_lesson_id]?.status);
-    if (incomplete) {
+    if (plan.some((lesson) => !validations[lesson.scheduled_lesson_id]?.status)) {
       setError("Every scheduled lesson must have a Friday validation status.");
+      return;
+    }
+    if (plan.some((lesson) => {
+      const entry = validations[lesson.scheduled_lesson_id];
+      return entry.status === "missed" && !entry.reason.trim();
+    })) {
+      setError("Every missed lesson requires a reason before Friday validation is saved.");
       return;
     }
     setBusy(true);
@@ -534,7 +622,7 @@ function App() {
           <p className="eyebrow">Anniston City Schools controlled pilot</p>
           <h1>Teacher Planning Platform</h1>
           <p>
-            Build next week&apos;s plan, confirm what actually happened, and carry missed instruction
+            Build next week&apos;s plan, confirm what happened, and carry missed instruction
             forward without losing curriculum sequence.
           </p>
           <button className="primary large" onClick={() => void signIn()}>Continue with Google</button>
@@ -568,10 +656,11 @@ function App() {
 
       <nav className="workflow-nav" aria-label="Planning workflow">
         <button className={view === "dashboard" ? "active" : ""} onClick={() => setView("dashboard")}>Dashboard</button>
-        <button className={view === "curriculum" ? "active" : ""} onClick={() => setView("curriculum")}>Curriculum</button>
-        <button className={view === "assignment" ? "active" : ""} onClick={() => setView("assignment")}>Courses</button>
-        <button className={view === "plan" ? "active" : ""} onClick={() => setView("plan")}>Weekly plan</button>
-        <button className={view === "validation" ? "active" : ""} onClick={() => setView("validation")}>Friday validation</button>
+        {isTeacher && <button className={view === "curriculum" ? "active" : ""} onClick={() => setView("curriculum")}>Curriculum</button>}
+        {isTeacher && <button className={view === "assignment" ? "active" : ""} onClick={() => setView("assignment")}>Courses</button>}
+        {isTeacher && <button className={view === "plan" ? "active" : ""} onClick={() => setView("plan")}>Weekly plan</button>}
+        {isTeacher && <button className={view === "validation" ? "active" : ""} onClick={() => setView("validation")}>Friday validation</button>}
+        {canViewAdministration && <button className={view === "administration" ? "active" : ""} onClick={() => setView("administration")}>Administration</button>}
       </nav>
 
       <main>
@@ -581,49 +670,35 @@ function App() {
             <button aria-label="Dismiss" onClick={() => { setError(""); setMessage(""); }}>×</button>
           </div>
         )}
-
         {busy && <div className="progress-bar" aria-label="Working" />}
 
-        {view === "dashboard" && (
+        {view === "dashboard" && isTeacher && (
           <>
             <section className="hero">
               <div>
                 <p className="eyebrow">Week of {weekStart}</p>
                 <h2>Validate this week. Prepare the next one.</h2>
-                <p>
-                  Your courses remain independent. Missed instruction leads the next curriculum
-                  queue only after you confirm the Friday outcome.
-                </p>
+                <p>Your courses remain independent. Missed instruction moves only after Friday validation.</p>
               </div>
               <div className="hero-actions">
                 <button className="primary" disabled={!selectedAssignmentId} onClick={() => setView("plan")}>Open weekly plan</button>
                 <button className="secondary" disabled={!selectedAssignmentId} onClick={() => setView("validation")}>Friday validation</button>
               </div>
             </section>
-
             <section>
               <div className="section-heading">
-                <div>
-                  <p className="eyebrow">Teaching assignments</p>
-                  <h2>Your courses</h2>
-                </div>
+                <div><p className="eyebrow">Teaching assignments</p><h2>Your courses</h2></div>
                 <button className="secondary" onClick={() => setView(curricula.length ? "assignment" : "curriculum")}>Add course</button>
               </div>
               {assignments.length === 0 ? (
-                <div className="empty-state">
-                  <h3>No courses configured yet</h3>
-                  <p>Import a curriculum, then create the teacher&apos;s first course and meeting pattern.</p>
-                </div>
+                <div className="empty-state"><h3>No courses configured yet</h3><p>Import a curriculum, then create the first course and meeting pattern.</p></div>
               ) : (
                 <div className="grid">
                   {assignments.map((assignment) => {
                     const curriculum = curricula.find((item) => item.id === assignment.curriculum_id);
                     return (
                       <article className={`card ${selectedAssignmentId === assignment.id ? "selected" : ""}`} key={assignment.id}>
-                        <div className="card-row">
-                          <span className="badge">Revision {assignment.revision}</span>
-                          <span className="status">Active</span>
-                        </div>
+                        <div className="card-row"><span className="badge">Revision {assignment.revision}</span><span className="status">Active</span></div>
                         <h3>{assignment.course_name}</h3>
                         <p>{assignment.meeting_patterns.map((pattern) => `${pattern.start_time.slice(0, 5)}–${pattern.end_time.slice(0, 5)}`).join(", ")}</p>
                         <small>{curriculum ? `${curriculum.name} · ${curriculum.version}` : assignment.curriculum_id}</small>
@@ -634,7 +709,6 @@ function App() {
                 </div>
               )}
             </section>
-
             <section className="summary" aria-label="Pilot summary">
               <div><strong>{assignments.length}</strong><span>courses configured</span></div>
               <div><strong>{curricula.length}</strong><span>curricula available</span></div>
@@ -644,15 +718,55 @@ function App() {
           </>
         )}
 
-        {view === "curriculum" && (
+        {view === "dashboard" && !isTeacher && canViewAdministration && (
+          <section className="hero">
+            <div><p className="eyebrow">Governed administration</p><h2>School planning operations</h2><p>Review aggregate teacher-planning adoption without accessing student data.</p></div>
+            <div className="hero-actions"><button className="primary" onClick={() => setView("administration")}>Open administration</button></div>
+          </section>
+        )}
+
+        {view === "administration" && canViewAdministration && (
           <section className="panel">
-            <div className="section-heading compact">
-              <div>
-                <p className="eyebrow">Teacher setup</p>
-                <h2>Import a sequenced curriculum</h2>
-                <p className="supporting">One lesson per line: Unit | Lesson | Minutes | Standards | Learning targets | Assessment</p>
-              </div>
-            </div>
+            <div className="section-heading compact"><div><p className="eyebrow">Governed reporting</p><h2>Administration</h2><p className="supporting">Aggregate teacher and curriculum operations only. No student records are collected.</p></div></div>
+            {adminUsage ? (
+              <>
+                <section className="summary" aria-label="School planning usage">
+                  <div><strong>{adminUsage.teachers_configured}</strong><span>teachers configured</span></div>
+                  <div><strong>{adminUsage.teachers_with_assignments}</strong><span>teachers with courses</span></div>
+                  <div><strong>{adminUsage.assignments_configured}</strong><span>courses configured</span></div>
+                  <div><strong>{adminUsage.weekly_plans_created}</strong><span>weekly plans created</span></div>
+                </section>
+                <div className="grid">
+                  <article className="card"><h3>Weekly validation</h3><p>{adminUsage.weekly_plans_approved} approved plans</p><p>{adminUsage.instruction_records_validated} instruction records validated</p><p>{adminUsage.lessons_carried_forward} lessons carried forward</p></article>
+                  <article className="card"><h3>Document generation</h3><p>{adminUsage.documents_requested} requested</p><p>{adminUsage.documents_generated} generated</p><p>{adminUsage.document_generation_failures} failures</p></article>
+                  <article className="card"><h3>Access boundary</h3><p>{identity?.roles.join(" · ")}</p><p>{adminUsage.data_boundary}</p><p>0 student records</p></article>
+                </div>
+              </>
+            ) : <div className="empty-state"><p>Administration reporting is loading or unavailable.</p></div>}
+
+            {isPlatformAdmin && (
+              <section>
+                <div className="section-heading compact"><div><p className="eyebrow">Platform Administrator</p><h2>AI cost reporting</h2><p className="supporting">Cost reporting is visible only to the Platform Administrator role.</p></div></div>
+                {adminCosts.length === 0 ? <div className="empty-state"><p>No AI usage has been recorded.</p></div> : (
+                  <div className="grid">
+                    {adminCosts.map((cost) => (
+                      <article className="card" key={`${cost.school_id}-${cost.usage_month}`}>
+                        <span className="badge">{cost.usage_month.slice(0, 7)}</span>
+                        <h3>${cost.estimated_cost_usd}</h3>
+                        <p>{cost.request_count} requests · {cost.successful_requests} successful · {cost.failed_requests} failed</p>
+                        <small>{cost.input_tokens} input · {cost.output_tokens} output · {cost.cached_tokens} cached tokens</small>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+          </section>
+        )}
+
+        {view === "curriculum" && isTeacher && (
+          <section className="panel">
+            <div className="section-heading compact"><div><p className="eyebrow">Teacher setup</p><h2>Import a sequenced curriculum</h2><p className="supporting">One lesson per line: Unit | Lesson | Minutes | Standards | Learning targets | Assessment</p></div></div>
             <form className="form-grid" onSubmit={(event) => void createCurriculum(event)}>
               <label>Curriculum name<input name="name" required placeholder="Army JROTC LET 1" /></label>
               <label>Version<input name="version" required placeholder="2026–27" /></label>
@@ -663,15 +777,9 @@ function App() {
           </section>
         )}
 
-        {view === "assignment" && (
+        {view === "assignment" && isTeacher && (
           <section className="panel">
-            <div className="section-heading compact">
-              <div>
-                <p className="eyebrow">Course configuration</p>
-                <h2>Create a teaching assignment</h2>
-                <p className="supporting">Period, block, and custom meeting patterns use their actual instructional minutes.</p>
-              </div>
-            </div>
+            <div className="section-heading compact"><div><p className="eyebrow">Course configuration</p><h2>Create a teaching assignment</h2><p className="supporting">Period, block, and custom meeting patterns use actual instructional minutes.</p></div></div>
             {curricula.length === 0 ? (
               <div className="empty-state"><p>Import at least one curriculum before creating a course.</p><button className="primary" onClick={() => setView("curriculum")}>Import curriculum</button></div>
             ) : (
@@ -693,29 +801,17 @@ function App() {
           </section>
         )}
 
-        {view === "plan" && (
+        {view === "plan" && isTeacher && (
           <section className="panel">
-            <div className="section-heading compact">
-              <div>
-                <p className="eyebrow">Next-week preparation</p>
-                <h2>Weekly plan</h2>
-                <p className="supporting">Generate the schedule, then complete the required instructional-planning fields.</p>
-              </div>
-            </div>
+            <div className="section-heading compact"><div><p className="eyebrow">Next-week preparation</p><h2>Weekly plan</h2><p className="supporting">Generate the schedule, then complete the required planning fields.</p></div></div>
             <div className="toolbar">
               <label>Course<select value={selectedAssignmentId} onChange={(event) => setSelectedAssignmentId(event.target.value)}><option value="">Select a course</option>{assignments.map((assignment) => <option value={assignment.id} key={assignment.id}>{assignment.course_name}</option>)}</select></label>
               <label>Week of<input type="date" value={weekStart} onChange={(event) => setWeekStart(event.target.value)} /></label>
               <button className="primary" disabled={!selectedAssignmentId || busy} onClick={() => void generatePlan()}>Generate week</button>
               <button className="secondary" disabled={!selectedAssignmentId || busy} onClick={() => void loadPlan()}>Reopen week</button>
             </div>
-
-            {plan.length > 0 && (
-              <div className="plan-list">
-                {plan.map((lesson) => <article key={lesson.scheduled_lesson_id}><div><strong>{lesson.lesson_date}</strong><span>{lesson.planned_minutes} minutes</span></div><div><small>{lesson.unit_title}</small><h3>{lesson.lesson_title}</h3></div><span className="badge">Segment {lesson.segment_number}</span></article>)}
-              </div>
-            )}
-
-            <div className="section-heading compact draft-heading"><div><p className="eyebrow">Anniston HQI fields</p><h2>Planning narrative</h2><p className="supporting">Literacy Standards and ACT Preparation are required for every teacher.</p></div><span className="badge">Draft revision {draftRevision ?? 0}</span></div>
+            {plan.length > 0 && <div className="plan-list">{plan.map((lesson) => <article key={lesson.scheduled_lesson_id}><div><strong>{lesson.lesson_date}</strong><span>{lesson.planned_minutes} minutes</span></div><div><small>{lesson.unit_title}</small><h3>{lesson.lesson_title}</h3></div><span className="badge">Segment {lesson.segment_number}</span></article>)}</div>}
+            <div className="section-heading compact draft-heading"><div><p className="eyebrow">Anniston HQI fields</p><h2>Planning narrative</h2><p className="supporting">Literacy Standards and ACT Preparation are required.</p></div><span className="badge">Draft revision {draftRevision ?? 0}</span></div>
             <div className="form-grid">
               <label>Unit / topic<input value={draft.unit_topic} onChange={(event) => setDraft({ ...draft, unit_topic: event.target.value })} /></label>
               <label>Standards<input value={draft.standards} onChange={(event) => setDraft({ ...draft, standards: event.target.value })} /></label>
@@ -730,11 +826,21 @@ function App() {
               <label>Resources<textarea rows={4} value={draft.resources} onChange={(event) => setDraft({ ...draft, resources: event.target.value })} /></label>
               {[["monday","Monday"],["tuesday","Tuesday"],["wednesday","Wednesday"],["thursday","Thursday"],["friday","Friday"]].map(([key,label]) => <label key={key}>{label}<textarea rows={3} value={draft[key]} onChange={(event) => setDraft({ ...draft, [key]: event.target.value })} /></label>)}
             </div>
-            <div className="action-bar"><div><strong>{selectedAssignment?.course_name ?? "Select a course"}</strong><span>{selectedCurriculum ? `${selectedCurriculum.name} · ${selectedCurriculum.version}` : "No curriculum selected"}</span></div><div className="button-group"><button className="secondary" disabled={!selectedAssignmentId || busy} onClick={() => void loadDraft()}>Reopen draft</button><button className="primary" disabled={!selectedAssignmentId || !draft.literacy_standards.trim() || !draft.act_preparation.trim() || busy} onClick={() => void saveDraft()}>Save draft</button><button className="secondary" disabled={!draftRevision || busy} onClick={() => void exportPacket()}>Export HQI packet</button></div></div>
+            <div className="action-bar">
+              <div><strong>{selectedAssignment?.course_name ?? "Select a course"}</strong><span>{selectedCurriculum ? `${selectedCurriculum.name} · ${selectedCurriculum.version}` : "No curriculum selected"}</span></div>
+              <div className="button-group">
+                <button className="secondary" disabled={!selectedAssignmentId || busy} onClick={() => void loadDraft()}>Reopen draft</button>
+                <button className="primary" disabled={!selectedAssignmentId || !draft.literacy_standards.trim() || !draft.act_preparation.trim() || busy} onClick={() => void saveDraft()}>Save draft</button>
+                <button className="secondary" disabled={!draftRevision || busy} onClick={() => void exportDocument("instructional-framework")}>Instructional Framework</button>
+                <button className="secondary" disabled={!draftRevision || busy} onClick={() => void exportDocument("week-at-a-glance")}>Week at a Glance</button>
+                <button className="secondary" disabled={!draftRevision || busy} onClick={() => void exportDocument("weekly-reflection")}>Weekly Reflection</button>
+                <button className="secondary" disabled={!draftRevision || busy} onClick={() => void exportDocument("packet")}>Combined packet</button>
+              </div>
+            </div>
           </section>
         )}
 
-        {view === "validation" && (
+        {view === "validation" && isTeacher && (
           <section className="panel">
             <div className="section-heading compact"><div><p className="eyebrow">Friday validation</p><h2>Confirm what actually happened</h2><p className="supporting">Every scheduled lesson needs an outcome before the next week is generated.</p></div></div>
             <div className="toolbar"><label>Course<select value={selectedAssignmentId} onChange={(event) => setSelectedAssignmentId(event.target.value)}><option value="">Select a course</option>{assignments.map((assignment) => <option value={assignment.id} key={assignment.id}>{assignment.course_name}</option>)}</select></label><label>Week of<input type="date" value={weekStart} onChange={(event) => setWeekStart(event.target.value)} /></label><button className="secondary" disabled={!selectedAssignmentId || busy} onClick={() => void loadPlan()}>Load scheduled lessons</button></div>
