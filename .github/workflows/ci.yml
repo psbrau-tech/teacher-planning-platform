@@ -66,8 +66,7 @@ jobs:
         run: python -m pip install cfn-lint
       - name: Validate CloudFormation
         # W1030 evaluates the intentionally empty bootstrap defaults for secret ARN
-        # parameters. Both controlled deployment workflows resolve and pass exact
-        # Secrets Manager ARNs before CloudFormation is invoked.
+        # parameters. Controlled workflows resolve and pass exact secret ARNs.
         run: cfn-lint infra/pilot-stack.yml -i W1030
       - name: Parse GitHub workflow YAML
         run: |
@@ -77,6 +76,13 @@ jobs:
               puts "validated #{path}"
             end
           '
+      - name: Parse repository shell scripts
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' path; do
+            bash -n "$path"
+            echo "validated $path"
+          done < <(find scripts -type f -name '*.sh' -print0)
 
   container:
     runs-on: ubuntu-latest
