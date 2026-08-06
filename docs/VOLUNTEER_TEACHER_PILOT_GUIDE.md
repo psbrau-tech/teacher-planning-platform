@@ -1,59 +1,180 @@
-# Volunteer Teacher Pilot Guide
+# TPP Volunteer Teacher Pilot Guide
 
-## Purpose
+## Pilot purpose
 
-Validate that the Teacher Planning Platform reduces repetitive weekly planning work while preserving teacher judgment, required Anniston fields, and the teacher-and-curriculum-only data boundary.
+The Teacher Planning Platform pilot is designed to reduce repetitive weekly lesson-plan preparation while preserving teacher judgment. The volunteer teacher will use synthetic curriculum and planning content to validate the complete Friday planning cycle before full-school rollout is considered.
 
-## Before starting
+## Data boundary
 
-- Use only the approved school Google account.
-- Do not enter student names, IDs, grades, accommodations, IEP information, rosters, or student-specific notes.
-- Have one curriculum sequence, teaching schedule, and known calendar exception available.
-- Report unexpected access, missing required fields, incorrect dates, or export defects immediately.
+This pilot contains teacher and curriculum information only.
 
-## Pilot exercise
+Do not enter:
 
-1. Sign in using the approved Google school account.
-2. Confirm the displayed role is Teacher and no administrative controls appear.
-3. Import or select a sequenced curriculum.
-4. Create an independent teaching assignment.
-5. Configure the real meeting pattern used for that assignment.
-6. Add one calendar exception, such as testing, an assembly, or a missed instructional day.
-7. Generate the upcoming instructional week.
-8. Review instructional minutes and lesson movement caused by the exception.
-9. Complete Literacy Standards and ACT Preparation with meaningful, nonblank entries.
-10. Save the draft, leave the page, and reopen it.
-11. Export each Anniston document and the combined packet.
-12. Mark sample lessons completed, modified, missed, or skipped.
-13. Carry one missed lesson into the following week.
-14. Confirm unrelated curricula and assignments were not moved.
+- student names or IDs;
+- grades or assessment results tied to named students;
+- IEP, 504, medical, behavioral, or accommodation information;
+- student rosters or parent information;
+- any other student-specific data.
 
-## What to evaluate
+## Before the session
 
-Record whether:
+The pilot coordinator confirms that:
 
-- the generated week matches the actual teaching schedule;
-- calendar exceptions produce understandable changes;
-- required fields support planning rather than create unnecessary repetition;
-- saved work reopens exactly as expected;
-- continuation pages remain readable and correctly identified;
-- individual and combined exports preserve document order;
-- missed-work carryforward is predictable;
-- the process saves time compared with manual weekly transcription.
+- the volunteer teacher's exact `anniston.k12.al.us` Google account is active in the governed access list;
+- the account has only the approved `teacher` role unless another role was explicitly authorized;
+- `https://planner.guidedscholar.ai` loads without a certificate warning;
+- the deployed commit, image digest, and task-definition revision are recorded;
+- the **Verify TPP Pilot Deployment** workflow passed;
+- browser acceptance evidence will be stored in the protected pilot record.
+
+## Suggested synthetic test content
+
+Use content that is realistic enough to test the workflow but is not copied from a student record.
+
+- Curriculum: `Pilot English 10 Curriculum`
+- Assignment: `English 10 — Period 2`
+- Week: the next instructional Monday through Friday
+- Lessons: five synthetic lessons with a clear instructional sequence
+- Calendar exception: one synthetic assembly, testing period, or missed instructional day
+- Literacy Standards: a nonblank synthetic standards entry
+- ACT Preparation: a nonblank synthetic preparation entry
+
+## Sign-in
+
+1. Open `https://planner.guidedscholar.ai`.
+2. Select Google sign-in.
+3. Use the approved school account.
+4. Confirm that teacher planning controls are available.
+5. Confirm that Platform Owner or administrator-only controls are not available unless explicitly approved.
+
+Stop and notify the coordinator if:
+
+- the site displays a certificate warning;
+- the wrong account is selected;
+- the account is denied even though it is approved;
+- the account receives roles that were not approved;
+- any student-data feature appears.
+
+## Pilot workflow
+
+### 1. Curriculum
+
+1. Create or import the synthetic sequenced curriculum.
+2. Add several lessons in the intended order.
+3. Save and reload the curriculum.
+4. Confirm the exact lesson order persists.
+
+### 2. Teaching assignment
+
+1. Create the synthetic teaching assignment.
+2. Select the intended curriculum.
+3. Configure the normal meeting pattern.
+4. Record actual instructional minutes.
+5. Save and reopen the assignment.
+
+Repeat with a second synthetic assignment if time permits. Confirm that changing one assignment does not change the other.
+
+### 3. Generate the week
+
+1. Select the teaching assignment.
+2. Select the target week.
+3. Generate the weekly plan.
+4. Confirm that lessons follow the curriculum sequence and meeting pattern.
+5. Add the synthetic calendar exception.
+6. Confirm that only the affected instructional day changes.
+
+### 4. Complete required planning fields
+
+Complete and save:
+
+- daily tasks and instructional activities;
+- instructional resources;
+- Literacy Standards;
+- ACT Preparation;
+- any required teacher notes or reflection fields.
+
+Close the browser, reopen the site, and confirm that the latest saved draft reloads exactly.
+
+### 5. Export the Anniston documents
+
+Export and visually inspect:
+
+1. Instructional Framework;
+2. Week at a Glance;
+3. Weekly Reflection;
+4. combined packet.
+
+Confirm:
+
+- correct teacher, course, and week identifiers;
+- correct document order;
+- readable text;
+- no silent truncation;
+- continuation pages are clearly labeled;
+- Anniston branding is intact;
+- Literacy Standards and ACT Preparation appear where expected.
+
+### 6. Friday validation
+
+Mark different synthetic lessons as:
+
+- completed;
+- modified;
+- missed;
+- skipped.
+
+Add the required note or reason where applicable. Finalize Friday validation and reopen the week to confirm the statuses persist.
+
+### 7. Carry forward missed instruction
+
+Generate the following week. Confirm that:
+
+- missed instruction carries forward in sequence;
+- completed instruction is not repeated improperly;
+- unrelated assignments and curricula are unchanged.
+
+## Feedback prompts
+
+After completing the workflow, answer:
+
+1. Which step saved the most time compared with the current process?
+2. Which step required the most explanation?
+3. Was any label or action unclear?
+4. Did the generated schedule match how your course actually meets?
+5. Did the calendar exception behave as expected?
+6. Were Literacy Standards and ACT Preparation easy to complete and locate?
+7. Were the exported documents ready to submit without manual reformatting?
+8. Did Friday validation accurately reflect what happened during the week?
+9. Did carry-forward place missed instruction where you expected it?
+10. What would prevent you from using this every Friday?
+11. What should be corrected before another teacher uses it?
 
 ## Defect reporting
 
-Include:
+For any problem, record:
 
-- the step being performed;
-- expected and observed behavior;
+- the acceptance test or workflow step;
+- exact steps taken;
+- expected result;
+- actual result;
 - browser and device;
 - approximate time;
-- screenshot when useful, excluding private access information;
-- whether the issue blocks continued pilot use.
+- redacted screenshot when useful;
+- whether the problem blocks continued testing.
 
-Do not include passwords, tokens, secret values, database information, or the protected staff-access JSON.
+Do not include access tokens, account addresses in unprotected artifacts, student information, staff access-list JSON, or other secrets.
 
-## Completion
+## Completion standard
 
-The exercise is complete when the teacher can generate, save, reopen, export, validate, and carry forward a week without entering student data or receiving capabilities beyond the approved Teacher role.
+The volunteer-teacher pilot is complete when the teacher can independently:
+
+- sign in;
+- select or import curriculum;
+- configure an assignment and schedule;
+- generate and revise a week;
+- complete required planning fields;
+- save and reopen a draft;
+- export all approved documents;
+- perform Friday validation;
+- carry missed instruction forward;
+- explain whether the platform is usable for the normal weekly planning cycle.
