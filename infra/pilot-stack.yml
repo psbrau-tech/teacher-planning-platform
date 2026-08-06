@@ -56,21 +56,6 @@ Parameters:
   SupabaseAnonKeySecretArn:
     Type: String
     Default: ''
-  SupabaseServiceRoleKeySecretArn:
-    Type: String
-    Default: ''
-  DatabaseUrlSecretArn:
-    Type: String
-    Default: ''
-  OpenAiApiKeySecretArn:
-    Type: String
-    Default: ''
-  GoogleOauthClientIdSecretArn:
-    Type: String
-    Default: ''
-  GoogleOauthClientSecretSecretArn:
-    Type: String
-    Default: ''
 
 Conditions:
   CreateService: !Equals [!Ref DeployService, 'true']
@@ -319,7 +304,7 @@ Resources:
       ManagedPolicyArns:
         - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
       Policies:
-        - PolicyName: ExactPilotSecrets
+        - PolicyName: ExactPilotRuntimeSecrets
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -328,11 +313,6 @@ Resources:
                 Resource:
                   - !Ref SupabaseUrlSecretArn
                   - !Ref SupabaseAnonKeySecretArn
-                  - !Ref SupabaseServiceRoleKeySecretArn
-                  - !Ref DatabaseUrlSecretArn
-                  - !Ref OpenAiApiKeySecretArn
-                  - !Ref GoogleOauthClientIdSecretArn
-                  - !Ref GoogleOauthClientSecretSecretArn
 
   TaskRole:
     Type: AWS::IAM::Role
@@ -383,16 +363,6 @@ Resources:
               ValueFrom: !Ref SupabaseUrlSecretArn
             - Name: TPP_SUPABASE_ANON_KEY
               ValueFrom: !Ref SupabaseAnonKeySecretArn
-            - Name: TPP_SUPABASE_SERVICE_ROLE_KEY
-              ValueFrom: !Ref SupabaseServiceRoleKeySecretArn
-            - Name: TPP_DATABASE_URL
-              ValueFrom: !Ref DatabaseUrlSecretArn
-            - Name: TPP_OPENAI_API_KEY
-              ValueFrom: !Ref OpenAiApiKeySecretArn
-            - Name: TPP_GOOGLE_OAUTH_CLIENT_ID
-              ValueFrom: !Ref GoogleOauthClientIdSecretArn
-            - Name: TPP_GOOGLE_OAUTH_CLIENT_SECRET
-              ValueFrom: !Ref GoogleOauthClientSecretSecretArn
           LogConfiguration:
             LogDriver: awslogs
             Options:
