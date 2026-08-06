@@ -11,6 +11,7 @@ from starlette.concurrency import run_in_threadpool
 
 from .auth import load_governed_identity, verify_supabase_access_token
 from .main import app
+from .role_policy import required_legacy_roles
 from .settings import get_settings
 
 _PROTECTED_LEGACY_PREFIXES = (
@@ -27,14 +28,6 @@ def _frontend_dist_path() -> Path:
     if configured:
         return Path(configured).expanduser().resolve()
     return Path(__file__).resolve().parents[2] / "frontend-dist"
-
-
-def _required_roles(path: str) -> frozenset[str]:
-    if path.startswith("/api/v1/admin/costs"):
-        return frozenset({"platform_admin"})
-    if path.startswith("/api/v1/admin"):
-        return frozenset({"school_admin", "platform_admin"})
-    return frozenset({"teacher"})
 
 
 @app.middleware("http")
@@ -75,7 +68,7 @@ async def protect_legacy_production_routes(
                 content={"detail": "Pilot authorization service is unavailable"},
             )
 
-        required = _required_roles(request.url.path)
+        required = required_legacy_roles(request.url.path)
         if governed.roles.isdisjoint(required):
             return JSONResponse(
                 status_code=403,
