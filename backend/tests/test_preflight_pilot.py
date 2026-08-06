@@ -9,7 +9,9 @@ from typing import Any
 SCRIPT = Path(__file__).parents[1] / "scripts" / "preflight_pilot.py"
 
 
-def _run_preflight(tmp_path: Path, records: list[dict[str, Any]]) -> subprocess.CompletedProcess[str]:
+def _run_preflight(
+    tmp_path: Path, records: list[dict[str, Any]]
+) -> subprocess.CompletedProcess[str]:
     access_path = tmp_path / "pilot-access.json"
     access_path.write_text(json.dumps(records), encoding="utf-8")
     return subprocess.run(
