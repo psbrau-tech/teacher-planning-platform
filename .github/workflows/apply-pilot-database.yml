@@ -30,17 +30,29 @@ jobs:
       AWS_REGION: ${{ vars.TPP_AWS_REGION || 'us-east-2' }}
       AWS_ROLE_ARN: ${{ vars.TPP_AWS_ROLE_ARN }}
       DATABASE_URL_SECRET_ID: ${{ vars.TPP_DATABASE_URL_SECRET_ID || 'tpp/pilot/database-url' }}
+      SUPABASE_CLI_VERSION: '2.101.0'
     steps:
       - name: Validate controlled migration configuration
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -z "$AWS_ROLE_ARN" ]]; then
-            echo "TPP_AWS_ROLE_ARN is required in the tpp-pilot environment." >&2
+          missing=()
+          for name in AWS_ROLE_ARN DATABASE_URL_SECRET_ID SUPABASE_CLI_VERSION; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing required tpp-pilot migration values: %s\n' "${missing[*]}" >&2
+            echo "Run Preflight TPP Pilot Release after correcting the protected environment." >&2
             exit 1
           fi
           if [[ "$AWS_REGION" != "us-east-2" ]]; then
             echo "TPP pilot database operations are governed through us-east-2." >&2
+            exit 1
+          fi
+          if [[ ! "$SUPABASE_CLI_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "SUPABASE_CLI_VERSION must be an exact stable semantic version." >&2
             exit 1
           fi
 
@@ -49,6 +61,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Configure AWS credentials through GitHub OIDC
         uses: aws-actions/configure-aws-credentials@v4
@@ -72,14 +86,25 @@ jobs:
           echo "::add-mask::$database_url"
           printf 'database_url=%s\n' "$database_url" >> "$GITHUB_OUTPUT"
 
+      - name: Verify pinned Supabase CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(npx --yes "supabase@$SUPABASE_CLI_VERSION" --version)"
+          if [[ "$version" != "$SUPABASE_CLI_VERSION" ]]; then
+            echo "Supabase CLI version mismatch: expected $SUPABASE_CLI_VERSION, received $version" >&2
+            exit 1
+          fi
+
       - name: Validate migration history and preview pending changes
         env:
           DATABASE_URL: ${{ steps.database.outputs.database_url }}
         shell: bash
         run: |
           set -euo pipefail
-          npx --yes supabase@latest migration list --db-url "$DATABASE_URL"
-          npx --yes supabase@latest db push --db-url "$DATABASE_URL" --dry-run
+          cli=(npx --yes "supabase@$SUPABASE_CLI_VERSION")
+          "${cli[@]}" migration list --db-url "$DATABASE_URL"
+          "${cli[@]}" db push --db-url "$DATABASE_URL" --dry-run
 
       - name: Apply reviewed migrations
         if: ${{ !inputs.dry_run_only }}
@@ -88,24 +113,30 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npx --yes supabase@latest db push --db-url "$DATABASE_URL" --yes
-          npx --yes supabase@latest migration list --db-url "$DATABASE_URL"
+          cli=(npx --yes "supabase@$SUPABASE_CLI_VERSION")
+          "${cli[@]}" db push --db-url "$DATABASE_URL" --yes
+          "${cli[@]}" migration list --db-url "$DATABASE_URL"
+          "${cli[@]}" db push --db-url "$DATABASE_URL" --dry-run
 
       - name: Publish migration handoff
         shell: bash
         run: |
           set -euo pipefail
+          migration_count="$(find supabase/migrations -maxdepth 1 -type f -name '*.sql' | wc -l | tr -d ' ')"
           {
             echo "## TPP pilot database migration"
             echo "- Reason: ${{ inputs.reason }}"
             echo "- Commit: \`$GITHUB_SHA\`"
             echo "- Dry run only: \`${{ inputs.dry_run_only }}\`"
             echo "- Region governance: \`$AWS_REGION\`"
+            echo "- Supabase CLI: \`$SUPABASE_CLI_VERSION\`"
+            echo "- Repository migration count: \`$migration_count\`"
             echo "- Migration source: \`supabase/migrations\`"
             echo "- Data boundary: teacher and curriculum data only; no student data"
             if [[ "${{ inputs.dry_run_only }}" == "true" ]]; then
               echo "- No database mutation was authorized by this run."
             else
-              echo "- Pending migrations were applied in timestamp order through the Supabase migration history."
+              echo "- Reviewed pending migrations were applied in timestamp order."
+              echo "- A final dry run was required to confirm no repository migration remained pending."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
