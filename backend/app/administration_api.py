@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -40,7 +41,7 @@ class SchoolCostRead(BaseModel):
     input_tokens: int = 0
     output_tokens: int = 0
     cached_tokens: int = 0
-    estimated_cost_usd: str = "0"
+    estimated_cost_usd: Decimal = Decimal("0")
     accepted_outputs: int = 0
     discarded_outputs: int = 0
 
