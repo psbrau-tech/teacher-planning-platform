@@ -18,9 +18,9 @@ def runtime_readiness(
         "public_base_url": readiness.public_base_url,
         "data_boundary": readiness.data_boundary,
         "supabase_configured": readiness.supabase_configured,
-        "database_configured": readiness.database_configured,
-        "google_sso_configured": readiness.google_sso_configured,
-        "openai_configured": readiness.openai_configured,
         "pilot_access_configured": readiness.pilot_access_configured,
+        "privileged_runtime_credentials_absent": (
+            readiness.privileged_runtime_credentials_absent
+        ),
         "core_ready": readiness.core_ready,
     }

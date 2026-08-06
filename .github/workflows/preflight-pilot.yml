@@ -1,0 +1,166 @@
+name: Preflight TPP Pilot Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: Reason for running the read-only pilot release preflight
+        required: true
+        type: string
+      academic_year_name:
+        description: Academic year label
+        required: true
+        default: 2026-2027
+        type: string
+      starts_on:
+        description: First governed date for the active academic year (YYYY-MM-DD)
+        required: true
+        type: string
+      ends_on:
+        description: Last governed date for the active academic year (YYYY-MM-DD)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: tpp-pilot-preflight
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Validate pilot release configuration without mutation
+    runs-on: ubuntu-latest
+    environment: tpp-pilot
+    env:
+      AWS_REGION: ${{ vars.TPP_AWS_REGION || 'us-east-2' }}
+      AWS_ROLE_ARN: ${{ vars.TPP_AWS_ROLE_ARN }}
+      PLATFORM_OWNER_EMAIL: ${{ vars.TPP_PLATFORM_OWNER_EMAIL }}
+      VITE_SUPABASE_URL: ${{ vars.TPP_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ vars.TPP_SUPABASE_ANON_KEY }}
+      PILOT_ACCESS_JSON: ${{ secrets.TPP_PILOT_ACCESS_JSON }}
+      SUPABASE_URL_SECRET_ID: ${{ vars.TPP_SUPABASE_URL_SECRET_ID || 'tpp/pilot/supabase-url' }}
+      SUPABASE_ANON_KEY_SECRET_ID: ${{ vars.TPP_SUPABASE_ANON_KEY_SECRET_ID || 'tpp/pilot/supabase-anon-key' }}
+      SUPABASE_SERVICE_ROLE_KEY_SECRET_ID: ${{ vars.TPP_SUPABASE_SERVICE_ROLE_KEY_SECRET_ID || 'tpp/pilot/supabase-service-role-key' }}
+      DATABASE_URL_SECRET_ID: ${{ vars.TPP_DATABASE_URL_SECRET_ID || 'tpp/pilot/database-url' }}
+      OPENAI_API_KEY_SECRET_ID: ${{ vars.TPP_OPENAI_API_KEY_SECRET_ID || 'tpp/pilot/openai-api-key' }}
+      GOOGLE_OAUTH_CLIENT_ID_SECRET_ID: ${{ vars.TPP_GOOGLE_OAUTH_CLIENT_ID_SECRET_ID || 'tpp/pilot/google-oauth-client-id' }}
+      GOOGLE_OAUTH_CLIENT_SECRET_SECRET_ID: ${{ vars.TPP_GOOGLE_OAUTH_CLIENT_SECRET_SECRET_ID || 'tpp/pilot/google-oauth-client-secret' }}
+
+    steps:
+      - name: Validate protected environment values
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in \
+            AWS_ROLE_ARN \
+            PLATFORM_OWNER_EMAIL \
+            VITE_SUPABASE_URL \
+            VITE_SUPABASE_ANON_KEY \
+            PILOT_ACCESS_JSON; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing required tpp-pilot environment values:\n' >&2
+            printf ' - %s\n' "${missing[@]}" >&2
+            exit 1
+          fi
+          if [[ "$AWS_REGION" != "us-east-2" ]]; then
+            echo "TPP pilot operations are governed through us-east-2." >&2
+            exit 1
+          fi
+          if [[ "$PLATFORM_OWNER_EMAIL" != *@anniston.k12.al.us ]]; then
+            echo "TPP_PLATFORM_OWNER_EMAIL must use anniston.k12.al.us." >&2
+            exit 1
+          fi
+          if [[ "$VITE_SUPABASE_URL" != https://* ]]; then
+            echo "TPP_SUPABASE_URL must be an HTTPS URL." >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Materialize and validate the protected access list
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          access_path="$RUNNER_TEMP/tpp-pilot-access.json"
+          printf '%s' "$PILOT_ACCESS_JSON" > "$access_path"
+          python -m json.tool "$access_path" >/dev/null
+          python backend/scripts/preflight_pilot.py \
+            --access-json "$access_path" \
+            --platform-owner-email "$PLATFORM_OWNER_EMAIL" \
+            --academic-year-name "${{ inputs.academic_year_name }}" \
+            --starts-on "${{ inputs.starts_on }}" \
+            --ends-on "${{ inputs.ends_on }}"
+
+      - name: Configure AWS credentials through GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify AWS identity and required secret metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws sts get-caller-identity >/dev/null
+          required_secrets=(
+            "$SUPABASE_URL_SECRET_ID"
+            "$SUPABASE_ANON_KEY_SECRET_ID"
+            "$SUPABASE_SERVICE_ROLE_KEY_SECRET_ID"
+            "$DATABASE_URL_SECRET_ID"
+            "$OPENAI_API_KEY_SECRET_ID"
+            "$GOOGLE_OAUTH_CLIENT_ID_SECRET_ID"
+            "$GOOGLE_OAUTH_CLIENT_SECRET_SECRET_ID"
+          )
+          for secret_id in "${required_secrets[@]}"; do
+            aws secretsmanager describe-secret --secret-id "$secret_id" >/dev/null
+          done
+          echo "Verified ${#required_secrets[@]} required Secrets Manager entries."
+
+      - name: Validate deployment artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws cloudformation validate-template --template-body file://infra/pilot-stack.yml >/dev/null
+          mapfile -t migrations < <(find supabase/migrations -maxdepth 1 -type f -name '*.sql' | sort)
+          if (( ${#migrations[@]} == 0 )); then
+            echo "No Supabase migrations were found." >&2
+            exit 1
+          fi
+          echo "Validated CloudFormation and ${#migrations[@]} repository migrations."
+
+      - name: Remove materialized access list
+        if: always()
+        run: rm -f "$RUNNER_TEMP/tpp-pilot-access.json"
+
+      - name: Publish read-only preflight record
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## TPP pilot release preflight"
+            echo "- Reason: ${{ inputs.reason }}"
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- Region: \`$AWS_REGION\`"
+            echo "- Academic year: \`${{ inputs.academic_year_name }}\`"
+            echo "- Governed dates: \`${{ inputs.starts_on }}\` through \`${{ inputs.ends_on }}\`"
+            echo "- Protected environment values: present and structurally valid"
+            echo "- Staff access JSON: valid; Platform Owner dual roles verified"
+            echo "- AWS OIDC identity: verified"
+            echo "- Required Secrets Manager metadata: verified"
+            echo "- CloudFormation template and repository migrations: verified"
+            echo "- Mutation status: none; this workflow is read-only"
+            echo "- Data boundary: teacher and curriculum data only; no student data"
+          } >> "$GITHUB_STEP_SUMMARY"

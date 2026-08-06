@@ -66,8 +66,7 @@ jobs:
         run: python -m pip install cfn-lint
       - name: Validate CloudFormation
         # W1030 evaluates the intentionally empty bootstrap defaults for secret ARN
-        # parameters. Both controlled deployment workflows resolve and pass exact
-        # Secrets Manager ARNs before CloudFormation is invoked.
+        # parameters. Controlled workflows resolve and pass exact secret ARNs.
         run: cfn-lint infra/pilot-stack.yml -i W1030
       - name: Parse GitHub workflow YAML
         run: |
@@ -77,6 +76,13 @@ jobs:
               puts "validated #{path}"
             end
           '
+      - name: Parse repository shell scripts
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' path; do
+            bash -n "$path"
+            echo "validated $path"
+          done < <(find scripts -type f -name '*.sh' -print0)
 
   container:
     runs-on: ubuntu-latest
@@ -85,9 +91,32 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build production image
         run: docker build --tag "tpp-ci:${{ github.sha }}" .
-      - name: Start production image
+      - name: Verify PDF generation with a read-only root
         run: |
-          docker run --detach --rm --name tpp-ci -p 8000:8000 "tpp-ci:${{ github.sha }}"
+          docker run --rm \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+            "tpp-ci:${{ github.sha }}" \
+            python -c '
+          from app.document_service import generate_anniston_hqi_packet
+          packet, documents = generate_anniston_hqi_packet({
+              "teacher": "CI Teacher",
+              "course": "CI Course",
+              "week_of": "2026-08-10",
+              "literacy_standards": "Synthetic literacy standard",
+              "act_preparation": "Synthetic ACT preparation",
+          })
+          assert packet.startswith(b"%PDF")
+          assert len(documents) == 3
+          '
+      - name: Start production image with a read-only root
+        run: |
+          docker run --detach --rm \
+            --name tpp-ci \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+            -p 8000:8000 \
+            "tpp-ci:${{ github.sha }}"
           for attempt in {1..20}; do
             if curl --fail --silent http://127.0.0.1:8000/health >/dev/null; then
               exit 0
@@ -98,11 +127,23 @@ jobs:
           exit 1
       - name: Verify frontend is served
         run: curl --fail --silent http://127.0.0.1:8000/ | grep -q "Teacher Planning Platform"
-      - name: Verify legacy production APIs require authentication
+      - name: Verify governed APIs require authentication
         run: |
-          status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
-            http://127.0.0.1:8000/api/v1/templates/anniston-hqi/fields)"
-          test "$status" = "401"
+          set -euo pipefail
+          verify_unauthenticated() {
+            local path="$1"
+            local status
+            status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+              "http://127.0.0.1:8000$path")"
+            if [[ "$status" != "401" ]]; then
+              echo "Expected HTTP 401 from $path; received $status" >&2
+              exit 1
+            fi
+          }
+          verify_unauthenticated /api/v1/templates/anniston-hqi/fields
+          verify_unauthenticated /api/v1/teaching-assignments
+          verify_unauthenticated /api/v1/administration/usage
+          verify_unauthenticated /api/v1/administration/costs
       - name: Show container logs on failure
         if: failure()
         run: docker logs tpp-ci || true

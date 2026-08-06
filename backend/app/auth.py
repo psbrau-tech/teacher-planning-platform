@@ -30,7 +30,7 @@ def authorize_google_identity(
     email_verified: bool,
     settings: Settings,
 ) -> AuthenticatedTeacher:
-    """Apply the controlled-pilot allowlist to a verified Google identity."""
+    """Apply the controlled-pilot domain restriction to a verified Google identity."""
     normalized_email = email.strip().lower()
     if not email_verified:
         raise PermissionError("Google account email must be verified")
@@ -65,7 +65,7 @@ def _record_list(payload: object) -> list[dict[str, Any]]:
 
 
 def verify_supabase_access_token(token: str, settings: Settings) -> AuthenticatedTeacher:
-    """Verify a Supabase access token and apply the controlled-pilot allowlist."""
+    """Verify a Supabase access token and apply the controlled-pilot domain restriction."""
     if settings.supabase_url is None:
         raise RuntimeError("Supabase authentication is not configured")
 
@@ -171,11 +171,11 @@ def load_governed_identity(
         raise RuntimeError("Pilot authorization service is unavailable") from error
 
 
-def require_teacher(
+def require_governed_user(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AuthenticatedTeacher:
-    """FastAPI dependency for authenticated, allowlisted, governed pilot users."""
+    """Require a valid token, active governed profile, and at least one pilot role."""
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(status_code=401, detail="Bearer access token is required")
     try:
@@ -191,3 +191,46 @@ def require_teacher(
         raise HTTPException(status_code=503, detail=str(error)) from error
     except PermissionError as error:
         raise HTTPException(status_code=403, detail=str(error)) from error
+
+
+def _require_any_role(
+    identity: AuthenticatedTeacher,
+    allowed_roles: frozenset[str],
+    detail: str,
+) -> AuthenticatedTeacher:
+    if identity.roles.isdisjoint(allowed_roles):
+        raise HTTPException(status_code=403, detail=detail)
+    return identity
+
+
+def require_teacher(
+    identity: Annotated[AuthenticatedTeacher, Depends(require_governed_user)],
+) -> AuthenticatedTeacher:
+    """Require the governed Teacher role for curriculum and planning workflows."""
+    return _require_any_role(
+        identity,
+        frozenset({"teacher"}),
+        "Teacher role is required for this workflow",
+    )
+
+
+def require_school_reporting_admin(
+    identity: Annotated[AuthenticatedTeacher, Depends(require_governed_user)],
+) -> AuthenticatedTeacher:
+    """Allow school or platform administrators to read aggregate school reporting."""
+    return _require_any_role(
+        identity,
+        frozenset({"school_admin", "platform_admin"}),
+        "School Administrator or Platform Administrator role is required",
+    )
+
+
+def require_platform_admin(
+    identity: Annotated[AuthenticatedTeacher, Depends(require_governed_user)],
+) -> AuthenticatedTeacher:
+    """Require the governed Platform Administrator role for system and cost reporting."""
+    return _require_any_role(
+        identity,
+        frozenset({"platform_admin"}),
+        "Platform Administrator role is required",
+    )

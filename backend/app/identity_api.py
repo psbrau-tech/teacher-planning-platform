@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from .auth import AuthenticatedTeacher, require_teacher
+from .auth import AuthenticatedTeacher, require_governed_user
 
 router = APIRouter(prefix="/api/v1/session", tags=["authentication"])
 
@@ -19,7 +19,7 @@ class SessionIdentityRead(BaseModel):
 
 @router.get("", response_model=SessionIdentityRead)
 def current_session(
-    identity: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
+    identity: Annotated[AuthenticatedTeacher, Depends(require_governed_user)],
 ) -> SessionIdentityRead:
     if identity.school_id is None:
         raise RuntimeError("Governed identity is missing a school")

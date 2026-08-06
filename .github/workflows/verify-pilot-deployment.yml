@@ -1,0 +1,72 @@
+name: Verify TPP Pilot Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: Reason for performing the read-only deployment verification
+        required: true
+        type: string
+      expected_commit:
+        description: Optional exact commit SHA expected to be deployed
+        required: false
+        default: ''
+        type: string
+      verify_public_hostname:
+        description: Verify https://planner.guidedscholar.ai after DNS and TLS are complete
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: tpp-pilot-verification
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify deployed pilot without mutation
+    runs-on: ubuntu-latest
+    environment: tpp-pilot
+    env:
+      AWS_REGION: ${{ vars.TPP_AWS_REGION || 'us-east-2' }}
+      AWS_ROLE_ARN: ${{ vars.TPP_AWS_ROLE_ARN }}
+      STACK_NAME: ${{ vars.TPP_CLOUDFORMATION_STACK || 'TeacherPlanningPlatformPilot' }}
+      ECR_REPOSITORY: ${{ vars.TPP_ECR_REPOSITORY || 'teacher-planning-platform-pilot' }}
+      ECS_CLUSTER: ${{ vars.TPP_ECS_CLUSTER || 'teacher-planning-platform-pilot' }}
+      ECS_SERVICE: ${{ vars.TPP_ECS_SERVICE || 'teacher-planning-platform-pilot' }}
+      TASK_DEFINITION_FAMILY: ${{ vars.TPP_TASK_DEFINITION_FAMILY || 'teacher-planning-platform-pilot' }}
+      CERTIFICATE_ARN: ${{ vars.TPP_CERTIFICATE_ARN }}
+      PILOT_HOSTNAME: planner.guidedscholar.ai
+      EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+      VERIFY_PUBLIC_HOSTNAME: ${{ inputs.verify_public_hostname }}
+      REASON: ${{ inputs.reason }}
+    steps:
+      - name: Validate protected AWS identity configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$AWS_ROLE_ARN" ]]; then
+            echo "Missing required tpp-pilot value: AWS_ROLE_ARN" >&2
+            echo "Run Preflight TPP Pilot Release after correcting the protected environment." >&2
+            exit 1
+          fi
+          if [[ "$AWS_REGION" != "us-east-2" ]]; then
+            echo "TPP pilot verification is locked to us-east-2." >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials through GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Run read-only deployment verification
+        shell: bash
+        run: bash scripts/verify_pilot_deployment.sh

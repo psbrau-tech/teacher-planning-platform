@@ -35,18 +35,20 @@ jobs:
       TASK_DEFINITION_FAMILY: ${{ vars.TPP_TASK_DEFINITION_FAMILY || 'teacher-planning-platform-pilot' }}
       SUPABASE_URL_SECRET_ID: ${{ vars.TPP_SUPABASE_URL_SECRET_ID || 'tpp/pilot/supabase-url' }}
       SUPABASE_ANON_KEY_SECRET_ID: ${{ vars.TPP_SUPABASE_ANON_KEY_SECRET_ID || 'tpp/pilot/supabase-anon-key' }}
-      SUPABASE_SERVICE_ROLE_KEY_SECRET_ID: ${{ vars.TPP_SUPABASE_SERVICE_ROLE_KEY_SECRET_ID || 'tpp/pilot/supabase-service-role-key' }}
-      DATABASE_URL_SECRET_ID: ${{ vars.TPP_DATABASE_URL_SECRET_ID || 'tpp/pilot/database-url' }}
-      OPENAI_API_KEY_SECRET_ID: ${{ vars.TPP_OPENAI_API_KEY_SECRET_ID || 'tpp/pilot/openai-api-key' }}
-      GOOGLE_OAUTH_CLIENT_ID_SECRET_ID: ${{ vars.TPP_GOOGLE_OAUTH_CLIENT_ID_SECRET_ID || 'tpp/pilot/google-oauth-client-id' }}
-      GOOGLE_OAUTH_CLIENT_SECRET_SECRET_ID: ${{ vars.TPP_GOOGLE_OAUTH_CLIENT_SECRET_SECRET_ID || 'tpp/pilot/google-oauth-client-secret' }}
     steps:
       - name: Validate controlled TLS configuration
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -z "$AWS_ROLE_ARN" ]]; then
-            echo "TPP_AWS_ROLE_ARN is required in the tpp-pilot environment." >&2
+          missing=()
+          for name in AWS_ROLE_ARN STACK_NAME ECR_REPOSITORY ECS_CLUSTER ECS_SERVICE TASK_DEFINITION_FAMILY; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing required tpp-pilot values: %s\n' "${missing[*]}" >&2
+            echo "Run Preflight TPP Pilot Release after correcting the protected environment." >&2
             exit 1
           fi
           if [[ "$AWS_REGION" != "us-east-2" ]]; then
@@ -66,14 +68,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          status="$(aws acm describe-certificate \
+          certificate_json="$(aws acm describe-certificate \
             --certificate-arn "${{ inputs.certificate_arn }}" \
-            --query Certificate.Status \
-            --output text)"
-          domain="$(aws acm describe-certificate \
-            --certificate-arn "${{ inputs.certificate_arn }}" \
-            --query Certificate.DomainName \
-            --output text)"
+            --output json)"
+          status="$(jq -r '.Certificate.Status' <<<"$certificate_json")"
+          domain="$(jq -r '.Certificate.DomainName' <<<"$certificate_json")"
           if [[ "$status" != "ISSUED" ]]; then
             echo "The ACM certificate is not issued. Current status: $status" >&2
             exit 1
@@ -83,21 +82,25 @@ jobs:
             exit 1
           fi
 
-      - name: Resolve existing exact image and pilot secrets
+      - name: Resolve existing exact image and runtime secrets
         id: values
         shell: bash
         run: |
           set -euo pipefail
-          task_definition="$(aws ecs describe-services \
+          service_json="$(aws ecs describe-services \
             --cluster "$ECS_CLUSTER" \
             --services "$ECS_SERVICE" \
-            --query 'services[0].taskDefinition' \
-            --output text)"
+            --output json)"
+          if [[ "$(jq '.failures | length' <<<"$service_json")" != "0" ]]; then
+            jq '.failures' <<<"$service_json" >&2
+            exit 1
+          fi
+          task_definition="$(jq -r '.services[0].taskDefinition' <<<"$service_json")"
           image="$(aws ecs describe-task-definition \
             --task-definition "$task_definition" \
             --query 'taskDefinition.containerDefinitions[0].image' \
             --output text)"
-          if [[ -z "$image" || "$image" == "None" || "$image" != *@sha256:* ]]; then
+          if [[ -z "$image" || "$image" == "None" || ! "$image" =~ @sha256:[0-9a-f]{64}$ ]]; then
             echo "The active pilot service is not using an immutable ECR digest." >&2
             exit 1
           fi
@@ -112,15 +115,14 @@ jobs:
               --secret-id "$secret_id" \
               --query ARN \
               --output text)"
+            if [[ -z "$arn" || "$arn" == "None" ]]; then
+              echo "Unable to resolve runtime secret: $secret_id" >&2
+              exit 1
+            fi
             echo "$output_name=$arn" >> "$GITHUB_OUTPUT"
           }
           resolve_secret supabase_url "$SUPABASE_URL_SECRET_ID"
           resolve_secret supabase_anon_key "$SUPABASE_ANON_KEY_SECRET_ID"
-          resolve_secret supabase_service_role_key "$SUPABASE_SERVICE_ROLE_KEY_SECRET_ID"
-          resolve_secret database_url "$DATABASE_URL_SECRET_ID"
-          resolve_secret openai_api_key "$OPENAI_API_KEY_SECRET_ID"
-          resolve_secret google_oauth_client_id "$GOOGLE_OAUTH_CLIENT_ID_SECRET_ID"
-          resolve_secret google_oauth_client_secret "$GOOGLE_OAUTH_CLIENT_SECRET_SECRET_ID"
 
       - name: Attach HTTPS listener and HTTP redirect through CloudFormation
         shell: bash
@@ -142,30 +144,110 @@ jobs:
               PublicBaseUrl=https://planner.guidedscholar.ai \
               AllowedEmailDomains=anniston.k12.al.us \
               SupabaseUrlSecretArn="${{ steps.values.outputs.supabase_url }}" \
-              SupabaseAnonKeySecretArn="${{ steps.values.outputs.supabase_anon_key }}" \
-              SupabaseServiceRoleKeySecretArn="${{ steps.values.outputs.supabase_service_role_key }}" \
-              DatabaseUrlSecretArn="${{ steps.values.outputs.database_url }}" \
-              OpenAiApiKeySecretArn="${{ steps.values.outputs.openai_api_key }}" \
-              GoogleOauthClientIdSecretArn="${{ steps.values.outputs.google_oauth_client_id }}" \
-              GoogleOauthClientSecretSecretArn="${{ steps.values.outputs.google_oauth_client_secret }}"
+              SupabaseAnonKeySecretArn="${{ steps.values.outputs.supabase_anon_key }}"
           aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
+
+      - name: Verify listeners, certificate, target health, and active image
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          stack_json="$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --output json)"
+          output_value() {
+            jq -r --arg key "$1" '
+              .Stacks[0].Outputs[]
+              | select(.OutputKey == $key)
+              | .OutputValue
+            ' <<<"$stack_json"
+          }
+          alb_arn="$(output_value LoadBalancerArn)"
+          alb_dns="$(output_value LoadBalancerDnsName)"
+          target_group_arn="$(output_value TargetGroupArn)"
+          listeners="$(aws elbv2 describe-listeners \
+            --load-balancer-arn "$alb_arn" \
+            --output json)"
+
+          https_listener_arn="$(jq -r '
+            .Listeners[]
+            | select(.Port == 443 and .Protocol == "HTTPS")
+            | .ListenerArn
+          ' <<<"$listeners")"
+          https_certificate="$(jq -r '
+            .Listeners[]
+            | select(.Port == 443 and .Protocol == "HTTPS")
+            | .Certificates[0].CertificateArn
+          ' <<<"$listeners")"
+          http_action="$(jq -r '
+            .Listeners[]
+            | select(.Port == 80 and .Protocol == "HTTP")
+            | .DefaultActions[0].Type
+          ' <<<"$listeners")"
+          if [[ -z "$https_listener_arn" || "$https_listener_arn" == "null" ]]; then
+            echo "The HTTPS listener was not created." >&2
+            exit 1
+          fi
+          if [[ "$https_certificate" != "${{ inputs.certificate_arn }}" ]]; then
+            echo "The HTTPS listener does not reference the approved certificate." >&2
+            exit 1
+          fi
+          if [[ "$http_action" != "redirect" ]]; then
+            echo "The HTTP listener is not configured to redirect to HTTPS." >&2
+            exit 1
+          fi
+
+          target_health="$(aws elbv2 describe-target-health \
+            --target-group-arn "$target_group_arn" \
+            --output json)"
+          target_count="$(jq '.TargetHealthDescriptions | length' <<<"$target_health")"
+          unhealthy_count="$(jq '[.TargetHealthDescriptions[] | select(.TargetHealth.State != "healthy")] | length' <<<"$target_health")"
+          if [[ "$target_count" -lt 1 || "$unhealthy_count" != "0" ]]; then
+            jq '.TargetHealthDescriptions' <<<"$target_health" >&2
+            exit 1
+          fi
+
+          active_task_definition="$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --query 'services[0].taskDefinition' \
+            --output text)"
+          active_task_json="$(aws ecs describe-task-definition \
+            --task-definition "$active_task_definition" \
+            --output json)"
+          active_image="$(jq -r '.taskDefinition.containerDefinitions[0].image' <<<"$active_task_json")"
+          if [[ "$active_image" != "${{ steps.values.outputs.image }}" ]]; then
+            echo "TLS attachment changed the accepted application image." >&2
+            exit 1
+          fi
+          secret_names="$(jq -r '.taskDefinition.containerDefinitions[0].secrets[].name' <<<"$active_task_json" | sort)"
+          if [[ "$secret_names" != $'TPP_SUPABASE_ANON_KEY\nTPP_SUPABASE_URL' ]]; then
+            echo "TLS attachment produced an unexpected ECS runtime secret set:" >&2
+            echo "$secret_names" >&2
+            exit 1
+          fi
+
+          echo "alb_dns=$alb_dns" >> "$GITHUB_OUTPUT"
+          echo "active_task_definition=$active_task_definition" >> "$GITHUB_OUTPUT"
+          echo "healthy_targets=$target_count" >> "$GITHUB_OUTPUT"
 
       - name: Publish DNS handoff
         shell: bash
         run: |
           set -euo pipefail
-          alb_dns="$(aws cloudformation describe-stacks \
-            --stack-name "$STACK_NAME" \
-            --query "Stacks[0].Outputs[?OutputKey=='LoadBalancerDnsName'].OutputValue | [0]" \
-            --output text)"
           {
             echo "## TPP pilot TLS enabled"
             echo "- Reason: ${{ inputs.reason }}"
             echo "- Certificate: \`${{ inputs.certificate_arn }}\`"
             echo "- Active image preserved: \`${{ steps.values.outputs.image }}\`"
             echo "- Prior task definition: \`${{ steps.values.outputs.task_definition }}\`"
-            echo "- ALB DNS target: \`$alb_dns\`"
-            echo "- Manual Cloudflare record now required: CNAME \`planner\` → \`$alb_dns\`, DNS only during acceptance."
+            echo "- Active task definition: \`${{ steps.verify.outputs.active_task_definition }}\`"
+            echo "- Healthy targets: \`${{ steps.verify.outputs.healthy_targets }}\`"
+            echo "- Runtime secret mappings: \`TPP_SUPABASE_URL, TPP_SUPABASE_ANON_KEY\`"
+            echo "- High-privilege runtime credentials: \`not injected\`"
+            echo "- ALB DNS target: \`${{ steps.verify.outputs.alb_dns }}\`"
+            echo "- Manual GitHub environment update required: set \`TPP_CERTIFICATE_ARN\` to this certificate ARN."
+            echo "- Manual Cloudflare record required: CNAME \`planner\` → \`${{ steps.verify.outputs.alb_dns }}\`, DNS only during acceptance."
             echo "- Keep the ACM validation CNAME in place."
-            echo "- Route 53 migration remains deferred and must move \`guidedscholar.ai\` and \`planner.guidedscholar.ai\` together."
+            echo "- Route 53 migration remains deferred and must move the complete \`guidedscholar.ai\` zone together."
           } >> "$GITHUB_STEP_SUMMARY"
