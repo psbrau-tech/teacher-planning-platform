@@ -101,7 +101,7 @@ class _FakeReportingClient:
                     "input_tokens": 1000,
                     "output_tokens": 400,
                     "cached_tokens": 100,
-                    "estimated_cost_usd": "0.25",
+                    "estimated_cost_usd": 0.25,
                     "accepted_outputs": 4,
                     "discarded_outputs": 1,
                 }
@@ -127,4 +127,4 @@ def test_governed_reporting_views_are_normalized(monkeypatch: pytest.MonkeyPatch
     assert usage.assignments_configured == 7
     assert usage.data_boundary == "teacher-and-curriculum-only"
     assert len(costs) == 1
-    assert costs[0].estimated_cost_usd == "0.25"
+    assert str(costs[0].estimated_cost_usd) == "0.25"
