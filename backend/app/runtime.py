@@ -11,7 +11,7 @@ from starlette.concurrency import run_in_threadpool
 
 from .auth import load_governed_identity, verify_supabase_access_token
 from .main import app
-from .role_policy import required_legacy_roles
+from .role_policy import required_legacy_roles, retired_legacy_replacement
 from .settings import get_settings
 
 _PROTECTED_LEGACY_PREFIXES = (
@@ -35,11 +35,11 @@ async def protect_legacy_production_routes(
     request: Request,
     call_next: Callable[[Request], Awaitable[Response]],
 ) -> Response:
-    """Require governed authentication and roles on legacy production routes.
+    """Require governed roles and retire synthetic-only production surfaces.
 
     Live workflow routers enforce equivalent boundaries through FastAPI dependencies.
-    This production-only layer closes synthetic, document, and legacy reporting surfaces
-    without changing the deterministic unit-test application imported from main.
+    This production-only layer protects document/template routes and prevents the
+    deterministic synthetic fixtures retained for unit tests from becoming live APIs.
     """
     if request.url.path.startswith(_PROTECTED_LEGACY_PREFIXES):
         authorization = request.headers.get("authorization", "")
@@ -73,6 +73,16 @@ async def protect_legacy_production_routes(
             return JSONResponse(
                 status_code=403,
                 content={"detail": "Authenticated role is not authorized for this endpoint"},
+            )
+
+        replacement = retired_legacy_replacement(request.url.path)
+        if replacement is not None:
+            return JSONResponse(
+                status_code=410,
+                content={
+                    "detail": "This synthetic legacy endpoint is retired in production",
+                    "replacement": replacement,
+                },
             )
     return await call_next(request)
 
