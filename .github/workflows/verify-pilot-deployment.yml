@@ -1,0 +1,343 @@
+name: Verify TPP Pilot Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: Reason for performing the read-only deployment verification
+        required: true
+        type: string
+      expected_commit:
+        description: Optional exact commit SHA expected to be deployed
+        required: false
+        default: ''
+        type: string
+      verify_public_hostname:
+        description: Verify https://planner.guidedscholar.ai after DNS and TLS are complete
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: tpp-pilot-verification
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify deployed pilot without mutation
+    runs-on: ubuntu-latest
+    environment: tpp-pilot
+    env:
+      AWS_REGION: ${{ vars.TPP_AWS_REGION || 'us-east-2' }}
+      AWS_ROLE_ARN: ${{ vars.TPP_AWS_ROLE_ARN }}
+      STACK_NAME: ${{ vars.TPP_CLOUDFORMATION_STACK || 'TeacherPlanningPlatformPilot' }}
+      ECR_REPOSITORY: ${{ vars.TPP_ECR_REPOSITORY || 'teacher-planning-platform-pilot' }}
+      ECS_CLUSTER: ${{ vars.TPP_ECS_CLUSTER || 'teacher-planning-platform-pilot' }}
+      ECS_SERVICE: ${{ vars.TPP_ECS_SERVICE || 'teacher-planning-platform-pilot' }}
+      TASK_DEFINITION_FAMILY: ${{ vars.TPP_TASK_DEFINITION_FAMILY || 'teacher-planning-platform-pilot' }}
+      CERTIFICATE_ARN: ${{ vars.TPP_CERTIFICATE_ARN }}
+      PILOT_HOSTNAME: planner.guidedscholar.ai
+    steps:
+      - name: Validate verification configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in AWS_ROLE_ARN STACK_NAME ECR_REPOSITORY ECS_CLUSTER ECS_SERVICE TASK_DEFINITION_FAMILY; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing required tpp-pilot values: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+          if [[ "$AWS_REGION" != "us-east-2" ]]; then
+            echo "TPP pilot verification is locked to us-east-2." >&2
+            exit 1
+          fi
+          if [[ -n "${{ inputs.expected_commit }}" && ! "${{ inputs.expected_commit }}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "expected_commit must be a full 40-character lowercase Git SHA." >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials through GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify CloudFormation stack and outputs
+        id: stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          stack_status="$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query 'Stacks[0].StackStatus' \
+            --output text)"
+          case "$stack_status" in
+            CREATE_COMPLETE|UPDATE_COMPLETE) ;;
+            *)
+              echo "Pilot stack is not in an accepted stable state: $stack_status" >&2
+              exit 1
+              ;;
+          esac
+
+          output_value() {
+            aws cloudformation describe-stacks \
+              --stack-name "$STACK_NAME" \
+              --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue | [0]" \
+              --output text
+          }
+
+          alb_dns="$(output_value LoadBalancerDnsName)"
+          target_group_arn="$(output_value TargetGroupArn)"
+          stack_cluster="$(output_value EcsClusterName)"
+          stack_service="$(output_value EcsServiceName)"
+          stack_task_definition="$(output_value TaskDefinitionArn)"
+          data_boundary="$(output_value DataBoundary)"
+
+          for value in "$alb_dns" "$target_group_arn" "$stack_cluster" "$stack_service" "$stack_task_definition"; do
+            if [[ -z "$value" || "$value" == "None" || "$value" == "not-deployed" ]]; then
+              echo "A required deployed CloudFormation output is absent." >&2
+              exit 1
+            fi
+          done
+          if [[ "$stack_cluster" != "$ECS_CLUSTER" || "$stack_service" != "$ECS_SERVICE" ]]; then
+            echo "CloudFormation ECS outputs do not match the governed environment configuration." >&2
+            exit 1
+          fi
+          if [[ "$data_boundary" != "teacher-and-curriculum-only" ]]; then
+            echo "Unexpected deployment data boundary: $data_boundary" >&2
+            exit 1
+          fi
+
+          echo "status=$stack_status" >> "$GITHUB_OUTPUT"
+          echo "alb_dns=$alb_dns" >> "$GITHUB_OUTPUT"
+          echo "target_group_arn=$target_group_arn" >> "$GITHUB_OUTPUT"
+          echo "task_definition=$stack_task_definition" >> "$GITHUB_OUTPUT"
+
+      - name: Verify ECS service stability
+        id: service
+        shell: bash
+        run: |
+          set -euo pipefail
+          service_json="$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --output json)"
+          failures="$(jq '.failures | length' <<<"$service_json")"
+          if [[ "$failures" != "0" ]]; then
+            jq '.failures' <<<"$service_json" >&2
+            exit 1
+          fi
+
+          desired="$(jq -r '.services[0].desiredCount' <<<"$service_json")"
+          running="$(jq -r '.services[0].runningCount' <<<"$service_json")"
+          pending="$(jq -r '.services[0].pendingCount' <<<"$service_json")"
+          rollout_state="$(jq -r '.services[0].deployments[] | select(.status == "PRIMARY") | .rolloutState' <<<"$service_json")"
+          task_definition="$(jq -r '.services[0].taskDefinition' <<<"$service_json")"
+
+          if [[ "$desired" -lt 1 || "$running" != "$desired" || "$pending" != "0" ]]; then
+            echo "ECS counts are not stable: desired=$desired running=$running pending=$pending" >&2
+            exit 1
+          fi
+          if [[ "$rollout_state" != "COMPLETED" ]]; then
+            echo "Primary ECS deployment is not complete: $rollout_state" >&2
+            exit 1
+          fi
+          if [[ "$task_definition" != "${{ steps.stack.outputs.task_definition }}" ]]; then
+            echo "ECS service task definition does not match the CloudFormation output." >&2
+            exit 1
+          fi
+
+          echo "desired=$desired" >> "$GITHUB_OUTPUT"
+          echo "running=$running" >> "$GITHUB_OUTPUT"
+          echo "task_definition=$task_definition" >> "$GITHUB_OUTPUT"
+
+      - name: Verify exact image and task-definition security boundary
+        id: image
+        shell: bash
+        run: |
+          set -euo pipefail
+          task_json="$(aws ecs describe-task-definition \
+            --task-definition "${{ steps.service.outputs.task_definition }}" \
+            --output json)"
+          image="$(jq -r '.taskDefinition.containerDefinitions[0].image' <<<"$task_json")"
+          if [[ ! "$image" =~ @sha256:[0-9a-f]{64}$ ]]; then
+            echo "The deployed image is not pinned to an immutable sha256 digest: $image" >&2
+            exit 1
+          fi
+
+          boundary="$(jq -r '
+            .taskDefinition.containerDefinitions[0].environment[]
+            | select(.name == "TPP_DATA_BOUNDARY")
+            | .value
+          ' <<<"$task_json")"
+          if [[ "$boundary" != "teacher-and-curriculum-only" ]]; then
+            echo "Task definition has an unexpected data boundary: $boundary" >&2
+            exit 1
+          fi
+
+          forbidden='TPP_SUPABASE_URL|TPP_SUPABASE_ANON_KEY|TPP_SUPABASE_SERVICE_ROLE_KEY|TPP_DATABASE_URL|TPP_OPENAI_API_KEY|TPP_GOOGLE_OAUTH_CLIENT_ID|TPP_GOOGLE_OAUTH_CLIENT_SECRET'
+          plaintext_forbidden="$(jq -r '.taskDefinition.containerDefinitions[0].environment[].name' <<<"$task_json" \
+            | grep -E "$forbidden" || true)"
+          if [[ -n "$plaintext_forbidden" ]]; then
+            echo "A secret-bearing variable is present in plaintext task-definition environment values:" >&2
+            echo "$plaintext_forbidden" >&2
+            exit 1
+          fi
+
+          secret_names="$(jq -r '.taskDefinition.containerDefinitions[0].secrets[].name' <<<"$task_json" | sort)"
+          for required in \
+            TPP_DATABASE_URL \
+            TPP_GOOGLE_OAUTH_CLIENT_ID \
+            TPP_GOOGLE_OAUTH_CLIENT_SECRET \
+            TPP_OPENAI_API_KEY \
+            TPP_SUPABASE_ANON_KEY \
+            TPP_SUPABASE_SERVICE_ROLE_KEY \
+            TPP_SUPABASE_URL; do
+            if ! grep -qx "$required" <<<"$secret_names"; then
+              echo "Required ECS secret mapping is missing: $required" >&2
+              exit 1
+            fi
+          done
+
+          digest="${image##*@}"
+          image_details="$(aws ecr describe-images \
+            --repository-name "$ECR_REPOSITORY" \
+            --image-ids imageDigest="$digest" \
+            --output json)"
+          if [[ "$(jq '.imageDetails | length' <<<"$image_details")" != "1" ]]; then
+            echo "The deployed digest is not present exactly once in the governed ECR repository." >&2
+            exit 1
+          fi
+
+          expected_commit="${{ inputs.expected_commit }}"
+          if [[ -n "$expected_commit" ]]; then
+            if ! jq -e --arg commit "$expected_commit" \
+              '.imageDetails[0].imageTags // [] | index($commit) != null' \
+              <<<"$image_details" >/dev/null; then
+              echo "The deployed digest is not tagged with expected commit $expected_commit." >&2
+              exit 1
+            fi
+          fi
+
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Verify target health and application logs
+        id: runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          target_health="$(aws elbv2 describe-target-health \
+            --target-group-arn "${{ steps.stack.outputs.target_group_arn }}" \
+            --output json)"
+          target_count="$(jq '.TargetHealthDescriptions | length' <<<"$target_health")"
+          unhealthy_count="$(jq '[.TargetHealthDescriptions[] | select(.TargetHealth.State != "healthy")] | length' <<<"$target_health")"
+          if [[ "$target_count" -lt 1 || "$unhealthy_count" != "0" ]]; then
+            jq '.TargetHealthDescriptions' <<<"$target_health" >&2
+            exit 1
+          fi
+
+          log_group="/aws/ecs/$TASK_DEFINITION_FAMILY"
+          retention="$(aws logs describe-log-groups \
+            --log-group-name-prefix "$log_group" \
+            --query "logGroups[?logGroupName=='$log_group'].retentionInDays | [0]" \
+            --output text)"
+          if [[ "$retention" != "30" ]]; then
+            echo "Expected a 30-day application log-group retention; found $retention." >&2
+            exit 1
+          fi
+          stream_count="$(aws logs describe-log-streams \
+            --log-group-name "$log_group" \
+            --order-by LastEventTime \
+            --descending \
+            --max-items 5 \
+            --query 'length(logStreams)' \
+            --output text)"
+          if [[ "$stream_count" -lt 1 ]]; then
+            echo "No application log stream exists in $log_group." >&2
+            exit 1
+          fi
+
+          echo "healthy_targets=$target_count" >> "$GITHUB_OUTPUT"
+          echo "log_group=$log_group" >> "$GITHUB_OUTPUT"
+
+      - name: Verify certificate metadata when configured
+        id: certificate
+        if: ${{ env.CERTIFICATE_ARN != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          certificate_json="$(aws acm describe-certificate \
+            --certificate-arn "$CERTIFICATE_ARN" \
+            --output json)"
+          domain="$(jq -r '.Certificate.DomainName' <<<"$certificate_json")"
+          status="$(jq -r '.Certificate.Status' <<<"$certificate_json")"
+          if [[ "$domain" != "$PILOT_HOSTNAME" ]]; then
+            echo "Configured certificate does not cover $PILOT_HOSTNAME." >&2
+            exit 1
+          fi
+          case "$status" in
+            ISSUED|PENDING_VALIDATION) ;;
+            *)
+              echo "Certificate is not in an accepted state: $status" >&2
+              exit 1
+              ;;
+          esac
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Verify public HTTPS hostname
+        if: ${{ inputs.verify_public_hostname }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$CERTIFICATE_ARN" ]]; then
+            echo "TPP_CERTIFICATE_ARN is required for public HTTPS verification." >&2
+            exit 1
+          fi
+          if [[ "${{ steps.certificate.outputs.status }}" != "ISSUED" ]]; then
+            echo "The certificate must be ISSUED before public HTTPS verification." >&2
+            exit 1
+          fi
+          resolved="$(getent ahostsv4 "$PILOT_HOSTNAME" | awk 'NR==1 {print $1}')"
+          if [[ -z "$resolved" ]]; then
+            echo "$PILOT_HOSTNAME does not currently resolve." >&2
+            exit 1
+          fi
+          curl --fail --silent --show-error \
+            --max-time 20 \
+            "https://$PILOT_HOSTNAME/health" >/dev/null
+
+      - name: Publish read-only verification record
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## TPP pilot deployment verification"
+            echo "- Reason: ${{ inputs.reason }}"
+            echo "- Verification commit: \`$GITHUB_SHA\`"
+            echo "- Stack status: \`${{ steps.stack.outputs.status }}\`"
+            echo "- ECS desired/running: \`${{ steps.service.outputs.desired }}/${{ steps.service.outputs.running }}\`"
+            echo "- Healthy targets: \`${{ steps.runtime.outputs.healthy_targets }}\`"
+            echo "- Immutable image: \`${{ steps.image.outputs.image }}\`"
+            echo "- Task definition: \`${{ steps.service.outputs.task_definition }}\`"
+            echo "- Log group: \`${{ steps.runtime.outputs.log_group }}\` with 30-day retention"
+            if [[ -n "$CERTIFICATE_ARN" ]]; then
+              echo "- Certificate status: \`${{ steps.certificate.outputs.status }}\`"
+            else
+              echo "- Certificate metadata: not configured in TPP_CERTIFICATE_ARN"
+            fi
+            echo "- Public HTTPS checked: \`${{ inputs.verify_public_hostname }}\`"
+            echo "- Data boundary: \`teacher-and-curriculum-only\`"
+            echo "- Result: read-only verification passed; no AWS resource was changed"
+          } >> "$GITHUB_STEP_SUMMARY"
