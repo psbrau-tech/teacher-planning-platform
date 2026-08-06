@@ -39,11 +39,6 @@ jobs:
       CERTIFICATE_ARN: ${{ vars.TPP_CERTIFICATE_ARN }}
       SUPABASE_URL_SECRET_ID: ${{ vars.TPP_SUPABASE_URL_SECRET_ID || 'tpp/pilot/supabase-url' }}
       SUPABASE_ANON_KEY_SECRET_ID: ${{ vars.TPP_SUPABASE_ANON_KEY_SECRET_ID || 'tpp/pilot/supabase-anon-key' }}
-      SUPABASE_SERVICE_ROLE_KEY_SECRET_ID: ${{ vars.TPP_SUPABASE_SERVICE_ROLE_KEY_SECRET_ID || 'tpp/pilot/supabase-service-role-key' }}
-      DATABASE_URL_SECRET_ID: ${{ vars.TPP_DATABASE_URL_SECRET_ID || 'tpp/pilot/database-url' }}
-      OPENAI_API_KEY_SECRET_ID: ${{ vars.TPP_OPENAI_API_KEY_SECRET_ID || 'tpp/pilot/openai-api-key' }}
-      GOOGLE_OAUTH_CLIENT_ID_SECRET_ID: ${{ vars.TPP_GOOGLE_OAUTH_CLIENT_ID_SECRET_ID || 'tpp/pilot/google-oauth-client-id' }}
-      GOOGLE_OAUTH_CLIENT_SECRET_SECRET_ID: ${{ vars.TPP_GOOGLE_OAUTH_CLIENT_SECRET_SECRET_ID || 'tpp/pilot/google-oauth-client-secret' }}
     steps:
       - name: Validate controlled bootstrap configuration
         shell: bash
@@ -76,7 +71,7 @@ jobs:
       - name: Validate CloudFormation template
         run: aws cloudformation validate-template --template-body file://infra/pilot-stack.yml
 
-      - name: Resolve exact Secrets Manager ARNs
+      - name: Resolve exact runtime secret ARNs
         id: secrets
         shell: bash
         run: |
@@ -90,18 +85,13 @@ jobs:
               --query ARN \
               --output text)"
             if [[ -z "$arn" || "$arn" == "None" ]]; then
-              echo "Unable to resolve secret: $secret_id" >&2
+              echo "Unable to resolve runtime secret: $secret_id" >&2
               exit 1
             fi
             echo "$output_name=$arn" >> "$GITHUB_OUTPUT"
           }
           resolve_secret supabase_url "$SUPABASE_URL_SECRET_ID"
           resolve_secret supabase_anon_key "$SUPABASE_ANON_KEY_SECRET_ID"
-          resolve_secret supabase_service_role_key "$SUPABASE_SERVICE_ROLE_KEY_SECRET_ID"
-          resolve_secret database_url "$DATABASE_URL_SECRET_ID"
-          resolve_secret openai_api_key "$OPENAI_API_KEY_SECRET_ID"
-          resolve_secret google_oauth_client_id "$GOOGLE_OAUTH_CLIENT_ID_SECRET_ID"
-          resolve_secret google_oauth_client_secret "$GOOGLE_OAUTH_CLIENT_SECRET_SECRET_ID"
 
       - name: Inspect existing pilot stack
         id: existing
@@ -173,12 +163,7 @@ jobs:
               DeployService=false \
               CertificateArn="$CERTIFICATE_ARN" \
               SupabaseUrlSecretArn="${{ steps.secrets.outputs.supabase_url }}" \
-              SupabaseAnonKeySecretArn="${{ steps.secrets.outputs.supabase_anon_key }}" \
-              SupabaseServiceRoleKeySecretArn="${{ steps.secrets.outputs.supabase_service_role_key }}" \
-              DatabaseUrlSecretArn="${{ steps.secrets.outputs.database_url }}" \
-              OpenAiApiKeySecretArn="${{ steps.secrets.outputs.openai_api_key }}" \
-              GoogleOauthClientIdSecretArn="${{ steps.secrets.outputs.google_oauth_client_id }}" \
-              GoogleOauthClientSecretSecretArn="${{ steps.secrets.outputs.google_oauth_client_secret }}"
+              SupabaseAnonKeySecretArn="${{ steps.secrets.outputs.supabase_anon_key }}"
 
       - name: Log in to Amazon ECR
         id: ecr
@@ -197,7 +182,7 @@ jobs:
           set -euo pipefail
           if [[ "${{ steps.existing.outputs.service_deployed }}" == "true" \
             && "${{ steps.existing.outputs.current_image }}" != "${{ steps.image.outputs.immutable_image }}" ]]; then
-            echo "Bootstrap cannot replace an existing service with a different commit." >&2
+            echo "Bootstrap cannot replace an existing service with a different commit or build configuration." >&2
             echo "Use Deploy TPP Pilot for an approved application update." >&2
             exit 1
           fi
@@ -223,12 +208,7 @@ jobs:
               PublicBaseUrl=https://planner.guidedscholar.ai \
               AllowedEmailDomains=anniston.k12.al.us \
               SupabaseUrlSecretArn="${{ steps.secrets.outputs.supabase_url }}" \
-              SupabaseAnonKeySecretArn="${{ steps.secrets.outputs.supabase_anon_key }}" \
-              SupabaseServiceRoleKeySecretArn="${{ steps.secrets.outputs.supabase_service_role_key }}" \
-              DatabaseUrlSecretArn="${{ steps.secrets.outputs.database_url }}" \
-              OpenAiApiKeySecretArn="${{ steps.secrets.outputs.openai_api_key }}" \
-              GoogleOauthClientIdSecretArn="${{ steps.secrets.outputs.google_oauth_client_id }}" \
-              GoogleOauthClientSecretSecretArn="${{ steps.secrets.outputs.google_oauth_client_secret }}"
+              SupabaseAnonKeySecretArn="${{ steps.secrets.outputs.supabase_anon_key }}"
 
       - name: Verify load balancer health and exact image
         id: verify
@@ -337,6 +317,7 @@ jobs:
             echo "## TPP pilot bootstrap"
             echo "- Reason: ${{ inputs.reason }}"
             echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- Build configuration fingerprint: \`${{ steps.image.outputs.build_config_fingerprint }}\`"
             echo "- Region: \`$AWS_REGION\`"
             echo "- Stack: \`$STACK_NAME\`"
             echo "- Existing deployed service: \`${{ steps.existing.outputs.service_deployed }}\`"
@@ -344,6 +325,8 @@ jobs:
             echo "- ALB DNS: \`${{ steps.verify.outputs.alb_dns }}\`"
             echo "- Image: \`${{ steps.image.outputs.immutable_image }}\`"
             echo "- Task definition: \`${{ steps.verify.outputs.task_definition }}\`"
+            echo "- Runtime secret mappings: \`TPP_SUPABASE_URL, TPP_SUPABASE_ANON_KEY\`"
+            echo "- High-privilege runtime credentials: \`not injected\`"
             echo "- Data boundary: teacher and curriculum data only; no student data"
             if [[ "${{ inputs.request_certificate }}" == "true" ]]; then
               echo "- ACM certificate: \`${{ steps.certificate.outputs.certificate_arn }}\`"
