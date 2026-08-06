@@ -10,7 +10,7 @@ from app.auth import (
     require_school_reporting_admin,
     require_teacher,
 )
-from app.runtime import _required_roles
+from app.role_policy import required_legacy_roles
 from app.settings import Settings
 
 
@@ -54,13 +54,13 @@ def test_cost_reporting_requires_platform_administrator() -> None:
 
 
 def test_legacy_route_roles_are_explicit() -> None:
-    assert _required_roles("/api/v1/admin/costs") == frozenset({"platform_admin"})
-    assert _required_roles("/api/v1/admin/summary") == frozenset(
+    assert required_legacy_roles("/api/v1/admin/costs") == frozenset({"platform_admin"})
+    assert required_legacy_roles("/api/v1/admin/summary") == frozenset(
         {"school_admin", "platform_admin"}
     )
-    assert _required_roles("/api/v1/documents/anniston-hqi-packet") == frozenset(
-        {"teacher"}
-    )
+    assert required_legacy_roles(
+        "/api/v1/documents/anniston-hqi-packet"
+    ) == frozenset({"teacher"})
 
 
 class _FakeReportingClient:
