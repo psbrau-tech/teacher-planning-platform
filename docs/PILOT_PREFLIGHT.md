@@ -36,7 +36,7 @@ The workflow is read-only. It does not retrieve secret values, write to Supabase
     - Google OAuth client ID
     - Google OAuth client secret
 11. The CloudFormation template passes AWS validation.
-12. The repository contains the expected Supabase migration set.
+12. The repository contains the complete timestamped Supabase migration set.
 
 ## Running the workflow
 
@@ -78,15 +78,31 @@ Create the missing secret or correct the corresponding optional secret-ID overri
 
 Treat this as a release defect. Do not proceed to bootstrap until the template validates in CI and in the preflight workflow.
 
+### Migration inventory change
+
+Any merged branch that adds a migration requires a new protected migration preview and application, even when earlier migration runs were successful. The current release adds a forward migration that aligns aggregate school reporting with active governed `profile_roles`.
+
+**Apply TPP Pilot Database Migrations** uses a pinned Supabase CLI version rather than the moving `latest` channel. The workflow always performs a dry-run preview; an approved apply run performs a final dry run afterward to confirm that no repository migration remains pending.
+
 ## Controlled sequence
 
 1. Merge the accepted release code.
-2. Apply reviewed Supabase migrations.
-3. Run the read-only preflight.
-4. Provision the governed staff access list.
-5. Run the preflight again before bootstrap if any AWS or GitHub environment value changed.
-6. Bootstrap the isolated AWS pilot stack and first exact image.
-7. Complete ACM, TLS, DNS, OAuth, and browser acceptance gates.
+2. Run **Apply TPP Pilot Database Migrations** with `dry_run_only=true` and review the exact pending list.
+3. Run an approved apply with `dry_run_only=false` only after the preview is accepted.
+4. Run the read-only preflight.
+5. Provision the governed staff access list.
+6. Run the preflight again before bootstrap if any AWS or GitHub environment value changed.
+7. Bootstrap the isolated AWS pilot stack and first exact image.
+8. Complete ACM, TLS, DNS, OAuth, deployment verification, and browser acceptance gates.
+
+## Retry boundaries
+
+- Preflight can be rerun safely because it is read-only.
+- Provisioning is transaction-safe and can update the same approved records.
+- Bootstrap can resume the same accepted commit after a partial failure, but it will not replace an existing service with a different commit.
+- **Deploy TPP Pilot** is the only workflow for application upgrades after bootstrap.
+- Repeated deployment of the same commit reuses its immutable ECR digest and does not force an unnecessary task-definition revision.
+- TLS attachment preserves and verifies the active exact image.
 
 ## Data boundary
 
