@@ -29,16 +29,24 @@ def _frontend_dist_path() -> Path:
     return Path(__file__).resolve().parents[2] / "frontend-dist"
 
 
+def _required_roles(path: str) -> frozenset[str]:
+    if path.startswith("/api/v1/admin/costs"):
+        return frozenset({"platform_admin"})
+    if path.startswith("/api/v1/admin"):
+        return frozenset({"school_admin", "platform_admin"})
+    return frozenset({"teacher"})
+
+
 @app.middleware("http")
 async def protect_legacy_production_routes(
     request: Request,
     call_next: Callable[[Request], Awaitable[Response]],
 ) -> Response:
-    """Require governed authentication for legacy routes without router dependencies.
+    """Require governed authentication and roles on legacy production routes.
 
-    The live workflow routers enforce the same requirement through FastAPI dependencies.
-    This production-only layer closes the remaining synthetic, document, and reporting
-    surfaces without changing the deterministic unit-test application imported from main.
+    Live workflow routers enforce equivalent boundaries through FastAPI dependencies.
+    This production-only layer closes synthetic, document, and legacy reporting surfaces
+    without changing the deterministic unit-test application imported from main.
     """
     if request.url.path.startswith(_PROTECTED_LEGACY_PREFIXES):
         authorization = request.headers.get("authorization", "")
@@ -55,7 +63,7 @@ async def protect_legacy_production_routes(
                 token.strip(),
                 settings,
             )
-            await run_in_threadpool(load_governed_identity, identity, settings)
+            governed = await run_in_threadpool(load_governed_identity, identity, settings)
         except PermissionError:
             return JSONResponse(
                 status_code=403,
@@ -65,6 +73,13 @@ async def protect_legacy_production_routes(
             return JSONResponse(
                 status_code=503,
                 content={"detail": "Pilot authorization service is unavailable"},
+            )
+
+        required = _required_roles(request.url.path)
+        if governed.roles.isdisjoint(required):
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Authenticated role is not authorized for this endpoint"},
             )
     return await call_next(request)
 
