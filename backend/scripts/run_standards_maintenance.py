@@ -6,7 +6,11 @@ import sys
 from datetime import date
 
 from app.settings import Settings
-from app.standards_maintenance import MaintenanceResult, StandardsMaintenanceError, service_role_client
+from app.standards_maintenance import (
+    MaintenanceResult,
+    StandardsMaintenanceError,
+    service_role_client,
+)
 from app.standards_monthly_run import (
     MonthlyStandardsRunResult,
     StandardsMonthlyRunError,
