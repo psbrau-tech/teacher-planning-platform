@@ -1,0 +1,145 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ValidatePilotTemplate",
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:ValidateTemplate",
+        "cloudformation:GetTemplateSummary"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ManageNamedPilotStack",
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:CreateChangeSet",
+        "cloudformation:DeleteChangeSet",
+        "cloudformation:DescribeChangeSet",
+        "cloudformation:ExecuteChangeSet",
+        "cloudformation:DescribeStacks",
+        "cloudformation:DescribeStackEvents",
+        "cloudformation:DescribeStackResource",
+        "cloudformation:DescribeStackResources",
+        "cloudformation:GetTemplate",
+        "cloudformation:ListStackResources",
+        "cloudformation:ListChangeSets"
+      ],
+      "Resource": [
+        "arn:aws:cloudformation:us-east-2:697091778129:stack/TeacherPlanningPlatformPilot/*",
+        "arn:aws:cloudformation:us-east-2:697091778129:changeSet/*/*"
+      ],
+      "Condition": {
+        "StringEqualsIfExists": {
+          "cloudformation:RoleArn": "arn:aws:iam::697091778129:role/TeacherPlanningPlatformPilotCloudFormationExecution"
+        }
+      }
+    },
+    {
+      "Sid": "PassExactCloudFormationExecutionRole",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::697091778129:role/TeacherPlanningPlatformPilotCloudFormationExecution",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "cloudformation.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "ReadCloudFormationExecutionRole",
+      "Effect": "Allow",
+      "Action": "iam:GetRole",
+      "Resource": "arn:aws:iam::697091778129:role/TeacherPlanningPlatformPilotCloudFormationExecution"
+    },
+    {
+      "Sid": "AuthenticateToEcr",
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Sid": "PushAndInspectExactPilotRepository",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:BatchGetImage",
+        "ecr:CompleteLayerUpload",
+        "ecr:DescribeImages",
+        "ecr:DescribeRepositories",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:InitiateLayerUpload",
+        "ecr:ListImages",
+        "ecr:PutImage",
+        "ecr:UploadLayerPart"
+      ],
+      "Resource": "arn:aws:ecr:us-east-2:697091778129:repository/teacher-planning-platform-pilot"
+    },
+    {
+      "Sid": "ReadPilotEcsState",
+      "Effect": "Allow",
+      "Action": [
+        "ecs:DescribeServices",
+        "ecs:DescribeTaskDefinition",
+        "ecs:DescribeTasks",
+        "ecs:ListTasks"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-2"
+        }
+      }
+    },
+    {
+      "Sid": "ReadPilotLoadBalancerState",
+      "Effect": "Allow",
+      "Action": [
+        "elasticloadbalancing:DescribeListeners",
+        "elasticloadbalancing:DescribeListenerCertificates",
+        "elasticloadbalancing:DescribeTargetHealth"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-2"
+        }
+      }
+    },
+    {
+      "Sid": "ManagePilotCertificateRequest",
+      "Effect": "Allow",
+      "Action": [
+        "acm:ListCertificates",
+        "acm:RequestCertificate"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-2"
+        }
+      }
+    },
+    {
+      "Sid": "ReadPilotCertificates",
+      "Effect": "Allow",
+      "Action": "acm:DescribeCertificate",
+      "Resource": "arn:aws:acm:us-east-2:697091778129:certificate/*"
+    },
+    {
+      "Sid": "ReadPilotApplicationLogs",
+      "Effect": "Allow",
+      "Action": [
+        "logs:DescribeLogGroups",
+        "logs:DescribeLogStreams"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-2"
+        }
+      }
+    }
+  ]
+}
