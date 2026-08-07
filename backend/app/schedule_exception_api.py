@@ -21,7 +21,7 @@ class ScheduleExceptionWrite(BaseModel):
     reason: str = Field(min_length=1, max_length=240)
 
     @model_validator(mode="after")
-    def validate_minutes(self) -> "ScheduleExceptionWrite":
+    def validate_minutes(self) -> ScheduleExceptionWrite:
         if self.is_available and self.instructional_minutes is None:
             raise ValueError("instructional_minutes is required when the day remains available")
         return self
@@ -88,7 +88,10 @@ def _to_read(record: JsonRecord) -> ScheduleExceptionRead:
             reason=str(record["reason"]),
         )
     except (KeyError, TypeError, ValueError) as error:
-        raise HTTPException(status_code=503, detail="Pilot data service returned invalid data") from error
+        raise HTTPException(
+            status_code=503,
+            detail="Pilot data service returned invalid data",
+        ) from error
 
 
 @router.get("", response_model=list[ScheduleExceptionRead])
