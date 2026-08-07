@@ -52,6 +52,21 @@ jobs:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Verify named stack read permission
+        shell: bash
+        run: |
+          set -euo pipefail
+          error_file="$(mktemp)"
+          if ! aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" >/dev/null 2>"$error_file"; then
+            if ! grep -q 'does not exist' "$error_file"; then
+              cat "$error_file" >&2
+              rm -f "$error_file"
+              exit 1
+            fi
+          fi
+          rm -f "$error_file"
+
       - name: Bootstrap through the dedicated CloudFormation execution role
         shell: bash
         run: bash scripts/bootstrap_pilot.sh
