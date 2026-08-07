@@ -2,6 +2,7 @@ import { createClient, type Session } from "@supabase/supabase-js";
 import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
 import "./styles.css";
+import { ScheduleExceptionPanel } from "./ScheduleExceptionPanel";
 
 type View =
   | "dashboard"
@@ -840,6 +841,17 @@ function App() {
               <button className="primary" disabled={!selectedAssignmentId || busy} onClick={() => void generatePlan()}>Generate week</button>
               <button className="secondary" disabled={!selectedAssignmentId || busy} onClick={() => void loadPlan()}>Reopen week</button>
             </div>
+            <ScheduleExceptionPanel
+              key={`${selectedAssignmentId}-${weekStart}`}
+              accessToken={session.access_token}
+              assignmentId={selectedAssignmentId}
+              weekStart={weekStart}
+              disabled={busy}
+              onChanged={() => {
+                setPlan([]);
+                setValidations({});
+              }}
+            />
             {plan.length > 0 && <div className="plan-list">{plan.map((lesson) => <article key={lesson.scheduled_lesson_id}><div><strong>{lesson.lesson_date}</strong><span>{lesson.planned_minutes} minutes</span></div><div><small>{lesson.unit_title}</small><h3>{lesson.lesson_title}</h3></div><span className="badge">Segment {lesson.segment_number}</span></article>)}</div>}
             <div className="section-heading compact draft-heading"><div><p className="eyebrow">Anniston HQI fields</p><h2>Planning narrative</h2><p className="supporting">Literacy Standards and ACT Preparation are required.</p></div><span className="badge">Draft revision {draftRevision ?? 0}</span></div>
             <div className="form-grid">
