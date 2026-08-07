@@ -17,6 +17,23 @@ _IGNORED_ACADEMIC_CATEGORIES = frozenset(
         "all standards and courses of study",
     }
 )
+_CATEGORY_ALIASES = {
+    "agriculture_food_and_natural_resources": "agriculture_food_natural_resources",
+    "architecture_and_construction": "architecture_construction",
+    "art_a_v_technology_and_communications": "arts_av_technology_communications",
+    "arts_a_v_technology_and_communications": "arts_av_technology_communications",
+    "business_management_and_administration": "business_management_administration",
+    "digital_literacy_and_computer_science": "digital_literacy_computer_science",
+    "driver_and_traffic_safety_education": "driver_traffic_safety",
+    "education_and_training": "education_training",
+    "foreign_languages": "world_languages",
+    "government_and_public_administration": "government_public_administration",
+    "health_education": "health",
+    "hospitality_and_tourism": "hospitality_tourism",
+    "law_public_safety_corrections_and_security": "law_public_safety_corrections_security",
+    "science_technology_engineering_and_mathematics": "stem",
+    "transportation_distribution_and_logistics": "transportation_distribution_logistics",
+}
 
 
 class StandardsCatalogDiscoveryError(RuntimeError):
@@ -139,7 +156,7 @@ def discover_academic_sources(html: str) -> tuple[DiscoveredStandardsSource, ...
             continue
         if _is_instructional_companion(link.text):
             continue
-        category_key = _slug(category)
+        category_key = _category_key(category)
         logical_document_key = _academic_document_key(category_key, link.text)
         candidates.append(
             _source(
@@ -166,7 +183,7 @@ def discover_cte_cos_sources(html: str) -> tuple[DiscoveredStandardsSource, ...]
         category = _clean(link.h3 or "")
         if not category or not _is_course_of_study_link(link.text):
             continue
-        category_key = _slug(category)
+        category_key = _category_key(category)
         logical_document_key = _cte_cos_document_key(category_key, link.text)
         candidates.append(
             _source(
@@ -195,7 +212,7 @@ def discover_cte_program_sources(html: str) -> tuple[DiscoveredStandardsSource, 
         category = _clean(link.h4 or "")
         if not category or "program guide" not in link.text.lower():
             continue
-        category_key = _slug(category)
+        category_key = _category_key(category)
         logical_program_key = _program_document_key(category_key, link.text)
         candidates.append(
             _source(
@@ -353,6 +370,11 @@ def _edition_rank(value: str) -> tuple[int, int]:
     if not years:
         return (0, 0)
     return (years[0], years[-1])
+
+
+def _category_key(value: str) -> str:
+    slug = _slug(value)
+    return _CATEGORY_ALIASES.get(slug, slug)
 
 
 def _slug(value: str) -> str:
