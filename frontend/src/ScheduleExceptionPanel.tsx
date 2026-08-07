@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 
 type ScheduleException = {
   id: string;
@@ -72,16 +72,20 @@ export function ScheduleExceptionPanel({
     });
   }, [assignmentId, weekStart, accessToken]);
 
-  async function saveException(event: React.FormEvent<HTMLFormElement>) {
+  async function saveException(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!assignmentId) return;
     setWorking(true);
     setNotice("");
     setError("");
     try {
-      const reducedMinutes = mode === "reduced" ? Number(minutes) : null;
-      if (mode === "reduced" && (!Number.isInteger(reducedMinutes) || reducedMinutes < 1)) {
-        throw new Error("Reduced instructional minutes must be a positive whole number.");
+      let reducedMinutes: number | null = null;
+      if (mode === "reduced") {
+        const parsedMinutes = Number(minutes);
+        if (!Number.isInteger(parsedMinutes) || parsedMinutes < 1) {
+          throw new Error("Reduced instructional minutes must be a positive whole number.");
+        }
+        reducedMinutes = parsedMinutes;
       }
       const response = await fetch(
         `/api/v1/schedule-exceptions/${encodeURIComponent(assignmentId)}/${exceptionDate}`,
