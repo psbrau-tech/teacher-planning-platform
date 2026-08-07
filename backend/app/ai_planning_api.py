@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import Annotated, Any, Literal, NoReturn, cast
+from typing import (
+    Annotated,
+    Any,
+    Literal,
+    NoReturn,
+    cast,
+)
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -194,7 +200,10 @@ def _assignment_context(
     return assignment_rows[0], scheduled_rows
 
 
-def _lesson_titles(client: SupabaseRestClient, scheduled_rows: list[JsonRecord]) -> dict[str, str]:
+def _lesson_titles(
+    client: SupabaseRestClient,
+    scheduled_rows: list[JsonRecord],
+) -> dict[str, str]:
     lesson_ids = sorted(
         {
             _required_text(row, "lesson_id")
@@ -240,12 +249,18 @@ def _build_context(
     if not selected:
         raise HTTPException(
             status_code=409,
-            detail="Select at least one approved standard before requesting AI planning assistance",
+            detail=(
+                "Select at least one approved standard before requesting "
+                "AI planning assistance"
+            ),
         )
     scheduled = [
         {
             "date": _required_text(row, "school_date"),
-            "lesson_title": lesson_titles.get(_required_text(row, "lesson_id"), "Scheduled lesson"),
+            "lesson_title": lesson_titles.get(
+                _required_text(row, "lesson_id"),
+                "Scheduled lesson",
+            ),
             "planned_minutes": _required_int(row, "planned_minutes"),
         }
         for row in scheduled_rows
@@ -290,15 +305,19 @@ def _record_usage(
         "teaching_assignment_id": str(assignment_id),
         "feature": _PLANNING_FEATURE,
         "model": model,
-        "input_tokens": usage.input_tokens if usage else 0,
-        "output_tokens": usage.output_tokens if usage else 0,
-        "cached_tokens": usage.cached_tokens if usage else 0,
-        "cache_write_tokens": usage.cache_write_tokens if usage else 0,
-        "estimated_cost_usd": str(usage.estimated_cost_usd if usage else Decimal("0")),
-        "retry_count": usage.retry_count if usage else 0,
+        "input_tokens": usage.input_tokens if usage is not None else 0,
+        "output_tokens": usage.output_tokens if usage is not None else 0,
+        "cached_tokens": usage.cached_tokens if usage is not None else 0,
+        "cache_write_tokens": usage.cache_write_tokens if usage is not None else 0,
+        "estimated_cost_usd": str(
+            usage.estimated_cost_usd if usage is not None else Decimal("0")
+        ),
+        "retry_count": usage.retry_count if usage is not None else 0,
         "succeeded": succeeded,
         "accepted_by_teacher": None,
-        "provider_response_id": usage.provider_response_id if usage else None,
+        "provider_response_id": (
+            usage.provider_response_id if usage is not None else None
+        ),
     }
     try:
         rows = _records(
@@ -357,7 +376,10 @@ def suggest_planning(
         except HTTPException as logging_error:
             raise HTTPException(
                 status_code=503,
-                detail="AI planning assistance failed and its usage record could not be saved",
+                detail=(
+                    "AI planning assistance failed and its usage record "
+                    "could not be saved"
+                ),
             ) from logging_error
         raise HTTPException(status_code=503, detail=str(error)) from error
 
