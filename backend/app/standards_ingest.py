@@ -12,7 +12,6 @@ from zipfile import BadZipFile, ZipFile
 import httpx
 from pypdf import PdfReader
 
-
 PARSER_VERSION = "gate-e-standards-v1"
 MAX_SOURCE_BYTES = 25 * 1024 * 1024
 SOURCE_TIMEOUT_SECONDS = 30.0
