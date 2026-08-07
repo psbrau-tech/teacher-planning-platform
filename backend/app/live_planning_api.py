@@ -68,6 +68,10 @@ def _string_list(value: object) -> list[str]:
     return [item for item in value if isinstance(item, str)]
 
 
+def _date_range_filter(column: str, start: date, end: date) -> str:
+    return f"({column}.gte.{start.isoformat()},{column}.lte.{end.isoformat()})"
+
+
 def _client(identity: AuthenticatedTeacher, settings: Settings) -> SupabaseRestClient:
     if identity.access_token is None:
         raise HTTPException(status_code=503, detail="Supabase session token is unavailable")
@@ -183,9 +187,7 @@ def _load_exceptions(
                     "calendar_days",
                     params={
                         "academic_year_id": f"eq.{_text(years[0], 'id')}",
-                        "school_date": (
-                            f"and(gte.{week_start.isoformat()},lte.{week_end.isoformat()})"
-                        ),
+                        "and": _date_range_filter("school_date", week_start, week_end),
                         "select": "school_date,is_instructional,event_type,event_name",
                     },
                 )
@@ -211,9 +213,7 @@ def _load_exceptions(
                 "schedule_exceptions",
                 params={
                     "teaching_assignment_id": f"eq.{assignment_id}",
-                    "exception_date": (
-                        f"and(gte.{week_start.isoformat()},lte.{week_end.isoformat()})"
-                    ),
+                    "and": _date_range_filter("exception_date", week_start, week_end),
                     "select": "exception_date,is_available,instructional_minutes,reason",
                 },
             )
@@ -258,9 +258,7 @@ def _read_persisted_plan(
                 "scheduled_lessons",
                 params={
                     "teaching_assignment_id": f"eq.{assignment_id}",
-                    "school_date": (
-                        f"and(gte.{week_start.isoformat()},lte.{week_end.isoformat()})"
-                    ),
+                    "and": _date_range_filter("school_date", week_start, week_end),
                     "select": (
                         "id,lesson_id,school_date,segment_index,planned_minutes,sequence_position"
                     ),
@@ -369,9 +367,7 @@ def generate_weekly_plan(
             "scheduled_lessons",
             params={
                 "teaching_assignment_id": f"eq.{payload.assignment_id}",
-                "school_date": (
-                    f"and(gte.{payload.week_start.isoformat()},lte.{week_end.isoformat()})"
-                ),
+                "and": _date_range_filter("school_date", payload.week_start, week_end),
             },
         )
         if generated:
