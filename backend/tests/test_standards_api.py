@@ -1,4 +1,3 @@
-from datetime import date
 from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
