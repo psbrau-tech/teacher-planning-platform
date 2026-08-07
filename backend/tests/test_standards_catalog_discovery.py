@@ -8,7 +8,6 @@ from app.standards_catalog_discovery import (
     discover_cte_program_sources,
 )
 
-
 ACADEMIC_HTML = """
 <html><body>
 <h3>English Language Arts</h3><h4>Title</h4>
