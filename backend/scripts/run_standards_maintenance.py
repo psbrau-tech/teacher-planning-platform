@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import argparse
-from datetime import date
 import json
 import sys
+from datetime import date
 
 from app.settings import Settings
 from app.standards_maintenance import (
@@ -36,7 +36,10 @@ def _parser() -> argparse.ArgumentParser:
         "--source",
         action="append",
         dest="sources",
-        help="Source key to process. Repeat for multiple sources; default processes all pilot sources.",
+        help=(
+            "Source key to process. Repeat for multiple sources; default processes "
+            "all pilot sources."
+        ),
     )
     parser.add_argument(
         "--check-date",
