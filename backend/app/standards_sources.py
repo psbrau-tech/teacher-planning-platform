@@ -7,10 +7,15 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 
-
 LANDING_TIMEOUT_SECONDS = 20.0
 MAX_LANDING_BYTES = 2 * 1024 * 1024
-_ALLOWED_HOSTS = frozenset({"www.alabamaachieves.org", "alabamaachieves.org", "usarmyjrotc.army.mil"})
+_ALLOWED_HOSTS = frozenset(
+    {
+        "www.alabamaachieves.org",
+        "alabamaachieves.org",
+        "usarmyjrotc.army.mil",
+    }
+)
 
 
 class StandardsSourceResolutionError(RuntimeError):
@@ -126,6 +131,14 @@ def _extract_year(value: str) -> int:
     return max(years, default=0)
 
 
+def _observed_year(anchor: _Anchor, document_url: str) -> str | None:
+    anchor_year = _extract_year(anchor.text)
+    if anchor_year:
+        return str(anchor_year)
+    url_year = _extract_year(document_url)
+    return str(url_year) if url_year else None
+
+
 def _resolve_alabama_ela(
     landing_url: str,
     anchors: tuple[_Anchor, ...],
@@ -141,12 +154,11 @@ def _resolve_alabama_ela(
         raise StandardsSourceResolutionError("Current Alabama English standards PDF was not found")
     selected = max(matches, key=lambda anchor: _extract_year(f"{anchor.text} {anchor.href}"))
     document_url, text = _absolute_document(landing_url, selected)
-    year = _extract_year(f"{text} {document_url}")
     return ResolvedStandardsSource(
         landing_url=landing_url,
         document_url=document_url,
         anchor_text=text,
-        observed_version=str(year) if year else None,
+        observed_version=_observed_year(selected, document_url),
     )
 
 
@@ -169,12 +181,11 @@ def _resolve_alabama_bma(
         raise StandardsSourceResolutionError("Current Alabama business standards PDF was not found")
     selected = max(matches, key=lambda anchor: _extract_year(f"{anchor.text} {anchor.href}"))
     document_url, text = _absolute_document(landing_url, selected)
-    year = _extract_year(f"{text} {document_url}")
     return ResolvedStandardsSource(
         landing_url=landing_url,
         document_url=document_url,
         anchor_text=text,
-        observed_version=str(year) if year else None,
+        observed_version=_observed_year(selected, document_url),
     )
 
 
@@ -196,7 +207,10 @@ def _resolve_army_jrotc(
     ]
     if not matches:
         raise StandardsSourceResolutionError("Current Army JROTC curriculum guide was not found")
-    selected = max(matches, key=lambda anchor: (_army_version(anchor), _extract_year(anchor.href)))
+    selected = max(
+        matches,
+        key=lambda anchor: (_army_version(anchor), _extract_year(anchor.href)),
+    )
     document_url, text = _absolute_document(landing_url, selected)
     version = _army_version(selected)
     return ResolvedStandardsSource(
