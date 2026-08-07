@@ -5,15 +5,26 @@ from datetime import date
 from typing import Literal
 from uuid import UUID
 
-from .standards_catalog_audit import record_catalog_discovery_error
+from .standards_catalog_audit import (
+    StandardsCatalogAuditError,
+    record_catalog_discovery_error,
+)
 from .standards_catalog_discovery import StandardsCatalogDiscoveryError
 from .standards_catalog_fetch import fetch_current_alabama_catalog
 from .standards_catalog_reconcile import (
     CatalogReconcileResult,
+    StandardsCatalogReconcileError,
     reconcile_and_record_catalog,
 )
-from .standards_governed_sources import list_governed_source_keys
-from .standards_maintenance import MaintenanceResult, stage_authoritative_source
+from .standards_governed_sources import (
+    GovernedStandardsSourceError,
+    list_governed_source_keys,
+)
+from .standards_maintenance import (
+    MaintenanceResult,
+    StandardsMaintenanceError,
+    stage_authoritative_source,
+)
 from .supabase_rest import SupabaseRestClient
 
 
@@ -68,25 +79,47 @@ def run_monthly_standards_validation(
         )
     except StandardsCatalogDiscoveryError as error:
         catalog_error = str(error)
-        catalog_error_run_id = record_catalog_discovery_error(
-            client,
-            detail=catalog_error,
-            check_month=check_date,
-            trigger_kind=trigger_kind,
-        )
+        try:
+            catalog_error_run_id = record_catalog_discovery_error(
+                client,
+                detail=catalog_error,
+                check_month=check_date,
+                trigger_kind=trigger_kind,
+            )
+        except StandardsCatalogAuditError as audit_error:
+            raise StandardsMonthlyRunError(
+                "Catalog discovery failed and its audit record could not be saved"
+            ) from audit_error
+    except StandardsCatalogReconcileError as error:
+        raise StandardsMonthlyRunError(
+            "Authoritative standards catalog reconciliation failed"
+        ) from error
 
-    governed_keys = source_keys if source_keys is not None else list_governed_source_keys(client)
+    try:
+        governed_keys = (
+            source_keys if source_keys is not None else list_governed_source_keys(client)
+        )
+    except GovernedStandardsSourceError as error:
+        raise StandardsMonthlyRunError(
+            "Governed standards source list could not be loaded"
+        ) from error
     if not governed_keys:
         raise StandardsMonthlyRunError("No governed standards sources are configured")
 
-    source_results = tuple(
-        stage_authoritative_source(
-            client,
-            source_key,
-            check_month=check_date,
+    try:
+        source_results = tuple(
+            stage_authoritative_source(
+                client,
+                source_key,
+                check_month=check_date,
+            )
+            for source_key in governed_keys
         )
-        for source_key in governed_keys
-    )
+    except StandardsMaintenanceError as error:
+        raise StandardsMonthlyRunError(
+            "A governed standards source could not be validated"
+        ) from error
+
     return MonthlyStandardsRunResult(
         check_date=check_date,
         trigger_kind=trigger_kind,
