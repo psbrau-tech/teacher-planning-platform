@@ -217,6 +217,34 @@ function App() {
     [curricula, selectedAssignment],
   );
 
+  function clearPlanningContext(assignment: Assignment | null, nextWeekStart: string) {
+    setPlan([]);
+    setValidations({});
+    setDraftRevision(null);
+    setDraft({
+      ...emptyDraft,
+      teacher: identity?.display_name ?? "",
+      course: assignment?.course_name ?? "",
+      grade: assignment?.grade_band ?? "",
+      week_of: nextWeekStart,
+    });
+  }
+
+  function selectPlanningAssignment(assignmentId: string) {
+    const assignment = assignments.find((item) => item.id === assignmentId) ?? null;
+    setSelectedAssignmentId(assignmentId);
+    clearPlanningContext(assignment, weekStart);
+    setError("");
+    setMessage("");
+  }
+
+  function selectPlanningWeek(nextWeekStart: string) {
+    setWeekStart(nextWeekStart);
+    clearPlanningContext(selectedAssignment, nextWeekStart);
+    setError("");
+    setMessage("");
+  }
+
   useEffect(() => {
     if (!supabase) return;
     void supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -419,6 +447,7 @@ function App() {
       });
       setAssignments((current) => [...current, created].sort((a, b) => a.course_name.localeCompare(b.course_name)));
       setSelectedAssignmentId(created.id);
+      clearPlanningContext(created, weekStart);
       setMessage(`${created.course_name} was configured.`);
       setView("plan");
     } catch (caught) {
@@ -703,7 +732,7 @@ function App() {
                         <h3>{assignment.course_name}</h3>
                         <p>{assignment.meeting_patterns.map((pattern) => `${pattern.start_time.slice(0, 5)}–${pattern.end_time.slice(0, 5)}`).join(", ")}</p>
                         <small>{curriculum ? `${curriculum.name} · ${curriculum.version}` : assignment.curriculum_id}</small>
-                        <button className="link-button" onClick={() => { setSelectedAssignmentId(assignment.id); setView("plan"); }}>Select course</button>
+                        <button className="link-button" onClick={() => { selectPlanningAssignment(assignment.id); setView("plan"); }}>Select course</button>
                       </article>
                     );
                   })}
@@ -806,8 +835,8 @@ function App() {
           <section className="panel">
             <div className="section-heading compact"><div><p className="eyebrow">Next-week preparation</p><h2>Weekly plan</h2><p className="supporting">Generate the schedule, then complete the required planning fields.</p></div></div>
             <div className="toolbar">
-              <label>Course<select value={selectedAssignmentId} onChange={(event) => setSelectedAssignmentId(event.target.value)}><option value="">Select a course</option>{assignments.map((assignment) => <option value={assignment.id} key={assignment.id}>{assignment.course_name}</option>)}</select></label>
-              <label>Week of<input type="date" value={weekStart} onChange={(event) => setWeekStart(event.target.value)} /></label>
+              <label>Course<select value={selectedAssignmentId} onChange={(event) => selectPlanningAssignment(event.target.value)}><option value="">Select a course</option>{assignments.map((assignment) => <option value={assignment.id} key={assignment.id}>{assignment.course_name}</option>)}</select></label>
+              <label>Week of<input type="date" value={weekStart} onChange={(event) => selectPlanningWeek(event.target.value)} /></label>
               <button className="primary" disabled={!selectedAssignmentId || busy} onClick={() => void generatePlan()}>Generate week</button>
               <button className="secondary" disabled={!selectedAssignmentId || busy} onClick={() => void loadPlan()}>Reopen week</button>
             </div>
@@ -844,7 +873,7 @@ function App() {
         {view === "validation" && isTeacher && (
           <section className="panel">
             <div className="section-heading compact"><div><p className="eyebrow">Friday validation</p><h2>Confirm what actually happened</h2><p className="supporting">Every scheduled lesson needs an outcome before the next week is generated.</p></div></div>
-            <div className="toolbar"><label>Course<select value={selectedAssignmentId} onChange={(event) => setSelectedAssignmentId(event.target.value)}><option value="">Select a course</option>{assignments.map((assignment) => <option value={assignment.id} key={assignment.id}>{assignment.course_name}</option>)}</select></label><label>Week of<input type="date" value={weekStart} onChange={(event) => setWeekStart(event.target.value)} /></label><button className="secondary" disabled={!selectedAssignmentId || busy} onClick={() => void loadPlan()}>Load scheduled lessons</button></div>
+            <div className="toolbar"><label>Course<select value={selectedAssignmentId} onChange={(event) => selectPlanningAssignment(event.target.value)}><option value="">Select a course</option>{assignments.map((assignment) => <option value={assignment.id} key={assignment.id}>{assignment.course_name}</option>)}</select></label><label>Week of<input type="date" value={weekStart} onChange={(event) => selectPlanningWeek(event.target.value)} /></label><button className="secondary" disabled={!selectedAssignmentId || busy} onClick={() => void loadPlan()}>Load scheduled lessons</button></div>
             {plan.length === 0 ? <div className="empty-state"><p>Load or generate the week before completing Friday validation.</p></div> : <div className="validation-list">{plan.map((lesson) => { const entry = validations[lesson.scheduled_lesson_id] ?? { status: "", reason: "", teacherNote: "", carryForward: false }; return <article className="validation-row" key={lesson.scheduled_lesson_id}><div className="day-block"><strong>{lesson.lesson_date}</strong><span>{lesson.planned_minutes} minutes</span></div><div className="lesson-block"><small>{lesson.unit_title}</small><strong>{lesson.lesson_title}</strong><label>Status<select value={entry.status} onChange={(event) => { const status = event.target.value as LessonStatus | ""; updateValidation(lesson.scheduled_lesson_id, { status, carryForward: status === "missed" }); }}><option value="">Select outcome</option><option value="completed">Completed</option><option value="modified">Modified</option><option value="missed">Missed</option><option value="skipped">Skipped / not needed</option></select></label><label>Reason or note<input value={entry.reason} required={entry.status === "missed"} placeholder={entry.status === "missed" ? "Required for a missed lesson" : "Optional"} onChange={(event) => updateValidation(lesson.scheduled_lesson_id, { reason: event.target.value })} /></label><label>Teacher reflection<input value={entry.teacherNote} placeholder="What should change next time?" onChange={(event) => updateValidation(lesson.scheduled_lesson_id, { teacherNote: event.target.value })} /></label><label className="check"><input type="checkbox" checked={entry.carryForward || entry.status === "missed"} disabled={entry.status === "completed" || entry.status === "skipped" || entry.status === "missed"} onChange={(event) => updateValidation(lesson.scheduled_lesson_id, { carryForward: event.target.checked })} />Carry this lesson forward</label></div></article>; })}</div>}
             <div className="action-bar"><div><strong>{plan.filter((lesson) => !validations[lesson.scheduled_lesson_id]?.status).length} lessons still pending</strong><span>Missed lessons automatically lead next week&apos;s queue.</span></div><button className="primary" disabled={!plan.length || plan.some((lesson) => !validations[lesson.scheduled_lesson_id]?.status) || busy} onClick={() => void saveValidation()}>Complete Friday validation</button></div>
           </section>
