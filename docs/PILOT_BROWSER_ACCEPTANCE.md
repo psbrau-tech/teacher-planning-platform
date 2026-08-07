@@ -19,7 +19,7 @@ The acceptance boundary is teacher and curriculum data only. Do not enter studen
 |---|---|---|
 | Platform Owner | `platform_admin`, `teacher` | Same authenticated session visibly exposes both owner and teacher capabilities |
 | School Administrator | `school_admin` | Administrator capabilities are available without teacher or platform-owner controls unless separately approved |
-| Volunteer Teacher | `teacher` | Complete weekly planning, validation, and export workflow |
+| Volunteer Teacher | `teacher` | Complete weekly planning, standards/AI assistance, validation, and export workflow |
 | Unapproved school account | none | Authentication may succeed at the identity provider, but application authorization must be denied |
 | Non-school account | none | School-domain restriction or authorization layer must deny access |
 
@@ -48,11 +48,14 @@ Complete one record for each test session.
 
 1. Capture only the minimum evidence required to prove the result.
 2. Redact school-account email addresses when evidence will leave the protected acceptance record.
-3. Do not capture access tokens, authorization headers, browser storage, Supabase keys, AWS account credentials, or staff access-list JSON.
+3. Do not capture access tokens, authorization headers, browser storage, Supabase keys, AWS account credentials, staff access-list JSON, or OpenAI API keys.
 4. Use synthetic curriculum and planning content during acceptance.
 5. Record the exact deployed image digest and task definition before beginning.
 6. A failed test is not accepted because a later step happened to work; record the failure and retest after correction.
 7. Do not combine Platform Owner, administrator, and teacher evidence into one persona unless the governed account intentionally holds the corresponding concurrent roles.
+8. AI-assisted planning remains teacher-controlled: suggestions must not silently overwrite saved teacher content.
+9. Current standards must be traceable to an authoritative source and version/effective date. Runtime planning must remain usable if the external standards source is temporarily unavailable.
+10. Each authoritative standards source must be automatically revalidated on the first workday of every month. A changed source is staged for review and does not silently replace the currently approved snapshot.
 
 ## Gate A — Operational baseline
 
@@ -114,21 +117,47 @@ Use the next approved instructional week and enter only synthetic instructional 
 | PLAN-09 | Attempt an outdated revision save, when reproducible | Stale revision is rejected rather than overwriting newer work | Result note | |
 | PLAN-10 | Work on the second assignment | First assignment remains unchanged | Comparison note | |
 
-## Gate E — Anniston document exports
+## Gate E — Authoritative standards and AI planning assistance
 
-Use the accepted branded templates and inspect the PDFs visually.
+This is a release-blocking pilot gate. Use only the bounded pilot course set: Army JROTC LET 1–4, English 10, and Business Administration. Where Alabama publishes the applicable course standards, ingest from the current authoritative Alabama source. For curriculum governed by another authoritative issuer, retain equivalent source/version provenance and any approved Alabama/local mapping.
+
+"Live standards" means the current authoritative standards are ingested into governed, refreshable snapshots. Weekly planning must not require the external standards website to be available at runtime.
+
+The first-workday monthly validation uses the configured Anniston school/business calendar when available; if no applicable business-day calendar is configured, the fallback is the first Monday-Friday weekday of the month. The check must compare the authoritative source against the currently approved snapshot and record `unchanged`, `changed`, or `unavailable/error`. A `changed` result creates or updates a pending candidate for human review; it does not replace the approved snapshot. An unavailable/error result leaves the approved snapshot usable and produces a visible operational record/alert.
+
+| ID | Action | Expected result | Evidence | Result |
+|---|---|---|---|---|
+| STD-AI-01 | Import/refresh the current authoritative standards for a pilot course | Standard codes/text are stored with authoritative source, version/effective date, and retrieval provenance | Source/import record | |
+| STD-AI-02 | Open a pilot teaching assignment | Only standards relevant to the mapped pilot course are offered; unrelated course standards do not appear | Screenshot | |
+| STD-AI-03 | Select one or more standards for a target week and save/reopen | Selected standard code/text persist exactly and remain traceable to the source snapshot | Before/after evidence | |
+| STD-AI-04 | Invoke AI planning assistance from selected standards | AI returns a teacher-reviewable draft grounded in the selected standards and existing curriculum/plan context | Screenshot/result note | |
+| STD-AI-05 | Review AI breakdown of standards | Suggestions include useful learning targets and Know/Understand/Do components aligned to the selected standard text | Comparison note | |
+| STD-AI-06 | Review additional HQI suggestions | Activities, assessments, resources, Literacy Standards/ACT connections where appropriate, and other suggested HQI fields remain visibly draft suggestions | Screenshot | |
+| STD-AI-07 | Accept some AI suggestions, edit one, and reject one | Only teacher-approved/edited values enter the working plan; rejected suggestions do not overwrite teacher content | Before/after evidence | |
+| STD-AI-08 | Complete Friday validation and invoke Weekly Reflection assistance | Reflection suggestion is grounded in the saved plan and validation outcome, is teacher-reviewable, and can be accepted/edited/rejected | Screenshot/result note | |
+| STD-AI-09 | Inspect AI usage/cost evidence | Model/request usage and estimated cost are logged without exposing API keys, tokens, or student data | Redacted usage record | |
+| STD-AI-10 | Force or simulate an AI-service failure | Clear bounded failure is shown; existing manual planning remains intact and usable with no partial overwrite | Result note | |
+| STD-AI-11 | Inspect AI request boundary | Inputs contain only governed teacher/curriculum/standards/planning/validation context; no student-specific data is sent | Redacted review note | |
+| STD-AI-12 | Temporarily make the external standards source unavailable or use the stored snapshot without refreshing | Previously ingested standards remain usable for weekly planning; refresh failure does not block existing standards use | Result note | |
+| STD-AI-13 | Execute/simulate the first-workday monthly standards validation | Every bounded authoritative source receives an auditable monthly result; unchanged sources remain unchanged, changed sources are staged pending review without replacing the approved snapshot, and unavailable/error sources leave the approved snapshot active while surfacing an alert | Scheduler/run record plus snapshot comparison | |
+
+Release-blocking defects include fabricated or altered standard text presented as authoritative, missing provenance, cross-course standards leakage, silent standards replacement after a source change, failure to execute the monthly first-workday validation, silent AI overwrite, student data entering AI requests, unbounded AI errors, or inability to plan when the external standards source is temporarily unavailable.
+
+## Gate F — Anniston document exports
+
+Use the accepted branded templates and inspect PDFs generated from the accepted standards/AI-assisted teacher-approved plan.
 
 | ID | Export | Expected result | Evidence | Result |
 |---|---|---|---|---|
-| EXP-01 | Instructional Framework | Correct identifiers, content, branding, and readable continuation pages | Export retained in protected evidence folder | |
+| EXP-01 | Instructional Framework | Correct identifiers, selected standards, teacher-approved content, branding, and readable continuation pages | Export retained in protected evidence folder | |
 | EXP-02 | Week at a Glance | Correct week, daily sequence, standards, ACT preparation, and branding | Export retained | |
-| EXP-03 | Weekly Reflection | Correct identifiers and reflection fields | Export retained | |
+| EXP-03 | Weekly Reflection | Correct identifiers and teacher-approved reflection fields | Export retained | |
 | EXP-04 | Combined packet | Documents appear in the approved order without truncation | Export retained | |
 | EXP-05 | Re-export after changing one field | New export contains the change and unrelated fields remain stable | Comparison note | |
 
-Release-blocking export defects include silent truncation, wrong teacher/course/week identifiers, unreadable text, missing required fields, broken branding, or incorrect packet order.
+Release-blocking export defects include silent truncation, wrong teacher/course/week identifiers, incorrect standards, unapproved AI draft text, unreadable text, missing required fields, broken branding, or incorrect packet order.
 
-## Gate F — Friday validation and carry-forward
+## Gate G — Friday validation and carry-forward
 
 | ID | Action | Expected result | Evidence | Result |
 |---|---|---|---|---|
@@ -141,7 +170,7 @@ Release-blocking export defects include silent truncation, wrong teacher/course/
 | VAL-07 | Inspect unrelated curriculum/assignment | Carry-forward did not change unrelated work | Comparison note | |
 | VAL-08 | Reopen the validated week | Validation record and statuses reload | Screenshot | |
 
-## Gate G — Data-boundary and failure behavior
+## Gate H — Data-boundary and failure behavior
 
 | ID | Test | Expected result | Evidence | Result |
 |---|---|---|---|---|
@@ -150,7 +179,7 @@ Release-blocking export defects include silent truncation, wrong teacher/course/
 | SAFE-03 | Trigger a validation error with incomplete required fields | Clear bounded error; no partial or corrupt save | Screenshot | |
 | SAFE-04 | Refresh during normal editing | Last completed save remains intact | Result note | |
 | SAFE-05 | Simulate temporary network loss before saving | User receives a clear failure and can retry without silent data loss | Result note | |
-| SAFE-06 | Inspect browser console during primary workflows | No secret, access token, or sensitive stack trace is logged | Redacted note | |
+| SAFE-06 | Inspect browser console during primary workflows | No secret, access token, API key, or sensitive stack trace is logged | Redacted note | |
 
 ## Defect record
 
@@ -176,7 +205,10 @@ For every failed test, record:
 
 The controlled pilot may proceed only when:
 
-- all operational, authentication, teacher-workflow, export, validation, and data-boundary gates pass;
+- all operational, authentication, curriculum/setup, weekly-planning, standards/AI-assistance, export, validation, and data-boundary gates pass;
+- the bounded pilot standards set is current, traceable to authoritative source/version provenance, usable from governed snapshots, and covered by a functioning first-workday monthly source-validation schedule;
+- any detected standards-source change is staged for human review rather than silently replacing the approved snapshot;
+- AI suggestions are demonstrably teacher-invoked, teacher-controlled, logged for usage/cost, and constrained to teacher/curriculum data with no student data;
 - no release-blocking or high-severity defect remains open;
 - the Platform Owner dual-role session is verified;
 - the unapproved-account denial is verified;
