@@ -425,7 +425,7 @@ def _persist_parsed_courses(
             grade_band=course.grade_band,
             pilot_allowed=pilot_allowed,
         )
-        entries = [
+        entries: list[dict[str, object]] = [
             {
                 "snapshot_id": str(snapshot_id),
                 "course_id": str(course_id),
