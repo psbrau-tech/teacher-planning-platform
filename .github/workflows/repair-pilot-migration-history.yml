@@ -159,7 +159,7 @@ jobs:
           set -euo pipefail
           cli=(npx --yes "supabase@$SUPABASE_CLI_VERSION")
           "${cli[@]}" migration list --db-url "$DATABASE_URL"
-          "${cli[@]}" db push --db-url "$DATABASE_URL" --dry-run
+          "${cli[@]}" db push --db-url "$DATABASE_URL" --dry-run --include-all
 
       - name: Publish applied repair record
         if: ${{ inputs.apply_repair && success() }}
@@ -173,6 +173,6 @@ jobs:
             echo "- Removed four verified duplicate remote timestamp records."
             echo "- Marked the four matching canonical repository versions as applied."
             echo "- Schema SQL executed: none"
-            echo "- A post-repair migration list and database-push dry run completed."
+            echo "- A post-repair migration list and database-push dry run completed with all reviewed pending versions included."
             echo "- Data boundary: teacher and curriculum data only; no student data"
           } >> "$GITHUB_STEP_SUMMARY"
