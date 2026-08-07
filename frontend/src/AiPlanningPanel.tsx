@@ -43,6 +43,7 @@ type SuggestionResponse = {
 type FieldDecision = "accepted" | "edited" | "rejected";
 
 type AiPlanningPanelProps = {
+  accessToken: string;
   assignmentId: string | null;
   weekStart: string;
   currentFields: CurrentPlanningFields;
@@ -74,6 +75,7 @@ async function readError(response: Response, fallback: string): Promise<string> 
 }
 
 export function AiPlanningPanel({
+  accessToken,
   assignmentId,
   weekStart,
   currentFields,
@@ -93,7 +95,7 @@ export function AiPlanningPanel({
   );
 
   const suggest = async () => {
-    if (!assignmentId) return;
+    if (!accessToken || !assignmentId) return;
     setWorking(true);
     setError(null);
     setMessage(null);
@@ -103,7 +105,10 @@ export function AiPlanningPanel({
           `/week/${encodeURIComponent(weekStart)}`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify(currentFields),
         },
       );
@@ -128,13 +133,16 @@ export function AiPlanningPanel({
     field: PlanningFieldKey,
     decision: FieldDecision,
   ): Promise<void> => {
-    if (!result) return;
+    if (!accessToken || !result) return;
     const response = await fetch(
       `/api/v1/ai/usage/${encodeURIComponent(result.usage_event_id)}` +
         `/decision/${encodeURIComponent(field)}`,
       {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({ decision }),
       },
     );
@@ -197,7 +205,7 @@ export function AiPlanningPanel({
         <button
           type="button"
           onClick={() => void suggest()}
-          disabled={!assignmentId || working}
+          disabled={!accessToken || !assignmentId || working}
         >
           {working ? "Generating suggestions…" : "Suggest planning"}
         </button>
@@ -236,7 +244,11 @@ export function AiPlanningPanel({
                   </div>
 
                   {decision ? (
-                    <p>{decision === "rejected" ? "Suggestion rejected." : "Applied to the working form. Save the weekly draft when ready."}</p>
+                    <p>
+                      {decision === "rejected"
+                        ? "Suggestion rejected."
+                        : "Applied to the working form. Save the weekly draft when ready."}
+                    </p>
                   ) : (
                     <>
                       <textarea
