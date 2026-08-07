@@ -32,12 +32,49 @@ EOF
     ;;
 esac
 
+validate_json_file() {
+  local path="$1"
+
+  if command -v python3 >/dev/null 2>&1 \
+    && python3 -c 'import json, sys; json.load(open(sys.argv[1], encoding="utf-8"))' "$path" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if command -v python >/dev/null 2>&1 \
+    && python -c 'import json, sys; json.load(open(sys.argv[1], encoding="utf-8"))' "$path" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if command -v node >/dev/null 2>&1; then
+    node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$path" >/dev/null
+    return 0
+  fi
+
+  if command -v powershell.exe >/dev/null 2>&1; then
+    local powershell_path="$path"
+    if command -v cygpath >/dev/null 2>&1; then
+      powershell_path="$(cygpath -w "$path")"
+    fi
+    powershell.exe -NoProfile -NonInteractive -Command \
+      '$ErrorActionPreference="Stop"; Get-Content -Raw -LiteralPath $args[0] | ConvertFrom-Json | Out-Null' \
+      "$powershell_path" >/dev/null
+    return 0
+  fi
+
+  echo "Unable to validate JSON because no supported JSON parser is available." >&2
+  echo "Install Python, Node.js, or run from Windows PowerShell/Git Bash where powershell.exe is available." >&2
+  return 1
+}
+
 for path in "$TRUST_POLICY" "$EXECUTION_POLICY" "$OIDC_POLICY"; do
   if [[ ! -f "$path" ]]; then
     echo "Required policy file is missing: $path" >&2
     exit 1
   fi
-  python3 -m json.tool "$path" >/dev/null
+  if ! validate_json_file "$path"; then
+    echo "Invalid policy JSON: $path" >&2
+    exit 1
+  fi
 done
 
 caller_account="$(aws sts get-caller-identity --query Account --output text)"
