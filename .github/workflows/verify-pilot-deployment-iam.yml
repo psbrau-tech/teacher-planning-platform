@@ -50,6 +50,8 @@ jobs:
             exit 1
           fi
 
+      - uses: actions/checkout@v4
+
       - name: Configure AWS credentials through GitHub OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -62,7 +64,7 @@ jobs:
           set -euo pipefail
           aws sts get-caller-identity >/dev/null
           aws iam get-role --role-name "${CLOUDFORMATION_ROLE_ARN##*/}" >/dev/null
-          aws cloudformation validate-template --template-body file://infra/pilot-stack.yml >/dev/null 2>&1 || true
+          aws cloudformation validate-template --template-body file://infra/pilot-stack.yml >/dev/null
 
           stack_error="$(mktemp)"
           if ! aws cloudformation describe-stacks --stack-name "$STACK_NAME" >/dev/null 2>"$stack_error"; then
