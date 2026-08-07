@@ -1,11 +1,11 @@
 import pytest
 
 from app.standards_catalog_discovery import (
-    StandardsCatalogDiscoveryError,
     discover_academic_sources,
     discover_alabama_catalogs,
     discover_cte_cos_sources,
     discover_cte_program_sources,
+    StandardsCatalogDiscoveryError,
 )
 
 
@@ -13,13 +13,16 @@ ACADEMIC_HTML = """
 <html><body>
 <h3>English Language Arts</h3><h4>Title</h4>
 <a href="/files/2021-ela.pdf">2021 Alabama Course of Study: English Language Arts</a>
-<a href="/files/ela-dig.pdf">English Language Arts K-12: Differentiated Instructional Guide (DIG)</a>
+<a href="/files/ela-dig.pdf">English Language Arts K-12: Differentiated
+Instructional Guide (DIG)</a>
 <h3>Arts Education</h3><h4>Title</h4>
 <a href="/files/2024-arts.pdf">2024 Arts Education Course of Study</a>
 <a href="/files/2017-arts.pdf">2017 Arts Education Course of Study</a>
 <h3>Digital Literacy and Computer Science</h3><h4>Title</h4>
-<a href="/files/2025-dlcs.pdf">2025 Alabama Course of Study: Digital Literacy and Computer Science</a>
-<a href="/files/2018-dlcs.pdf">2018 Alabama Course of Study: Digital Literacy and Computer Science</a>
+<a href="/files/2025-dlcs.pdf">2025 Alabama Course of Study: Digital Literacy
+and Computer Science</a>
+<a href="/files/2018-dlcs.pdf">2018 Alabama Course of Study: Digital Literacy
+and Computer Science</a>
 <h3>Mathematics</h3><h4>Title</h4>
 <a href="/files/2019-math.pdf">2019 Alabama Course of Study: Mathematics</a>
 <a href="/files/algebra-finance.pdf">Algebra with Finance</a>
@@ -45,7 +48,8 @@ CTE_COS_HTML = """
 <a href="/cte/2024-human-services.pdf">2024 Alabama Course of Study: Human Services</a>
 <a href="/cte/2022-cosmetology.pdf">2022 Alabama Course of Study: Cosmetology</a>
 <h3>Art, A/V Technology and Communications</h3><h4>Title</h4>
-<a href="/cte/2023-av.pdf">2023 Alabama Course of Study: Arts, A-V Technology, and Communications</a>
+<a href="/cte/2023-av.pdf">2023 Alabama Course of Study: Arts, A-V Technology,
+and Communications</a>
 <a href="/cte/2008-generic.pdf">2008 Alabama Course of Study Career and Technical Education</a>
 </body></html>
 """
