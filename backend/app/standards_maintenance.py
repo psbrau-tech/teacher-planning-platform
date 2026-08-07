@@ -211,7 +211,9 @@ def _optional_uuid(record: JsonRecord, key: str) -> UUID | None:
     try:
         return UUID(str(value))
     except ValueError as error:
-        raise StandardsMaintenanceError(f"Standards maintenance record has invalid {key}") from error
+        raise StandardsMaintenanceError(
+            f"Standards maintenance record has invalid {key}"
+        ) from error
 
 
 def _load_source(client: SupabaseRestClient, source_key: str) -> StandardSourceRecord:
@@ -312,7 +314,9 @@ def _stage_snapshot(
     existing = _find_snapshot_by_hash(client, source.id, fetched.source_sha256)
     if existing is not None:
         if existing.status != "pending":
-            raise StandardsMaintenanceError("Changed source fingerprint already has a non-pending snapshot")
+            raise StandardsMaintenanceError(
+                "Changed source fingerprint already has a non-pending snapshot"
+            )
         return existing.id
 
     provenance: dict[str, object] = {
@@ -345,7 +349,9 @@ def _stage_snapshot(
             )
         )
     except SupabaseRestError as error:
-        raise StandardsMaintenanceError("Standards candidate snapshot could not be staged") from error
+        raise StandardsMaintenanceError(
+            "Standards candidate snapshot could not be staged"
+        ) from error
     if len(rows) != 1:
         raise StandardsMaintenanceError("Standards candidate snapshot save returned invalid data")
     return UUID(_required_text(rows[0], "id"))
@@ -399,11 +405,16 @@ def _persist_parsed_courses(
             prefer="return=minimal",
         )
     except SupabaseRestError as error:
-        raise StandardsMaintenanceError("Existing candidate standards could not be reset") from error
+        raise StandardsMaintenanceError(
+            "Existing candidate standards could not be reset"
+        ) from error
 
     for course in parsed.courses:
         existing_allowed = _existing_course_allowed(client, source.id, course.course_key)
-        default_allowed = source.source_key == "alabama_ela_2021" or source.source_key == "army_jrotc_v12"
+        default_allowed = source.source_key in {
+            "alabama_ela_2021",
+            "army_jrotc_v12",
+        }
         pilot_allowed = existing_allowed if existing_allowed is not None else default_allowed
         course_id = _upsert_course(
             client,
@@ -435,7 +446,9 @@ def _persist_parsed_courses(
                 prefer="return=minimal",
             )
         except SupabaseRestError as error:
-            raise StandardsMaintenanceError("Parsed standards entries could not be saved") from error
+            raise StandardsMaintenanceError(
+                "Parsed standards entries could not be saved"
+            ) from error
 
 
 def _existing_course_allowed(
@@ -558,7 +571,9 @@ def _record_check(
                 "result_status": status,
                 "approved_snapshot_id_before": str(approved.id) if approved else None,
                 "observed_source_sha256": observed_source_sha256,
-                "candidate_snapshot_id": str(candidate_snapshot_id) if candidate_snapshot_id else None,
+                "candidate_snapshot_id": (
+                    str(candidate_snapshot_id) if candidate_snapshot_id else None
+                ),
                 "resolved_document_url": resolved_document_url,
                 "error_summary": error_summary,
                 "metadata": metadata,
