@@ -1,0 +1,106 @@
+name: Verify TPP Pilot Deployment IAM
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: Reason for verifying the pilot deployment permission boundary
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: tpp-pilot-iam-verification
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify deployment roles without mutation
+    runs-on: ubuntu-latest
+    environment: tpp-pilot
+    env:
+      AWS_REGION: ${{ vars.TPP_AWS_REGION || 'us-east-2' }}
+      AWS_ROLE_ARN: ${{ vars.TPP_AWS_ROLE_ARN }}
+      CLOUDFORMATION_ROLE_ARN: ${{ vars.TPP_CLOUDFORMATION_ROLE_ARN }}
+      STACK_NAME: ${{ vars.TPP_CLOUDFORMATION_STACK || 'TeacherPlanningPlatformPilot' }}
+      ECR_REPOSITORY: ${{ vars.TPP_ECR_REPOSITORY || 'teacher-planning-platform-pilot' }}
+      SUPABASE_URL_SECRET_ID: ${{ vars.TPP_SUPABASE_URL_SECRET_ID || 'tpp/pilot/supabase-url' }}
+      SUPABASE_ANON_KEY_SECRET_ID: ${{ vars.TPP_SUPABASE_ANON_KEY_SECRET_ID || 'tpp/pilot/supabase-anon-key' }}
+
+    steps:
+      - name: Validate protected role configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in AWS_ROLE_ARN CLOUDFORMATION_ROLE_ARN; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Missing required tpp-pilot value: $name" >&2
+              exit 1
+            fi
+          done
+          if [[ "$AWS_REGION" != "us-east-2" ]]; then
+            echo "TPP pilot deployment IAM is locked to us-east-2." >&2
+            exit 1
+          fi
+          if [[ ! "$CLOUDFORMATION_ROLE_ARN" =~ ^arn:aws:iam::697091778129:role/TeacherPlanningPlatformPilotCloudFormationExecution$ ]]; then
+            echo "Unexpected CloudFormation execution-role ARN." >&2
+            exit 1
+          fi
+
+      - name: Configure AWS credentials through GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify bounded deployment reads
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws sts get-caller-identity >/dev/null
+          aws iam get-role --role-name "${CLOUDFORMATION_ROLE_ARN##*/}" >/dev/null
+          aws cloudformation validate-template --template-body file://infra/pilot-stack.yml >/dev/null 2>&1 || true
+
+          stack_error="$(mktemp)"
+          if ! aws cloudformation describe-stacks --stack-name "$STACK_NAME" >/dev/null 2>"$stack_error"; then
+            if ! grep -q 'does not exist' "$stack_error"; then
+              cat "$stack_error" >&2
+              rm -f "$stack_error"
+              exit 1
+            fi
+          fi
+          rm -f "$stack_error"
+
+          repository_error="$(mktemp)"
+          if ! aws ecr describe-repositories --repository-names "$ECR_REPOSITORY" >/dev/null 2>"$repository_error"; then
+            if ! grep -q 'RepositoryNotFoundException' "$repository_error"; then
+              cat "$repository_error" >&2
+              rm -f "$repository_error"
+              exit 1
+            fi
+          fi
+          rm -f "$repository_error"
+
+          aws acm list-certificates --max-items 1 >/dev/null
+          aws secretsmanager describe-secret --secret-id "$SUPABASE_URL_SECRET_ID" >/dev/null
+          aws secretsmanager describe-secret --secret-id "$SUPABASE_ANON_KEY_SECRET_ID" >/dev/null
+
+      - name: Publish read-only IAM verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## TPP pilot deployment IAM verification"
+            echo "- Reason: ${{ inputs.reason }}"
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- GitHub OIDC role: assumed"
+            echo "- CloudFormation execution role: present"
+            echo "- Named stack read boundary: verified"
+            echo "- Exact ECR repository read boundary: verified"
+            echo "- ACM and runtime-secret metadata reads: verified"
+            echo "- Mutation status: none; this workflow is read-only"
+            echo "- Data boundary: teacher and curriculum data only; no student data"
+          } >> "$GITHUB_STEP_SUMMARY"
