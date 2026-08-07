@@ -3,7 +3,7 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-import app.ai_planning_api as ai_planning_api
+from app import ai_planning_api
 from app.ai_openai import AiServiceError, AiUsage, StructuredAiResult
 from app.auth import AuthenticatedTeacher, require_teacher
 from app.main import app
@@ -63,8 +63,8 @@ class FakeClient:
             return [{"id": str(LESSON_ID), "title": "Leadership styles and team roles"}]
         if resource == "ai_usage_events":
             return [{"id": str(USAGE_ID)}]
-        if resource == "rpc/record_ai_suggestion_decision":
-            return payload["target_decision"]
+        if resource == "rpc/record_ai_suggestion_decision" and isinstance(payload, dict):
+            return payload.get("target_decision")
         return []
 
 
@@ -153,7 +153,9 @@ def _install(monkeypatch, fake: FakeClient, *, selected: bool = True) -> None:
     monkeypatch.setattr(
         ai_planning_api,
         "get_assignment_standards",
-        lambda assignment_id, week_start, identity, settings: _standards(selected=selected),
+        lambda assignment_id, week_start, identity, settings: _standards(
+            selected=selected
+        ),
     )
     app.dependency_overrides[require_teacher] = _identity
 
@@ -167,7 +169,9 @@ def test_ai_planning_requires_teacher_identity() -> None:
     assert response.status_code == 401
 
 
-def test_ai_planning_context_is_server_grounded_and_excludes_identity_pii(monkeypatch) -> None:
+def test_ai_planning_context_is_server_grounded_and_excludes_identity_pii(
+    monkeypatch,
+) -> None:
     fake = FakeClient()
     _install(monkeypatch, fake)
     captured: list[dict[str, object]] = []
@@ -217,14 +221,16 @@ def test_ai_planning_context_is_server_grounded_and_excludes_identity_pii(monkey
     assert usage_call[3]["cache_write_tokens"] == 100
 
 
-def test_ai_planning_requires_at_least_one_selected_approved_standard(monkeypatch) -> None:
+def test_ai_planning_requires_at_least_one_selected_approved_standard(
+    monkeypatch,
+) -> None:
     fake = FakeClient()
     _install(monkeypatch, fake, selected=False)
-    monkeypatch.setattr(
-        ai_planning_api,
-        "request_structured_response",
-        lambda **kwargs: (_ for _ in ()).throw(AssertionError("AI must not be called")),
-    )
+
+    def fail_if_called(**kwargs):
+        raise AssertionError("AI must not be called")
+
+    monkeypatch.setattr(ai_planning_api, "request_structured_response", fail_if_called)
     try:
         response = client.post(
             f"/api/v1/ai/planning/{ASSIGNMENT_ID}/week/2026-08-10",
