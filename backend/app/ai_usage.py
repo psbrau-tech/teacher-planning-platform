@@ -34,7 +34,10 @@ def _required_uuid(record: JsonRecord, key: str) -> UUID:
     try:
         return UUID(value)
     except ValueError as error:
-        raise HTTPException(status_code=503, detail="AI usage logging returned invalid data") from error
+        raise HTTPException(
+            status_code=503,
+            detail="AI usage logging returned invalid data",
+        ) from error
 
 
 def record_ai_usage(
