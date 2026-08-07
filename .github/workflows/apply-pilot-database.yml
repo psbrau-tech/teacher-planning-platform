@@ -102,7 +102,7 @@ jobs:
           set -euo pipefail
           cli=(npx --yes "supabase@$SUPABASE_CLI_VERSION")
           "${cli[@]}" migration list --db-url "$DATABASE_URL"
-          "${cli[@]}" db push --db-url "$DATABASE_URL" --dry-run
+          "${cli[@]}" db push --db-url "$DATABASE_URL" --dry-run --include-all
 
       - name: Apply reviewed migrations
         if: ${{ !inputs.dry_run_only }}
@@ -112,9 +112,9 @@ jobs:
         run: |
           set -euo pipefail
           cli=(npx --yes "supabase@$SUPABASE_CLI_VERSION")
-          "${cli[@]}" db push --db-url "$DATABASE_URL" --yes
+          "${cli[@]}" db push --db-url "$DATABASE_URL" --include-all --yes
           "${cli[@]}" migration list --db-url "$DATABASE_URL"
-          "${cli[@]}" db push --db-url "$DATABASE_URL" --dry-run
+          "${cli[@]}" db push --db-url "$DATABASE_URL" --dry-run --include-all
 
       - name: Publish migration handoff
         shell: bash
@@ -130,6 +130,7 @@ jobs:
             echo "- Supabase CLI: \`$SUPABASE_CLI_VERSION\`"
             echo "- Repository migration count: \`$migration_count\`"
             echo "- Migration source: \`supabase/migrations\`"
+            echo "- Out-of-order handling: reviewed repository migrations are included explicitly"
             echo "- Data boundary: teacher and curriculum data only; no student data"
             if [[ "${{ inputs.dry_run_only }}" == "true" ]]; then
               echo "- No database mutation was authorized by this run."
