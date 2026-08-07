@@ -15,12 +15,11 @@ from app.standards_ingest import (
 )
 from app.standards_maintenance import (
     SnapshotRecord,
-    StandardSourceRecord,
     StandardsMaintenanceError,
+    StandardSourceRecord,
     stage_authoritative_source,
 )
 from app.standards_sources import ResolvedStandardsSource, StandardsSourceResolutionError
-
 
 SOURCE_ID = uuid4()
 APPROVED_ID = uuid4()
@@ -95,7 +94,11 @@ def test_unavailable_source_records_error_without_replacing_approved_snapshot(mo
         lambda client, **kwargs: recorded.append(kwargs),
     )
 
-    result = stage_authoritative_source(DummyClient(), SOURCE.source_key, check_month=date(2026, 8, 7))
+    result = stage_authoritative_source(
+        DummyClient(),
+        SOURCE.source_key,
+        check_month=date(2026, 8, 7),
+    )
 
     assert result.status == "unavailable_error"
     assert result.approved_snapshot_id == APPROVED_ID
@@ -126,7 +129,11 @@ def test_same_raw_fingerprint_is_unchanged_and_does_not_stage_candidate(monkeypa
         lambda *args, **kwargs: pytest.fail("unchanged source must not stage a candidate"),
     )
 
-    result = stage_authoritative_source(DummyClient(), SOURCE.source_key, check_month=date(2026, 8, 1))
+    result = stage_authoritative_source(
+        DummyClient(),
+        SOURCE.source_key,
+        check_month=date(2026, 8, 1),
+    )
 
     assert result.status == "unchanged"
     assert result.candidate_snapshot_id is None
