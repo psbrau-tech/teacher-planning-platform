@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from hashlib import sha256
 from typing import Any, cast
 
@@ -185,7 +185,9 @@ def _parse_structured_output(payload: JsonObject) -> JsonObject:
             try:
                 parsed = json.loads(text)
             except json.JSONDecodeError as error:
-                raise AiServiceError("AI planning assistance returned invalid structured data") from error
+                raise AiServiceError(
+                    "AI planning assistance returned invalid structured data"
+                ) from error
             if not isinstance(parsed, dict):
                 raise AiServiceError("AI planning assistance returned invalid structured data")
             return cast(JsonObject, parsed)
