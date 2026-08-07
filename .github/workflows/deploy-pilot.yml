@@ -24,6 +24,7 @@ jobs:
     env:
       AWS_REGION: ${{ vars.TPP_AWS_REGION || 'us-east-2' }}
       AWS_ROLE_ARN: ${{ vars.TPP_AWS_ROLE_ARN }}
+      CLOUDFORMATION_ROLE_ARN: ${{ vars.TPP_CLOUDFORMATION_ROLE_ARN }}
       STACK_NAME: ${{ vars.TPP_CLOUDFORMATION_STACK || 'TeacherPlanningPlatformPilot' }}
       ECR_REPOSITORY: ${{ vars.TPP_ECR_REPOSITORY || 'teacher-planning-platform-pilot' }}
       ECS_CLUSTER: ${{ vars.TPP_ECS_CLUSTER || 'teacher-planning-platform-pilot' }}
@@ -41,6 +42,7 @@ jobs:
           set -euo pipefail
           required=(
             AWS_ROLE_ARN
+            CLOUDFORMATION_ROLE_ARN
             STACK_NAME
             ECR_REPOSITORY
             ECS_CLUSTER
@@ -62,6 +64,11 @@ jobs:
           fi
           if [[ "$AWS_REGION" != "us-east-2" ]]; then
             echo "TPP pilot deployment is locked to us-east-2." >&2
+            exit 1
+          fi
+          expected_cloudformation_role="arn:aws:iam::697091778129:role/TeacherPlanningPlatformPilotCloudFormationExecution"
+          if [[ "$CLOUDFORMATION_ROLE_ARN" != "$expected_cloudformation_role" ]]; then
+            echo "TPP_CLOUDFORMATION_ROLE_ARN must match the approved pilot execution role." >&2
             exit 1
           fi
 
@@ -200,6 +207,7 @@ jobs:
           aws cloudformation deploy \
             --stack-name "$STACK_NAME" \
             --template-file infra/pilot-stack.yml \
+            --role-arn "$CLOUDFORMATION_ROLE_ARN" \
             --capabilities CAPABILITY_NAMED_IAM \
             --no-fail-on-empty-changeset \
             --parameter-overrides \
@@ -309,6 +317,7 @@ jobs:
             echo "- ECS cluster/service: \`$ECS_CLUSTER / $ECS_SERVICE\`"
             echo "- Healthy targets: \`${{ steps.verify.outputs.healthy_targets }}\`"
             echo "- Certificate preserved: \`${{ steps.baseline.outputs.certificate_arn || 'not-attached' }}\`"
+            echo "- CloudFormation execution role: \`$CLOUDFORMATION_ROLE_ARN\`"
             echo "- Rollback task definition: \`${{ steps.baseline.outputs.task_definition }}\`"
             echo "- CloudFormation and ECS task provenance: \`synchronized\`"
             echo "- Runtime secret mappings: \`TPP_SUPABASE_URL, TPP_SUPABASE_ANON_KEY\`"
