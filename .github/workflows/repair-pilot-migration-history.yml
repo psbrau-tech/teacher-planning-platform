@@ -1,0 +1,178 @@
+name: Repair TPP Pilot Migration History
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: Reason for reviewing or repairing the pilot migration history
+        required: true
+        type: string
+      apply_repair:
+        description: Apply the verified history-only timestamp reconciliation
+        required: true
+        default: false
+        type: boolean
+      confirmation:
+        description: Enter REPAIR_TPP_HISTORY when apply_repair is true
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: tpp-pilot-database
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    name: Reconcile verified pilot migration timestamps
+    runs-on: ubuntu-latest
+    environment: tpp-pilot
+    env:
+      AWS_REGION: ${{ vars.TPP_AWS_REGION || 'us-east-2' }}
+      AWS_ROLE_ARN: ${{ vars.TPP_AWS_ROLE_ARN }}
+      DATABASE_URL_SECRET_ID: ${{ vars.TPP_DATABASE_URL_SECRET_ID || 'tpp/pilot/database-url' }}
+      SUPABASE_CLI_VERSION: '2.101.0'
+
+    steps:
+      - name: Validate guarded repair configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in AWS_ROLE_ARN DATABASE_URL_SECRET_ID SUPABASE_CLI_VERSION; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing required tpp-pilot repair values: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+          if [[ "$AWS_REGION" != "us-east-2" ]]; then
+            echo "TPP pilot database operations are governed through us-east-2." >&2
+            exit 1
+          fi
+          if [[ "${{ inputs.apply_repair }}" == "true" \
+            && "${{ inputs.confirmation }}" != "REPAIR_TPP_HISTORY" ]]; then
+            echo "Enter REPAIR_TPP_HISTORY to authorize the history-only repair." >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Configure AWS credentials through GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Retrieve database connection without exposing it
+        id: database
+        shell: bash
+        run: |
+          set -euo pipefail
+          database_url="$(aws secretsmanager get-secret-value \
+            --secret-id "$DATABASE_URL_SECRET_ID" \
+            --query SecretString \
+            --output text)"
+          if [[ "$database_url" != postgres://* && "$database_url" != postgresql://* ]]; then
+            echo "The configured database secret is not a PostgreSQL connection URL." >&2
+            exit 1
+          fi
+          echo "::add-mask::$database_url"
+          printf 'database_url=%s\n' "$database_url" >> "$GITHUB_OUTPUT"
+
+      - name: Verify pinned Supabase CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(npx --yes "supabase@$SUPABASE_CLI_VERSION" --version)"
+          if [[ "$version" != "$SUPABASE_CLI_VERSION" ]]; then
+            echo "Supabase CLI version mismatch: expected $SUPABASE_CLI_VERSION, received $version" >&2
+            exit 1
+          fi
+
+      - name: Inspect current migration history
+        env:
+          DATABASE_URL: ${{ steps.database.outputs.database_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes "supabase@$SUPABASE_CLI_VERSION" migration list \
+            --db-url "$DATABASE_URL"
+
+      - name: Publish review-only repair plan
+        if: ${{ !inputs.apply_repair }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## TPP pilot migration-history repair preview"
+            echo "- Reason: ${{ inputs.reason }}"
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- Mutation status: none"
+            echo "- Verified remote aliases to remove from history:"
+            echo "  - \`20260805200342\` → canonical \`202608040001\`"
+            echo "  - \`20260805200357\` → canonical \`202608040002\`"
+            echo "  - \`20260805200405\` → canonical \`202608050001\`"
+            echo "  - \`20260805200432\` → canonical \`202608060001\`"
+            echo "- The repair changes only \`supabase_migrations.schema_migrations\`; it does not run or revert schema SQL."
+            echo "- Data boundary: teacher and curriculum data only; no student data"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Replace verified remote aliases with canonical local versions
+        if: ${{ inputs.apply_repair }}
+        env:
+          DATABASE_URL: ${{ steps.database.outputs.database_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cli=(npx --yes "supabase@$SUPABASE_CLI_VERSION")
+          "${cli[@]}" migration repair \
+            20260805200342 \
+            20260805200357 \
+            20260805200405 \
+            20260805200432 \
+            --status reverted \
+            --db-url "$DATABASE_URL"
+          "${cli[@]}" migration repair \
+            202608040001 \
+            202608040002 \
+            202608050001 \
+            202608060001 \
+            --status applied \
+            --db-url "$DATABASE_URL"
+
+      - name: Verify reconciled history and preview pending migrations
+        if: ${{ inputs.apply_repair }}
+        env:
+          DATABASE_URL: ${{ steps.database.outputs.database_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cli=(npx --yes "supabase@$SUPABASE_CLI_VERSION")
+          "${cli[@]}" migration list --db-url "$DATABASE_URL"
+          "${cli[@]}" db push --db-url "$DATABASE_URL" --dry-run
+
+      - name: Publish applied repair record
+        if: ${{ inputs.apply_repair && success() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## TPP pilot migration-history repair"
+            echo "- Reason: ${{ inputs.reason }}"
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- Removed four verified duplicate remote timestamp records."
+            echo "- Marked the four matching canonical repository versions as applied."
+            echo "- Schema SQL executed: none"
+            echo "- A post-repair migration list and database-push dry run completed."
+            echo "- Data boundary: teacher and curriculum data only; no student data"
+          } >> "$GITHUB_STEP_SUMMARY"
