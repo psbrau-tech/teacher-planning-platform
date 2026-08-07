@@ -55,6 +55,7 @@ Complete one record for each test session.
 7. Do not combine Platform Owner, administrator, and teacher evidence into one persona unless the governed account intentionally holds the corresponding concurrent roles.
 8. AI-assisted planning remains teacher-controlled: suggestions must not silently overwrite saved teacher content.
 9. Current standards must be traceable to an authoritative source and version/effective date. Runtime planning must remain usable if the external standards source is temporarily unavailable.
+10. Each authoritative standards source must be automatically revalidated on the first workday of every month. A changed source is staged for review and does not silently replace the currently approved snapshot.
 
 ## Gate A — Operational baseline
 
@@ -122,6 +123,8 @@ This is a release-blocking pilot gate. Use only the bounded pilot course set: Ar
 
 "Live standards" means the current authoritative standards are ingested into governed, refreshable snapshots. Weekly planning must not require the external standards website to be available at runtime.
 
+The first-workday monthly validation uses the configured Anniston school/business calendar when available; if no applicable business-day calendar is configured, the fallback is the first Monday-Friday weekday of the month. The check must compare the authoritative source against the currently approved snapshot and record `unchanged`, `changed`, or `unavailable/error`. A `changed` result creates or updates a pending candidate for human review; it does not replace the approved snapshot. An unavailable/error result leaves the approved snapshot usable and produces a visible operational record/alert.
+
 | ID | Action | Expected result | Evidence | Result |
 |---|---|---|---|---|
 | STD-AI-01 | Import/refresh the current authoritative standards for a pilot course | Standard codes/text are stored with authoritative source, version/effective date, and retrieval provenance | Source/import record | |
@@ -136,8 +139,9 @@ This is a release-blocking pilot gate. Use only the bounded pilot course set: Ar
 | STD-AI-10 | Force or simulate an AI-service failure | Clear bounded failure is shown; existing manual planning remains intact and usable with no partial overwrite | Result note | |
 | STD-AI-11 | Inspect AI request boundary | Inputs contain only governed teacher/curriculum/standards/planning/validation context; no student-specific data is sent | Redacted review note | |
 | STD-AI-12 | Temporarily make the external standards source unavailable or use the stored snapshot without refreshing | Previously ingested standards remain usable for weekly planning; refresh failure does not block existing standards use | Result note | |
+| STD-AI-13 | Execute/simulate the first-workday monthly standards validation | Every bounded authoritative source receives an auditable monthly result; unchanged sources remain unchanged, changed sources are staged pending review without replacing the approved snapshot, and unavailable/error sources leave the approved snapshot active while surfacing an alert | Scheduler/run record plus snapshot comparison | |
 
-Release-blocking defects include fabricated or altered standard text presented as authoritative, missing provenance, cross-course standards leakage, silent AI overwrite, student data entering AI requests, unbounded AI errors, or inability to plan when the external standards source is temporarily unavailable.
+Release-blocking defects include fabricated or altered standard text presented as authoritative, missing provenance, cross-course standards leakage, silent standards replacement after a source change, failure to execute the monthly first-workday validation, silent AI overwrite, student data entering AI requests, unbounded AI errors, or inability to plan when the external standards source is temporarily unavailable.
 
 ## Gate F — Anniston document exports
 
@@ -202,7 +206,8 @@ For every failed test, record:
 The controlled pilot may proceed only when:
 
 - all operational, authentication, curriculum/setup, weekly-planning, standards/AI-assistance, export, validation, and data-boundary gates pass;
-- the bounded pilot standards set is current, traceable to authoritative source/version provenance, and usable from governed snapshots;
+- the bounded pilot standards set is current, traceable to authoritative source/version provenance, usable from governed snapshots, and covered by a functioning first-workday monthly source-validation schedule;
+- any detected standards-source change is staged for human review rather than silently replacing the approved snapshot;
 - AI suggestions are demonstrably teacher-invoked, teacher-controlled, logged for usage/cost, and constrained to teacher/curriculum data with no student data;
 - no release-blocking or high-severity defect remains open;
 - the Platform Owner dual-role session is verified;
