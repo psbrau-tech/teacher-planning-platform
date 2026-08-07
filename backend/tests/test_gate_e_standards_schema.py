@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 MIGRATIONS = Path(__file__).resolve().parents[2] / "supabase" / "migrations"
 SCHEMA = MIGRATIONS / "20260807195500_gate_e_standards_snapshots.sql"
 INVARIANTS = MIGRATIONS / "20260807195600_gate_e_standards_invariants.sql"
