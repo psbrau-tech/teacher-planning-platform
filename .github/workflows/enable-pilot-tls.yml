@@ -28,6 +28,7 @@ jobs:
     env:
       AWS_REGION: ${{ vars.TPP_AWS_REGION || 'us-east-2' }}
       AWS_ROLE_ARN: ${{ vars.TPP_AWS_ROLE_ARN }}
+      CLOUDFORMATION_ROLE_ARN: ${{ vars.TPP_CLOUDFORMATION_ROLE_ARN }}
       STACK_NAME: ${{ vars.TPP_CLOUDFORMATION_STACK || 'TeacherPlanningPlatformPilot' }}
       ECR_REPOSITORY: ${{ vars.TPP_ECR_REPOSITORY || 'teacher-planning-platform-pilot' }}
       ECS_CLUSTER: ${{ vars.TPP_ECS_CLUSTER || 'teacher-planning-platform-pilot' }}
@@ -41,7 +42,7 @@ jobs:
         run: |
           set -euo pipefail
           missing=()
-          for name in AWS_ROLE_ARN STACK_NAME ECR_REPOSITORY ECS_CLUSTER ECS_SERVICE TASK_DEFINITION_FAMILY; do
+          for name in AWS_ROLE_ARN CLOUDFORMATION_ROLE_ARN STACK_NAME ECR_REPOSITORY ECS_CLUSTER ECS_SERVICE TASK_DEFINITION_FAMILY; do
             if [[ -z "${!name:-}" ]]; then
               missing+=("$name")
             fi
@@ -53,6 +54,10 @@ jobs:
           fi
           if [[ "$AWS_REGION" != "us-east-2" ]]; then
             echo "The pilot certificate and load balancer must remain in us-east-2." >&2
+            exit 1
+          fi
+          if [[ ! "$CLOUDFORMATION_ROLE_ARN" =~ ^arn:aws:iam::697091778129:role/TeacherPlanningPlatformPilotCloudFormationExecution$ ]]; then
+            echo "Unexpected TPP CloudFormation execution-role ARN." >&2
             exit 1
           fi
 
@@ -131,6 +136,7 @@ jobs:
           aws cloudformation deploy \
             --stack-name "$STACK_NAME" \
             --template-file infra/pilot-stack.yml \
+            --role-arn "$CLOUDFORMATION_ROLE_ARN" \
             --capabilities CAPABILITY_NAMED_IAM \
             --no-fail-on-empty-changeset \
             --parameter-overrides \
@@ -239,6 +245,7 @@ jobs:
             echo "## TPP pilot TLS enabled"
             echo "- Reason: ${{ inputs.reason }}"
             echo "- Certificate: \`${{ inputs.certificate_arn }}\`"
+            echo "- CloudFormation execution role: \`$CLOUDFORMATION_ROLE_ARN\`"
             echo "- Active image preserved: \`${{ steps.values.outputs.image }}\`"
             echo "- Prior task definition: \`${{ steps.values.outputs.task_definition }}\`"
             echo "- Active task definition: \`${{ steps.verify.outputs.active_task_definition }}\`"
