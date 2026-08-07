@@ -94,17 +94,11 @@ create table public.assignment_standard_courses (
   source_id uuid not null references public.standard_sources(id) on delete restrict,
   course_id uuid not null references public.standard_courses(id) on delete restrict,
   mapped_by uuid not null references public.profiles(id),
-  mapped_at timestamptz not null default now(),
-  constraint assignment_standard_course_source_match check (
-    source_id = (select source_id from public.standard_courses where id = course_id)
-  ) not valid
+  mapped_at timestamptz not null default now()
 );
 
--- PostgreSQL CHECK constraints cannot safely contain cross-table subqueries. Replace the
--- not-valid placeholder above with a trigger-based invariant.
-alter table public.assignment_standard_courses
-  drop constraint assignment_standard_course_source_match;
-
+-- Enforce that the selected standards course belongs to the selected source without a
+-- cross-table CHECK constraint (which PostgreSQL does not support).
 create or replace function private.enforce_assignment_standard_course_source()
 returns trigger
 language plpgsql
@@ -208,8 +202,6 @@ grant select, insert, update, delete on table
   public.standard_source_checks
   to service_role;
 
-grant usage, select on all sequences in schema public to service_role;
-
 create policy standard_sources_read_governed on public.standard_sources
 for select to authenticated
 using (
@@ -254,10 +246,7 @@ using (private.can_access_assignment(teaching_assignment_id));
 create policy assignment_standard_courses_owner_write
 on public.assignment_standard_courses
 for all to authenticated
-using (
-  mapped_by = (select auth.uid())
-  and private.can_access_assignment(teaching_assignment_id)
-)
+using (private.can_access_assignment(teaching_assignment_id))
 with check (
   mapped_by = (select auth.uid())
   and private.can_access_assignment(teaching_assignment_id)
