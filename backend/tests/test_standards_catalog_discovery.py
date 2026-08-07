@@ -75,7 +75,7 @@ def test_academic_discovery_keeps_current_course_studies_and_distinct_math_cours
 
     assert by_key["alabama_academic_english_language_arts"].edition == "2021"
     assert by_key["alabama_academic_arts_education"].edition == "2024"
-    assert by_key["alabama_academic_digital_literacy_and_computer_science"].edition == "2025"
+    assert by_key["alabama_academic_digital_literacy_computer_science"].edition == "2025"
     assert by_key["alabama_academic_science"].edition == "2023"
     assert by_key["alabama_academic_social_studies"].edition == "2024"
     assert "alabama_academic_mathematics" in by_key
@@ -91,26 +91,30 @@ def test_cte_cos_discovery_keeps_distinct_general_and_human_services_sources() -
 
     assert "alabama_cte_cos_general_work_based_learning" in by_key
     assert "alabama_cte_cos_general_career_preparedness" in by_key
-    assert "alabama_cte_cos_business_management_and_administration" in by_key
+    assert "alabama_cte_cos_business_management_administration" in by_key
     assert "alabama_cte_cos_human_services" in by_key
     assert "alabama_cte_cos_human_services_cosmetology" in by_key
     assert by_key["alabama_cte_cos_human_services"].category_type == "career_cluster"
+    assert by_key["alabama_cte_cos_business_management_administration"].category_key == (
+        "business_management_administration"
+    )
 
 
 def test_cte_program_discovery_uses_latest_guide_and_keeps_distinct_program_families() -> None:
     sources = discover_cte_program_sources(CTE_PROGRAM_HTML)
     by_key = {source.source_key: source for source in sources}
 
-    government = by_key["alabama_cte_program_government_and_public_administration"]
+    government = by_key["alabama_cte_program_government_public_administration"]
     assert government.edition == "2025-2026"
     assert government.category_name == "Government & Public Administration"
+    assert government.category_key == "government_public_administration"
     assert government.source_kind == "program_guide"
     assert "2024-2025" not in government.document_url
 
     assert "alabama_cte_program_human_services_cosmetology" in by_key
     assert "alabama_cte_program_human_services" in by_key
-    assert "alabama_cte_program_architecture_and_construction_academy_of_craft_training" in by_key
-    assert "alabama_cte_program_architecture_and_construction" in by_key
+    assert "alabama_cte_program_architecture_construction_academy_of_craft_training" in by_key
+    assert "alabama_cte_program_architecture_construction" in by_key
     assert all("equipment" not in source.title.lower() for source in sources)
 
 
