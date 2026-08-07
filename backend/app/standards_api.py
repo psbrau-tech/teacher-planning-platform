@@ -276,7 +276,10 @@ def get_assignment_standards(
     if len(catalog_course_rows) != 1:
         raise HTTPException(status_code=503, detail="Standards catalog course is unavailable")
     if not link_rows:
-        raise HTTPException(status_code=409, detail="Standards course has no approved source mapping")
+        raise HTTPException(
+            status_code=409,
+            detail="Standards course has no approved source mapping",
+        )
 
     catalog_course = _catalog_course_read(catalog_course_rows[0])
     try:
