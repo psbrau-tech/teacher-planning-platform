@@ -43,9 +43,10 @@ type AssignmentStandards = {
 };
 
 type StandardsPanelProps = {
+  accessToken: string;
   assignmentId: string | null;
   weekStart: string;
-  onSelectionSaved?: (selected: StandardEntry[]) => void;
+  onSelectionResolved?: (selected: StandardEntry[]) => void;
 };
 
 async function readError(response: Response, fallback: string): Promise<string> {
@@ -60,10 +61,16 @@ async function readError(response: Response, fallback: string): Promise<string> 
   return fallback;
 }
 
+function selectedEntriesFor(catalog: AssignmentStandards): StandardEntry[] {
+  const selectedIds = new Set(catalog.selected_entry_ids);
+  return catalog.standards.filter((standard) => selectedIds.has(standard.id));
+}
+
 export function StandardsPanel({
+  accessToken,
   assignmentId,
   weekStart,
-  onSelectionSaved,
+  onSelectionResolved,
 }: StandardsPanelProps) {
   const [catalog, setCatalog] = useState<AssignmentStandards | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -79,7 +86,7 @@ export function StandardsPanel({
     setMessage(null);
     setError(null);
 
-    if (!assignmentId || !weekStart) {
+    if (!accessToken || !assignmentId || !weekStart) {
       return () => {
         active = false;
       };
@@ -91,6 +98,9 @@ export function StandardsPanel({
         const response = await fetch(
           `/api/v1/standards/assignment/${encodeURIComponent(assignmentId)}` +
             `?week_start=${encodeURIComponent(weekStart)}`,
+          {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          },
         );
         if (!response.ok) {
           throw new Error(await readError(response, "Standards could not be loaded."));
@@ -99,6 +109,7 @@ export function StandardsPanel({
         if (!active) return;
         setCatalog(body);
         setSelected(new Set(body.selected_entry_ids));
+        onSelectionResolved?.(selectedEntriesFor(body));
       } catch (caught) {
         if (!active) return;
         setError(caught instanceof Error ? caught.message : "Standards could not be loaded.");
@@ -111,7 +122,7 @@ export function StandardsPanel({
     return () => {
       active = false;
     };
-  }, [assignmentId, weekStart]);
+  }, [accessToken, assignmentId, onSelectionResolved, weekStart]);
 
   const selectedEntries = useMemo(() => {
     if (!catalog) return [];
@@ -132,7 +143,7 @@ export function StandardsPanel({
   };
 
   const save = async () => {
-    if (!assignmentId || !catalog?.mapped) return;
+    if (!accessToken || !assignmentId || !catalog?.mapped) return;
     setSaving(true);
     setMessage(null);
     setError(null);
@@ -142,7 +153,10 @@ export function StandardsPanel({
           `/week/${encodeURIComponent(weekStart)}`,
         {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify({ standard_entry_ids: Array.from(selected) }),
         },
       );
@@ -151,7 +165,7 @@ export function StandardsPanel({
       }
       const body = (await response.json()) as { selected_count: number };
       setMessage(`${body.selected_count} standard${body.selected_count === 1 ? "" : "s"} selected.`);
-      onSelectionSaved?.(selectedEntries);
+      onSelectionResolved?.(selectedEntries);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Standards selection could not be saved.");
     } finally {
