@@ -366,7 +366,10 @@ def replace_weekly_standards(
     except SupabaseRestError as error:
         _raise_data_error(error, "Weekly standards selection save")
     if not isinstance(result, int) or isinstance(result, bool):
-        raise HTTPException(status_code=503, detail="Standards selection save returned invalid data")
+        raise HTTPException(
+            status_code=503,
+            detail="Standards selection save returned invalid data",
+        )
     return WeeklyStandardsWriteResult(selected_count=result)
 
 
@@ -470,20 +473,24 @@ def set_assignment_mapping(
                 params={"id": f"eq.{assignment_id}", "select": "id", "limit": "2"},
             )
         )
-        rows = _records(
-            client.request(
-                "POST",
-                "assignment_standard_courses",
-                params={"on_conflict": "teaching_assignment_id"},
-                payload={
-                    "teaching_assignment_id": str(assignment_id),
-                    "source_id": str(payload.source_id),
-                    "course_id": str(payload.course_id),
-                    "mapped_by": identity.subject,
-                },
-                prefer="resolution=merge-duplicates,return=representation",
+        rows = (
+            _records(
+                client.request(
+                    "POST",
+                    "assignment_standard_courses",
+                    params={"on_conflict": "teaching_assignment_id"},
+                    payload={
+                        "teaching_assignment_id": str(assignment_id),
+                        "source_id": str(payload.source_id),
+                        "course_id": str(payload.course_id),
+                        "mapped_by": identity.subject,
+                    },
+                    prefer="resolution=merge-duplicates,return=representation",
+                )
             )
-        ) if len(assignment_rows) == 1 else []
+            if len(assignment_rows) == 1
+            else []
+        )
     except SupabaseRestError as error:
         _raise_data_error(error, "Assignment standards mapping save")
     if len(assignment_rows) != 1:
