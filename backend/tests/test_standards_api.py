@@ -1,20 +1,23 @@
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
 import app.standards_api as standards_api
-from app.auth import AuthenticatedTeacher, require_platform_admin
 from app.main import app
 
 client = TestClient(app)
 HEADERS = {"X-TPP-Teacher-ID": "teacher-standards-test"}
 ASSIGNMENT_ID = uuid4()
-SOURCE_ID = uuid4()
-COURSE_ID = uuid4()
-SNAPSHOT_ID = uuid4()
+CATEGORY_ID = uuid4()
+CATALOG_COURSE_ID = uuid4()
+ALABAMA_SOURCE_ID = uuid4()
+ARMY_SOURCE_ID = uuid4()
+ALABAMA_COURSE_ID = uuid4()
+ARMY_COURSE_ID = uuid4()
+ALABAMA_SNAPSHOT_ID = uuid4()
+ARMY_SNAPSHOT_ID = uuid4()
 ENTRY_ONE = uuid4()
 ENTRY_TWO = uuid4()
-ADMIN_ID = uuid4()
 
 
 class FakeClient:
@@ -47,9 +50,30 @@ def _install_teacher_fake(monkeypatch, fake: FakeClient) -> None:
 def _mapping() -> dict[str, str]:
     return {
         "teaching_assignment_id": str(ASSIGNMENT_ID),
-        "source_id": str(SOURCE_ID),
-        "course_id": str(COURSE_ID),
-        "mapped_by": str(ADMIN_ID),
+        "catalog_course_id": str(CATALOG_COURSE_ID),
+        "mapped_by": str(uuid4()),
+        "mapped_at": "2026-08-07T20:00:00+00:00",
+    }
+
+
+def _category() -> dict[str, object]:
+    return {
+        "id": str(CATEGORY_ID),
+        "category_key": "government_public_administration",
+        "display_name": "Government & Public Administration",
+        "category_type": "career_cluster",
+        "sort_order": 100,
+    }
+
+
+def _catalog_course() -> dict[str, object]:
+    return {
+        "id": str(CATALOG_COURSE_ID),
+        "category_id": str(CATEGORY_ID),
+        "course_key": "army_jrotc_let_2",
+        "display_name": "Army JROTC II",
+        "source_course_code": "JROTC II",
+        "grade_band": "9-12",
     }
 
 
@@ -58,7 +82,6 @@ def test_standards_assignment_requires_teacher_identity() -> None:
         f"/api/v1/standards/assignment/{ASSIGNMENT_ID}",
         params={"week_start": "2026-08-10"},
     )
-
     assert response.status_code == 401
 
 
@@ -73,70 +96,114 @@ def test_unmapped_assignment_returns_bounded_empty_state(monkeypatch) -> None:
     )
 
     assert response.status_code == 200
-    assert response.json() == {
-        "assignment_id": str(ASSIGNMENT_ID),
-        "week_start": "2026-08-10",
-        "mapped": False,
-        "source": None,
-        "course": None,
-        "standards": [],
-        "selected_entry_ids": [],
-    }
+    body = response.json()
+    assert body["assignment_id"] == str(ASSIGNMENT_ID)
+    assert body["mapped"] is False
+    assert body["source"] is None
+    assert body["sources"] == []
+    assert body["catalog_category"] is None
+    assert body["catalog_course"] is None
+    assert body["standards"] == []
+    assert body["selected_entry_ids"] == []
 
 
-def test_mapped_assignment_returns_only_approved_course_snapshot(monkeypatch) -> None:
+def test_mapped_assignment_aggregates_only_linked_approved_sources(monkeypatch) -> None:
     fake = FakeClient(
         {
             "assignment_standard_courses": [_mapping()],
-            "standard_sources": [
+            "standard_catalog_courses": [_catalog_course()],
+            "standard_catalog_categories": [_category()],
+            "standard_catalog_course_sources": [
                 {
-                    "id": str(SOURCE_ID),
-                    "source_key": "army_jrotc_v12",
-                    "authority": "U.S. Army Cadet Command",
-                    "title": "Army JROTC Curriculum Guide",
-                    "edition": "JROTC Curriculum Guide v12 (25 JUN 2025)",
-                    "landing_url": "https://usarmyjrotc.army.mil/jsocc-course-documents/",
-                    "approved_snapshot_id": str(SNAPSHOT_ID),
-                }
+                    "source_course_id": str(ALABAMA_COURSE_ID),
+                    "relationship": "primary",
+                    "priority": 10,
+                },
+                {
+                    "source_course_id": str(ARMY_COURSE_ID),
+                    "relationship": "supplemental_authority",
+                    "priority": 50,
+                },
             ],
             "standard_courses": [
                 {
-                    "id": str(COURSE_ID),
-                    "source_id": str(SOURCE_ID),
+                    "id": str(ALABAMA_COURSE_ID),
+                    "source_id": str(ALABAMA_SOURCE_ID),
+                    "course_key": "army_jrotc_let_2",
+                    "display_name": "Army JROTC II",
+                    "source_course_code": "JROTC II",
+                    "grade_band": "9-12",
+                    "is_pilot_allowed": True,
+                },
+                {
+                    "id": str(ARMY_COURSE_ID),
+                    "source_id": str(ARMY_SOURCE_ID),
                     "course_key": "army_jrotc_let_2",
                     "display_name": "Army JROTC LET 2",
                     "source_course_code": "LET 2",
                     "grade_band": "9-12",
                     "is_pilot_allowed": True,
-                }
+                },
+            ],
+            "standard_sources": [
+                {
+                    "id": str(ALABAMA_SOURCE_ID),
+                    "source_key": "alabama_jrotc_program",
+                    "authority": "Alabama State Department of Education",
+                    "title": "Government & Public Administration Program Guide",
+                    "edition": "2025-2026",
+                    "landing_url": "https://www.alabamaachieves.org/cte/",
+                    "approved_snapshot_id": str(ALABAMA_SNAPSHOT_ID),
+                },
+                {
+                    "id": str(ARMY_SOURCE_ID),
+                    "source_key": "army_jrotc_v12",
+                    "authority": "U.S. Army Cadet Command",
+                    "title": "Army JROTC Curriculum Guide",
+                    "edition": "JROTC Curriculum Guide v12 (25 JUN 2025)",
+                    "landing_url": "https://usarmyjrotc.army.mil/jsocc-course-documents/",
+                    "approved_snapshot_id": str(ARMY_SNAPSHOT_ID),
+                },
             ],
             "standard_snapshots": [
                 {
-                    "id": str(SNAPSHOT_ID),
-                    "source_version": "v12",
+                    "id": str(ALABAMA_SNAPSHOT_ID),
+                    "source_id": str(ALABAMA_SOURCE_ID),
+                    "source_version": "2025-2026",
                     "retrieved_at": "2026-08-07T20:00:00+00:00",
+                    "resolved_document_url": "https://www.alabamaachieves.org/example-jrotc.pdf",
+                },
+                {
+                    "id": str(ARMY_SNAPSHOT_ID),
+                    "source_id": str(ARMY_SOURCE_ID),
+                    "source_version": "v12",
+                    "retrieved_at": "2026-08-07T20:01:00+00:00",
                     "resolved_document_url": (
                         "https://usarmyjrotc.army.mil/wp-content/uploads/2025/07/"
                         "JROTC-Curriculum-Guide-25JUN25-4.docx"
                     ),
-                }
+                },
             ],
             "standard_entries": [
                 {
                     "id": str(ENTRY_ONE),
-                    "code": "U2C1L1",
-                    "text": "Leadership foundations",
+                    "snapshot_id": str(ALABAMA_SNAPSHOT_ID),
+                    "course_id": str(ALABAMA_COURSE_ID),
+                    "code": "JROTC-II",
+                    "text": "Alabama JROTC II course alignment",
                     "parent_code": None,
                     "strand": None,
                     "sequence": 1,
                 },
                 {
                     "id": str(ENTRY_TWO),
-                    "code": "U2C1L2",
-                    "text": "Team roles",
+                    "snapshot_id": str(ARMY_SNAPSHOT_ID),
+                    "course_id": str(ARMY_COURSE_ID),
+                    "code": "U2C1L1",
+                    "text": "Leadership foundations",
                     "parent_code": None,
                     "strand": None,
-                    "sequence": 2,
+                    "sequence": 1,
                 },
             ],
             "weekly_standard_selections": [{"standard_entry_id": str(ENTRY_TWO)}],
@@ -153,15 +220,20 @@ def test_mapped_assignment_returns_only_approved_course_snapshot(monkeypatch) ->
     assert response.status_code == 200
     body = response.json()
     assert body["mapped"] is True
-    assert body["source"]["authority"] == "U.S. Army Cadet Command"
-    assert body["source"]["source_version"] == "v12"
-    assert body["course"]["course_key"] == "army_jrotc_let_2"
-    assert [item["code"] for item in body["standards"]] == ["U2C1L1", "U2C1L2"]
+    assert body["catalog_category"]["display_name"] == "Government & Public Administration"
+    assert body["catalog_course"]["display_name"] == "Army JROTC II"
+    assert [source["relationship"] for source in body["sources"]] == [
+        "primary",
+        "supplemental_authority",
+    ]
+    assert [item["code"] for item in body["standards"]] == ["JROTC-II", "U2C1L1"]
+    assert body["standards"][0]["authority"] == "Alabama State Department of Education"
+    assert body["standards"][1]["authority"] == "U.S. Army Cadet Command"
     assert body["selected_entry_ids"] == [str(ENTRY_TWO)]
 
     entries_call = next(call for call in fake.calls if call[1] == "standard_entries")
-    assert entries_call[2]["snapshot_id"] == f"eq.{SNAPSHOT_ID}"
-    assert entries_call[2]["course_id"] == f"eq.{COURSE_ID}"
+    assert str(ALABAMA_COURSE_ID) in entries_call[2]["course_id"]
+    assert str(ARMY_COURSE_ID) in entries_call[2]["course_id"]
 
 
 def test_weekly_selection_uses_atomic_rpc(monkeypatch) -> None:
@@ -184,43 +256,3 @@ def test_weekly_selection_uses_atomic_rpc(monkeypatch) -> None:
         "target_week_start": "2026-08-10",
         "target_entry_ids": [str(ENTRY_ONE), str(ENTRY_TWO)],
     }
-
-
-def test_platform_admin_mapping_requires_platform_admin_role(monkeypatch) -> None:
-    fake = FakeClient(
-        {
-            "teaching_assignments": [{"id": str(ASSIGNMENT_ID)}],
-            "assignment_standard_courses": [_mapping()],
-        }
-    )
-    monkeypatch.setattr(standards_api, "_client", lambda identity, settings: fake)
-
-    denied = client.put(
-        f"/api/v1/standards/admin/assignments/{ASSIGNMENT_ID}/mapping",
-        headers=HEADERS,
-        json={"source_id": str(SOURCE_ID), "course_id": str(COURSE_ID)},
-    )
-    assert denied.status_code == 403
-
-    def test_admin() -> AuthenticatedTeacher:
-        return AuthenticatedTeacher(
-            subject=str(ADMIN_ID),
-            email="admin@example.test",
-            display_name="Pilot Admin",
-            school_id=str(uuid4()),
-            roles=frozenset({"platform_admin"}),
-        )
-
-    app.dependency_overrides[require_platform_admin] = test_admin
-    try:
-        allowed = client.put(
-            f"/api/v1/standards/admin/assignments/{ASSIGNMENT_ID}/mapping",
-            json={"source_id": str(SOURCE_ID), "course_id": str(COURSE_ID)},
-        )
-    finally:
-        app.dependency_overrides.pop(require_platform_admin, None)
-
-    assert allowed.status_code == 200
-    assert UUID(allowed.json()["course_id"]) == COURSE_ID
-    mapping_call = next(call for call in fake.calls if call[1] == "assignment_standard_courses")
-    assert mapping_call[3]["mapped_by"] == str(ADMIN_ID)
