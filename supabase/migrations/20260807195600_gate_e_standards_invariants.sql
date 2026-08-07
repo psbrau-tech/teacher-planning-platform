@@ -75,7 +75,10 @@ set search_path = ''
 as $$
 declare
   target_source_id uuid;
+  target_source_key text;
   target_status text;
+  target_course_count integer;
+  target_entry_count integer;
   actor_id uuid := (select auth.uid());
 begin
   if actor_id is null
@@ -83,11 +86,12 @@ begin
     raise exception 'platform administrator role is required';
   end if;
 
-  select ss.source_id, ss.status
-    into target_source_id, target_status
+  select ss.source_id, src.source_key, ss.status
+    into target_source_id, target_source_key, target_status
   from public.standard_snapshots ss
+  join public.standard_sources src on src.id = ss.source_id
   where ss.id = target_snapshot_id
-  for update;
+  for update of ss;
 
   if target_source_id is null then
     raise exception 'standards snapshot not found';
@@ -95,6 +99,46 @@ begin
 
   if target_status <> 'pending' then
     raise exception 'only a pending standards snapshot can be approved';
+  end if;
+
+  select count(distinct se.course_id), count(*)
+    into target_course_count, target_entry_count
+  from public.standard_entries se
+  join public.standard_courses sc on sc.id = se.course_id
+  where se.snapshot_id = target_snapshot_id
+    and sc.source_id = target_source_id;
+
+  if target_course_count = 0 or target_entry_count = 0 then
+    raise exception 'standards snapshot has no validated parsed entries';
+  end if;
+
+  if target_source_key = 'alabama_ela_2021'
+     and not exists (
+       select 1
+       from public.standard_entries se
+       join public.standard_courses sc on sc.id = se.course_id
+       where se.snapshot_id = target_snapshot_id
+         and sc.source_id = target_source_id
+         and sc.course_key = 'english_10'
+     ) then
+    raise exception 'English 10 standards are missing from the candidate snapshot';
+  end if;
+
+  if target_source_key = 'army_jrotc_v12'
+     and (
+       select count(distinct sc.course_key)
+       from public.standard_entries se
+       join public.standard_courses sc on sc.id = se.course_id
+       where se.snapshot_id = target_snapshot_id
+         and sc.source_id = target_source_id
+         and sc.course_key in (
+           'army_jrotc_let_1',
+           'army_jrotc_let_2',
+           'army_jrotc_let_3',
+           'army_jrotc_let_4'
+         )
+     ) <> 4 then
+    raise exception 'all four Army JROTC LET course standards are required';
   end if;
 
   update public.standard_snapshots
@@ -125,7 +169,13 @@ begin
     'standard_snapshot',
     target_snapshot_id,
     'approve_standard_snapshot',
-    jsonb_build_object('source_id', target_source_id, 'status', 'approved'),
+    jsonb_build_object(
+      'source_id', target_source_id,
+      'source_key', target_source_key,
+      'status', 'approved',
+      'course_count', target_course_count,
+      'entry_count', target_entry_count
+    ),
     'Platform owner approved authoritative standards snapshot'
   );
 
