@@ -201,7 +201,7 @@ def _usage_integer(record: JsonObject, key: str) -> int:
     value = record.get(key, 0)
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise AiServiceError("AI usage data is invalid")
-    return value
+    return cast(int, value)
 
 
 def _parse_usage(
