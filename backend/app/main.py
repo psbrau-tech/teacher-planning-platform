@@ -40,6 +40,7 @@ from .reporting import (
 )
 from .schedule_exception_api import router as schedule_exception_router
 from .standards_api import router as standards_router
+from .standards_catalog_api import router as standards_catalog_router
 from .teaching_assignment_api import router as teaching_assignment_router
 from .weekly_draft_api import router as weekly_draft_router
 
@@ -56,6 +57,7 @@ app.include_router(teaching_assignment_router)
 app.include_router(live_planning_router)
 app.include_router(schedule_exception_router)
 app.include_router(standards_router)
+app.include_router(standards_catalog_router)
 app.include_router(ai_planning_router)
 app.include_router(ai_reflection_router)
 app.include_router(weekly_draft_router)
