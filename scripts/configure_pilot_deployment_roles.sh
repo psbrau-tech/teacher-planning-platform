@@ -77,6 +77,13 @@ for path in "$TRUST_POLICY" "$EXECUTION_POLICY" "$OIDC_POLICY"; do
   fi
 done
 
+# Pass validated JSON as literal CLI argument values rather than file:// paths.
+# This keeps the same script portable across Linux and Windows Git Bash, where
+# the native Windows AWS CLI cannot resolve MSYS-style paths such as /c/Users/....
+trust_policy_json="$(cat "$TRUST_POLICY")"
+execution_policy_json="$(cat "$EXECUTION_POLICY")"
+oidc_policy_json="$(cat "$OIDC_POLICY")"
+
 caller_account="$(aws sts get-caller-identity --query Account --output text)"
 if [[ "$caller_account" != "$ACCOUNT_ID" ]]; then
   echo "Refusing to configure TPP pilot roles in AWS account $caller_account; expected $ACCOUNT_ID." >&2
@@ -113,24 +120,24 @@ fi
 if [[ "$execution_role_exists" == "true" ]]; then
   aws iam update-assume-role-policy \
     --role-name "$EXECUTION_ROLE_NAME" \
-    --policy-document "file://$TRUST_POLICY"
+    --policy-document "$trust_policy_json"
 else
   aws iam create-role \
     --role-name "$EXECUTION_ROLE_NAME" \
     --description "Least-privilege CloudFormation execution role for the TPP controlled pilot" \
-    --assume-role-policy-document "file://$TRUST_POLICY" \
+    --assume-role-policy-document "$trust_policy_json" \
     --max-session-duration 3600 >/dev/null
 fi
 
 aws iam put-role-policy \
   --role-name "$EXECUTION_ROLE_NAME" \
   --policy-name "$EXECUTION_POLICY_NAME" \
-  --policy-document "file://$EXECUTION_POLICY"
+  --policy-document "$execution_policy_json"
 
 aws iam put-role-policy \
   --role-name "$OIDC_ROLE_NAME" \
   --policy-name "$OIDC_POLICY_NAME" \
-  --policy-document "file://$OIDC_POLICY"
+  --policy-document "$oidc_policy_json"
 
 execution_role_arn="$(aws iam get-role \
   --role-name "$EXECUTION_ROLE_NAME" \
