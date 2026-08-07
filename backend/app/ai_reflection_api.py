@@ -51,10 +51,10 @@ REFLECTION_SCHEMA: JsonObject = {
 REFLECTION_INSTRUCTIONS = """You are assisting a teacher with a concise weekly instructional
 reflection. Use only the saved weekly plan, finalized Friday validation, and selected authoritative
 standards supplied in the context. Describe what instruction was completed or changed, what needs
-adjustment or carry-forward, and one practical next-week priority. This is a teacher-reviewable draft
-only. Do not invent student performance evidence, student names, grades, accommodations, IEPs, or
-other student-specific facts. Do not rewrite or fabricate authoritative standards. Return only the
-requested structured field."""
+adjustment or carry-forward, and one practical next-week priority. This is a teacher-reviewable
+ draft only. Do not invent student performance evidence, student names, grades, accommodations,
+IEPs, or other student-specific facts. Do not rewrite or fabricate authoritative standards. Return
+only the requested structured field."""
 
 
 def _client(identity: AuthenticatedTeacher, settings: Settings) -> SupabaseRestClient:
