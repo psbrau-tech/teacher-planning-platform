@@ -91,7 +91,10 @@ def _required_int(record: JsonRecord, key: str) -> int:
 def _raise_data_error(error: SupabaseRestError, operation: str) -> NoReturn:
     message = str(error).lower()
     if error.status_code in {401, 403}:
-        raise HTTPException(status_code=403, detail="Standards catalog access was denied") from error
+        raise HTTPException(
+            status_code=403,
+            detail="Standards catalog access was denied",
+        ) from error
     if "explicit confirmation" in message:
         raise HTTPException(
             status_code=409,
@@ -102,7 +105,10 @@ def _raise_data_error(error: SupabaseRestError, operation: str) -> NoReturn:
         ) from error
     if error.status_code in {400, 409, 422}:
         raise HTTPException(status_code=409, detail=f"{operation} was rejected") from error
-    raise HTTPException(status_code=503, detail="Standards catalog service is unavailable") from error
+    raise HTTPException(
+        status_code=503,
+        detail="Standards catalog service is unavailable",
+    ) from error
 
 
 def _client(identity: AuthenticatedTeacher, settings: Settings) -> SupabaseRestClient:
