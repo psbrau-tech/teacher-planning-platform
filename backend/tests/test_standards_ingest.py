@@ -72,7 +72,9 @@ def test_bma_parser_keeps_foundational_and_course_specific_standards() -> None:
         "business_communications",
         "business_law",
     }
-    essentials = next(course for course in parsed.courses if course.course_key == "business_essentials")
+    essentials = next(
+        course for course in parsed.courses if course.course_key == "business_essentials"
+    )
     assert essentials.grade_band == "9-12"
     assert essentials.standards[0].code == "F1"
     assert essentials.standards[0].text == "Shared foundation 1."
