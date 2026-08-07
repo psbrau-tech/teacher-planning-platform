@@ -1,4 +1,6 @@
+from decimal import Decimal
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field, HttpUrl
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -23,6 +25,13 @@ class Settings(BaseSettings):
     supabase_service_role_key: str | None = Field(default=None, repr=False)
     database_url: str | None = Field(default=None, repr=False)
     openai_api_key: str | None = Field(default=None, repr=False)
+    openai_model: str = "gpt-5.6-terra"
+    openai_reasoning_effort: Literal["none", "low", "medium", "high", "xhigh", "max"] = "low"
+    openai_timeout_seconds: float = Field(default=45.0, gt=0, le=120)
+    openai_input_cost_per_million: Decimal = Field(default=Decimal("2.00"), ge=0)
+    openai_cached_input_cost_per_million: Decimal = Field(default=Decimal("0.20"), ge=0)
+    openai_cache_write_cost_per_million: Decimal = Field(default=Decimal("2.50"), ge=0)
+    openai_output_cost_per_million: Decimal = Field(default=Decimal("12.00"), ge=0)
     google_oauth_client_id: str | None = Field(default=None, repr=False)
     google_oauth_client_secret: str | None = Field(default=None, repr=False)
 
