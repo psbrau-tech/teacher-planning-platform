@@ -33,12 +33,17 @@ Expected result:
 - four remote alias records are marked reverted;
 - four canonical repository versions are marked applied;
 - no schema SQL is executed;
-- the post-repair dry run lists exactly these five pending migrations:
+- the post-repair dry run includes all reviewed pending migrations, including versions that sort before the latest remote migration;
+- the pending set is exactly:
   - `20260805210000`
   - `20260805211000`
   - `20260805212000`
   - `20260806133000`
   - `20260806141500`
+
+The workflows use Supabase CLI `--include-all` because the first three genuinely pending migrations sort before the already-applied `202608060001` migration. Without that flag, Supabase stops with an out-of-order migration warning even though the repaired migration history is correct.
+
+If the history repair completed but its final dry run failed only with the `--include-all` warning, verify the live migration table before rerunning the repair. Do not repeat a successful history mutation merely to obtain a green workflow result.
 
 ## After repair
 
