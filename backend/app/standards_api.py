@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from .auth import AuthenticatedTeacher, require_platform_admin, require_teacher
 from .settings import Settings, get_settings
+from .standards_catalog_api import CatalogCategoryRead, CatalogCourseRead
 from .supabase_persistence import PersistenceError, SupabaseTeachingAssignmentStore
 from .supabase_rest import SupabaseRestClient, SupabaseRestError
 
@@ -27,6 +28,7 @@ class StandardSourceRead(BaseModel):
     source_version: str | None
     retrieved_at: str
     resolved_document_url: str
+    relationship: str = "primary"
 
 
 class StandardCourseRead(BaseModel):
@@ -36,7 +38,7 @@ class StandardCourseRead(BaseModel):
     display_name: str
     source_course_code: str | None
     grade_band: str | None
-    is_pilot_allowed: bool
+    is_pilot_allowed: bool = True
 
 
 class StandardEntryRead(BaseModel):
@@ -46,6 +48,11 @@ class StandardEntryRead(BaseModel):
     parent_code: str | None
     strand: str | None
     sequence: int
+    source_id: UUID | None = None
+    snapshot_id: UUID | None = None
+    authority: str | None = None
+    source_title: str | None = None
+    relationship: str | None = None
 
 
 class AssignmentStandardsRead(BaseModel):
@@ -53,7 +60,10 @@ class AssignmentStandardsRead(BaseModel):
     week_start: date
     mapped: bool
     source: StandardSourceRead | None = None
+    sources: list[StandardSourceRead] = Field(default_factory=list)
     course: StandardCourseRead | None = None
+    catalog_category: CatalogCategoryRead | None = None
+    catalog_course: CatalogCourseRead | None = None
     standards: list[StandardEntryRead] = Field(default_factory=list)
     selected_entry_ids: list[UUID] = Field(default_factory=list)
 
@@ -74,22 +84,8 @@ class AdminSourceRead(BaseModel):
     edition: str
     approved_snapshot_id: UUID | None
     is_active: bool
-
-
-class AdminCourseAvailabilityWrite(BaseModel):
-    allowed: bool
-
-
-class AdminAssignmentMappingWrite(BaseModel):
-    source_id: UUID
-    course_id: UUID
-
-
-class AdminAssignmentMappingRead(BaseModel):
-    teaching_assignment_id: UUID
-    source_id: UUID
-    course_id: UUID
-    mapped_by: UUID
+    discovery_status: str
+    catalog_category_name: str | None
 
 
 def _records(payload: object) -> list[JsonRecord]:
@@ -136,7 +132,7 @@ def _required_bool(record: JsonRecord, key: str) -> bool:
 
 def _required_int(record: JsonRecord, key: str) -> int:
     value = record.get(key)
-    if not isinstance(value, int):
+    if isinstance(value, bool) or not isinstance(value, int):
         raise HTTPException(status_code=503, detail="Pilot standards data is invalid")
     return value
 
@@ -170,6 +166,9 @@ def _require_assignment(
 
 
 def _course_read(record: JsonRecord) -> StandardCourseRead:
+    allowed = record.get("is_pilot_allowed", True)
+    if not isinstance(allowed, bool):
+        raise HTTPException(status_code=503, detail="Pilot standards data is invalid")
     return StandardCourseRead(
         id=_required_uuid(record, "id"),
         source_id=_required_uuid(record, "source_id"),
@@ -177,18 +176,28 @@ def _course_read(record: JsonRecord) -> StandardCourseRead:
         display_name=_required_text(record, "display_name"),
         source_course_code=_optional_text(record, "source_course_code"),
         grade_band=_optional_text(record, "grade_band"),
-        is_pilot_allowed=_required_bool(record, "is_pilot_allowed"),
+        is_pilot_allowed=allowed,
     )
 
 
-def _entry_read(record: JsonRecord) -> StandardEntryRead:
-    return StandardEntryRead(
+def _catalog_course_read(record: JsonRecord) -> CatalogCourseRead:
+    return CatalogCourseRead(
         id=_required_uuid(record, "id"),
-        code=_required_text(record, "code"),
-        text=_required_text(record, "text"),
-        parent_code=_optional_text(record, "parent_code"),
-        strand=_optional_text(record, "strand"),
-        sequence=_required_int(record, "sequence"),
+        category_id=_required_uuid(record, "category_id"),
+        course_key=_required_text(record, "course_key"),
+        display_name=_required_text(record, "display_name"),
+        source_course_code=_optional_text(record, "source_course_code"),
+        grade_band=_optional_text(record, "grade_band"),
+    )
+
+
+def _category_read(record: JsonRecord) -> CatalogCategoryRead:
+    return CatalogCategoryRead(
+        id=_required_uuid(record, "id"),
+        category_key=_required_text(record, "category_key"),
+        display_name=_required_text(record, "display_name"),
+        category_type=_required_text(record, "category_type"),
+        sort_order=_required_int(record, "sort_order"),
     )
 
 
@@ -203,7 +212,7 @@ def _load_assignment_mapping(
                 "assignment_standard_courses",
                 params={
                     "teaching_assignment_id": f"eq.{assignment_id}",
-                    "select": "teaching_assignment_id,source_id,course_id,mapped_by",
+                    "select": "teaching_assignment_id,catalog_course_id,mapped_by,mapped_at",
                     "limit": "2",
                 },
             )
@@ -213,6 +222,10 @@ def _load_assignment_mapping(
     if len(rows) > 1:
         raise HTTPException(status_code=503, detail="Pilot standards mapping is invalid")
     return rows[0] if rows else None
+
+
+def _in_filter(ids: list[UUID]) -> str:
+    return f"in.({','.join(str(item) for item in ids)})"
 
 
 @router.get("/assignment/{assignment_id}", response_model=AssignmentStandardsRead)
@@ -225,53 +238,123 @@ def get_assignment_standards(
     client = _client(identity, settings)
     _require_assignment(client, identity, assignment_id)
     mapping = _load_assignment_mapping(client, assignment_id)
-    if mapping is None:
+    if mapping is None or mapping.get("catalog_course_id") is None:
         return AssignmentStandardsRead(
             assignment_id=assignment_id,
             week_start=week_start,
             mapped=False,
         )
 
-    source_id = _required_uuid(mapping, "source_id")
-    course_id = _required_uuid(mapping, "course_id")
+    catalog_course_id = _required_uuid(mapping, "catalog_course_id")
+    try:
+        catalog_course_rows = _records(
+            client.request(
+                "GET",
+                "standard_catalog_courses",
+                params={
+                    "id": f"eq.{catalog_course_id}",
+                    "select": (
+                        "id,category_id,course_key,display_name,source_course_code,grade_band"
+                    ),
+                    "limit": "2",
+                },
+            )
+        )
+        link_rows = _records(
+            client.request(
+                "GET",
+                "standard_catalog_course_sources",
+                params={
+                    "catalog_course_id": f"eq.{catalog_course_id}",
+                    "select": "source_course_id,relationship,priority",
+                    "order": "priority.asc",
+                },
+            )
+        )
+    except SupabaseRestError as error:
+        _raise_data_error(error, "Standards catalog load")
+    if len(catalog_course_rows) != 1:
+        raise HTTPException(status_code=503, detail="Standards catalog course is unavailable")
+    if not link_rows:
+        raise HTTPException(status_code=409, detail="Standards course has no approved source mapping")
+
+    catalog_course = _catalog_course_read(catalog_course_rows[0])
+    try:
+        category_rows = _records(
+            client.request(
+                "GET",
+                "standard_catalog_categories",
+                params={
+                    "id": f"eq.{catalog_course.category_id}",
+                    "select": "id,category_key,display_name,category_type,sort_order",
+                    "limit": "2",
+                },
+            )
+        )
+    except SupabaseRestError as error:
+        _raise_data_error(error, "Standards category load")
+    if len(category_rows) != 1:
+        raise HTTPException(status_code=503, detail="Standards category is unavailable")
+    category = _category_read(category_rows[0])
+
+    source_course_ids = [_required_uuid(row, "source_course_id") for row in link_rows]
+    relationship_by_course = {
+        _required_uuid(row, "source_course_id"): _required_text(row, "relationship")
+        for row in link_rows
+    }
+    priority_by_course = {
+        _required_uuid(row, "source_course_id"): _required_int(row, "priority")
+        for row in link_rows
+    }
+
+    try:
+        source_course_rows = _records(
+            client.request(
+                "GET",
+                "standard_courses",
+                params={
+                    "id": _in_filter(source_course_ids),
+                    "select": (
+                        "id,source_id,course_key,display_name,source_course_code,"
+                        "grade_band,is_pilot_allowed"
+                    ),
+                },
+            )
+        )
+    except SupabaseRestError as error:
+        _raise_data_error(error, "Standards source-course load")
+    if not source_course_rows:
+        raise HTTPException(status_code=503, detail="Standards source course is unavailable")
+
+    source_course_by_id = {_required_uuid(row, "id"): row for row in source_course_rows}
+    source_ids = sorted(
+        {_required_uuid(row, "source_id") for row in source_course_rows},
+        key=str,
+    )
     try:
         source_rows = _records(
             client.request(
                 "GET",
                 "standard_sources",
                 params={
-                    "id": f"eq.{source_id}",
+                    "id": _in_filter(source_ids),
                     "select": (
-                        "id,source_key,authority,title,edition,landing_url,"
-                        "approved_snapshot_id"
+                        "id,source_key,authority,title,edition,landing_url,approved_snapshot_id"
                     ),
-                    "limit": "2",
-                },
-            )
-        )
-        course_rows = _records(
-            client.request(
-                "GET",
-                "standard_courses",
-                params={
-                    "id": f"eq.{course_id}",
-                    "select": (
-                        "id,source_id,course_key,display_name,source_course_code,"
-                        "grade_band,is_pilot_allowed"
-                    ),
-                    "limit": "2",
                 },
             )
         )
     except SupabaseRestError as error:
-        _raise_data_error(error, "Standards catalog load")
-    if len(source_rows) != 1 or len(course_rows) != 1:
-        raise HTTPException(status_code=503, detail="Pilot standards mapping is incomplete")
+        _raise_data_error(error, "Standards source load")
 
-    source_record = source_rows[0]
-    snapshot_id = _optional_uuid(source_record, "approved_snapshot_id")
-    if snapshot_id is None:
-        raise HTTPException(status_code=409, detail="Standards source has no approved snapshot")
+    source_by_id = {_required_uuid(row, "id"): row for row in source_rows}
+    approved_snapshot_ids = [
+        snapshot_id
+        for row in source_rows
+        if (snapshot_id := _optional_uuid(row, "approved_snapshot_id")) is not None
+    ]
+    if not approved_snapshot_ids:
+        raise HTTPException(status_code=409, detail="Standards course has no approved snapshot")
 
     try:
         snapshot_rows = _records(
@@ -279,22 +362,39 @@ def get_assignment_standards(
                 "GET",
                 "standard_snapshots",
                 params={
-                    "id": f"eq.{snapshot_id}",
+                    "id": _in_filter(approved_snapshot_ids),
                     "status": "eq.approved",
-                    "select": "id,source_version,retrieved_at,resolved_document_url",
-                    "limit": "2",
+                    "select": "id,source_id,source_version,retrieved_at,resolved_document_url",
                 },
             )
         )
+    except SupabaseRestError as error:
+        _raise_data_error(error, "Approved standards snapshot load")
+    snapshot_by_source = {
+        _required_uuid(row, "source_id"): row for row in snapshot_rows
+    }
+
+    valid_course_ids: list[UUID] = []
+    valid_snapshot_ids: list[UUID] = []
+    for course_id, course_record in source_course_by_id.items():
+        source_id = _required_uuid(course_record, "source_id")
+        snapshot = snapshot_by_source.get(source_id)
+        if snapshot is None:
+            continue
+        valid_course_ids.append(course_id)
+        valid_snapshot_ids.append(_required_uuid(snapshot, "id"))
+    if not valid_course_ids:
+        raise HTTPException(status_code=409, detail="Standards course has no approved source data")
+
+    try:
         entry_rows = _records(
             client.request(
                 "GET",
                 "standard_entries",
                 params={
-                    "snapshot_id": f"eq.{snapshot_id}",
-                    "course_id": f"eq.{course_id}",
-                    "select": "id,code,text,parent_code,strand,sequence",
-                    "order": "sequence.asc",
+                    "course_id": _in_filter(valid_course_ids),
+                    "snapshot_id": _in_filter(valid_snapshot_ids),
+                    "select": "id,snapshot_id,course_id,code,text,parent_code,strand,sequence",
                 },
             )
         )
@@ -312,30 +412,88 @@ def get_assignment_standards(
         )
     except SupabaseRestError as error:
         _raise_data_error(error, "Approved standards load")
-    if len(snapshot_rows) != 1:
-        raise HTTPException(status_code=503, detail="Approved standards snapshot is unavailable")
 
-    snapshot = snapshot_rows[0]
-    source = StandardSourceRead(
-        id=source_id,
-        source_key=_required_text(source_record, "source_key"),
-        authority=_required_text(source_record, "authority"),
-        title=_required_text(source_record, "title"),
-        edition=_required_text(source_record, "edition"),
-        landing_url=_required_text(source_record, "landing_url"),
-        snapshot_id=_required_uuid(snapshot, "id"),
-        source_version=_optional_text(snapshot, "source_version"),
-        retrieved_at=_required_text(snapshot, "retrieved_at"),
-        resolved_document_url=_required_text(snapshot, "resolved_document_url"),
+    sources: list[StandardSourceRead] = []
+    for course_id in sorted(valid_course_ids, key=lambda item: priority_by_course.get(item, 100)):
+        course_record = source_course_by_id[course_id]
+        source_id = _required_uuid(course_record, "source_id")
+        source_record = source_by_id.get(source_id)
+        snapshot = snapshot_by_source.get(source_id)
+        if source_record is None or snapshot is None:
+            continue
+        sources.append(
+            StandardSourceRead(
+                id=source_id,
+                source_key=_required_text(source_record, "source_key"),
+                authority=_required_text(source_record, "authority"),
+                title=_required_text(source_record, "title"),
+                edition=_required_text(source_record, "edition"),
+                landing_url=_required_text(source_record, "landing_url"),
+                snapshot_id=_required_uuid(snapshot, "id"),
+                source_version=_optional_text(snapshot, "source_version"),
+                retrieved_at=_required_text(snapshot, "retrieved_at"),
+                resolved_document_url=_required_text(snapshot, "resolved_document_url"),
+                relationship=relationship_by_course.get(course_id, "primary"),
+            )
+        )
+
+    source_priority_by_snapshot: dict[UUID, tuple[int, UUID, StandardSourceRead]] = {}
+    for course_id in valid_course_ids:
+        course_record = source_course_by_id[course_id]
+        source_id = _required_uuid(course_record, "source_id")
+        snapshot = snapshot_by_source.get(source_id)
+        source_read = next((item for item in sources if item.id == source_id), None)
+        if snapshot is not None and source_read is not None:
+            source_priority_by_snapshot[_required_uuid(snapshot, "id")] = (
+                priority_by_course.get(course_id, 100),
+                course_id,
+                source_read,
+            )
+
+    standards: list[StandardEntryRead] = []
+    for row in entry_rows:
+        snapshot_id = _required_uuid(row, "snapshot_id")
+        source_info = source_priority_by_snapshot.get(snapshot_id)
+        if source_info is None:
+            continue
+        priority, source_course_id, source_read = source_info
+        standards.append(
+            StandardEntryRead(
+                id=_required_uuid(row, "id"),
+                code=_required_text(row, "code"),
+                text=_required_text(row, "text"),
+                parent_code=_optional_text(row, "parent_code"),
+                strand=_optional_text(row, "strand"),
+                sequence=_required_int(row, "sequence"),
+                source_id=source_read.id,
+                snapshot_id=snapshot_id,
+                authority=source_read.authority,
+                source_title=source_read.title,
+                relationship=relationship_by_course.get(source_course_id, "primary"),
+            )
+        )
+    standards.sort(
+        key=lambda item: (
+            source_priority_by_snapshot.get(item.snapshot_id, (100, UUID(int=0), sources[0]))[0]
+            if item.snapshot_id is not None and sources
+            else 100,
+            item.sequence,
+            item.code,
+        )
     )
+
+    first_course_id = min(valid_course_ids, key=lambda item: priority_by_course.get(item, 100))
     selected_ids = [_required_uuid(row, "standard_entry_id") for row in selected_rows]
     return AssignmentStandardsRead(
         assignment_id=assignment_id,
         week_start=week_start,
         mapped=True,
-        source=source,
-        course=_course_read(course_rows[0]),
-        standards=[_entry_read(row) for row in entry_rows],
+        source=sources[0] if sources else None,
+        sources=sources,
+        course=_course_read(source_course_by_id[first_course_id]),
+        catalog_category=category,
+        catalog_course=catalog_course,
+        standards=standards,
         selected_entry_ids=selected_ids,
     )
 
@@ -386,9 +544,10 @@ def list_admin_sources(
                 "standard_sources",
                 params={
                     "select": (
-                        "id,source_key,authority,title,edition,approved_snapshot_id,is_active"
+                        "id,source_key,authority,title,edition,approved_snapshot_id,is_active,"
+                        "discovery_status,catalog_category_name"
                     ),
-                    "order": "authority.asc,title.asc",
+                    "order": "catalog_category_name.asc,title.asc",
                 },
             )
         )
@@ -403,104 +562,8 @@ def list_admin_sources(
             edition=_required_text(row, "edition"),
             approved_snapshot_id=_optional_uuid(row, "approved_snapshot_id"),
             is_active=_required_bool(row, "is_active"),
+            discovery_status=_required_text(row, "discovery_status"),
+            catalog_category_name=_optional_text(row, "catalog_category_name"),
         )
         for row in rows
     ]
-
-
-@router.get("/admin/courses", response_model=list[StandardCourseRead])
-def list_admin_courses(
-    identity: Annotated[AuthenticatedTeacher, Depends(require_platform_admin)],
-    settings: Annotated[Settings, Depends(get_settings)],
-) -> list[StandardCourseRead]:
-    client = _client(identity, settings)
-    try:
-        rows = _records(
-            client.request(
-                "GET",
-                "standard_courses",
-                params={
-                    "select": (
-                        "id,source_id,course_key,display_name,source_course_code,"
-                        "grade_band,is_pilot_allowed"
-                    ),
-                    "order": "display_name.asc",
-                },
-            )
-        )
-    except SupabaseRestError as error:
-        _raise_data_error(error, "Standards course administration load")
-    return [_course_read(row) for row in rows]
-
-
-@router.put("/admin/courses/{course_id}/pilot", response_model=AdminCourseAvailabilityWrite)
-def set_course_pilot_availability(
-    course_id: UUID,
-    payload: AdminCourseAvailabilityWrite,
-    identity: Annotated[AuthenticatedTeacher, Depends(require_platform_admin)],
-    settings: Annotated[Settings, Depends(get_settings)],
-) -> AdminCourseAvailabilityWrite:
-    client = _client(identity, settings)
-    try:
-        result = client.request(
-            "POST",
-            "rpc/set_standard_course_pilot_allowed",
-            payload={"target_course_id": str(course_id), "allowed": payload.allowed},
-        )
-    except SupabaseRestError as error:
-        _raise_data_error(error, "Standards course availability save")
-    if result is not payload.allowed:
-        raise HTTPException(status_code=503, detail="Standards course availability save failed")
-    return payload
-
-
-@router.put(
-    "/admin/assignments/{assignment_id}/mapping",
-    response_model=AdminAssignmentMappingRead,
-)
-def set_assignment_mapping(
-    assignment_id: UUID,
-    payload: AdminAssignmentMappingWrite,
-    identity: Annotated[AuthenticatedTeacher, Depends(require_platform_admin)],
-    settings: Annotated[Settings, Depends(get_settings)],
-) -> AdminAssignmentMappingRead:
-    client = _client(identity, settings)
-    try:
-        assignment_rows = _records(
-            client.request(
-                "GET",
-                "teaching_assignments",
-                params={"id": f"eq.{assignment_id}", "select": "id", "limit": "2"},
-            )
-        )
-        rows = (
-            _records(
-                client.request(
-                    "POST",
-                    "assignment_standard_courses",
-                    params={"on_conflict": "teaching_assignment_id"},
-                    payload={
-                        "teaching_assignment_id": str(assignment_id),
-                        "source_id": str(payload.source_id),
-                        "course_id": str(payload.course_id),
-                        "mapped_by": identity.subject,
-                    },
-                    prefer="resolution=merge-duplicates,return=representation",
-                )
-            )
-            if len(assignment_rows) == 1
-            else []
-        )
-    except SupabaseRestError as error:
-        _raise_data_error(error, "Assignment standards mapping save")
-    if len(assignment_rows) != 1:
-        raise HTTPException(status_code=404, detail="Teaching assignment not found")
-    if len(rows) != 1:
-        raise HTTPException(status_code=503, detail="Assignment standards mapping save failed")
-    row = rows[0]
-    return AdminAssignmentMappingRead(
-        teaching_assignment_id=_required_uuid(row, "teaching_assignment_id"),
-        source_id=_required_uuid(row, "source_id"),
-        course_id=_required_uuid(row, "course_id"),
-        mapped_by=_required_uuid(row, "mapped_by"),
-    )
