@@ -342,7 +342,8 @@ function App() {
 
   async function createCurriculum(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const rows = String(form.get("lesson_rows") ?? "")
       .split("\n")
       .map((line) => line.trim())
@@ -380,7 +381,7 @@ function App() {
       });
       setCurricula((current) => [...current, created].sort((a, b) => a.name.localeCompare(b.name)));
       setMessage(`${created.name} was imported.`);
-      event.currentTarget.reset();
+      formElement.reset();
       setView("assignment");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Curriculum import failed.");
