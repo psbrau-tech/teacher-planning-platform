@@ -1,11 +1,11 @@
 import pytest
 
 from app.standards_catalog_discovery import (
+    StandardsCatalogDiscoveryError,
     discover_academic_sources,
     discover_alabama_catalogs,
     discover_cte_cos_sources,
     discover_cte_program_sources,
-    StandardsCatalogDiscoveryError,
 )
 
 
