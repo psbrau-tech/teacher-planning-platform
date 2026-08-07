@@ -67,6 +67,10 @@ def test_cross_source_and_approval_invariants_are_enforced() -> None:
 
     assert "public.approve_standard_snapshot" in source
     assert "private.has_role('platform_admin'::public.app_role, null)" in source
+    assert "standards snapshot has no validated parsed entries" in source
+    assert "sc.course_key = 'english_10'" in source
+    assert "'army_jrotc_let_1'" in source
+    assert "'army_jrotc_let_4'" in source
     assert "set status = 'superseded'" in source
     assert "set status = 'approved'" in source
     assert "'approve_standard_snapshot'" in source
