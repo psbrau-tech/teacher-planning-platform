@@ -27,7 +27,7 @@ def test_ela_resolver_prefers_latest_authoritative_pdf() -> None:
     )
 
     assert "2021-Alabama-Course-of-Study-English-Language-Arts" in resolved.document_url
-    assert resolved.observed_version == "2023"
+    assert resolved.observed_version == "2021"
 
 
 def test_bma_resolver_selects_business_management_course_of_study() -> None:
