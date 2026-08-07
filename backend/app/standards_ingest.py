@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from hashlib import sha256
 from io import BytesIO
-import re
-from typing import Callable
 from unicodedata import normalize
 from xml.etree import ElementTree
 from zipfile import BadZipFile, ZipFile
@@ -108,7 +108,9 @@ def extract_document(source: FetchedSource) -> ExtractedDocument:
     elif source.document_format == "docx":
         lines = _extract_docx_lines(source.content)
     else:
-        raise StandardsIngestError(f"Unsupported standards document format: {source.document_format}")
+        raise StandardsIngestError(
+            f"Unsupported standards document format: {source.document_format}"
+        )
 
     if not lines:
         raise StandardsIngestError("Authoritative standards document contained no readable text")
@@ -137,7 +139,11 @@ def parse_document(parser_key: str, extracted: ExtractedDocument) -> ParsedStand
     )
 
 
-def ingest_source(url: str, document_format: str, parser_key: str) -> tuple[FetchedSource, ParsedStandardsDocument]:
+def ingest_source(
+    url: str,
+    document_format: str,
+    parser_key: str,
+) -> tuple[FetchedSource, ParsedStandardsDocument]:
     source = fetch_source(url, document_format)
     extracted = extract_document(source)
     return source, parse_document(parser_key, extracted)
@@ -159,7 +165,9 @@ def _extract_pdf_lines(content: bytes) -> tuple[str, ...]:
         try:
             page_text = page.extract_text() or ""
         except Exception as error:
-            raise StandardsIngestError("Authoritative standards PDF text extraction failed") from error
+            raise StandardsIngestError(
+                "Authoritative standards PDF text extraction failed"
+            ) from error
         lines.extend(cleaned for raw in page_text.splitlines() if (cleaned := _clean_line(raw)))
     return tuple(lines)
 
@@ -240,7 +248,9 @@ def _numbered_standards(
     code_prefix: str,
     allow_recurring: bool = False,
 ) -> tuple[ParsedStandard, ...]:
-    start_pattern = re.compile(r"^(R\d+|\d+)\.\s*(.+)$" if allow_recurring else r"^(\d+)\.\s*(.+)$")
+    start_pattern = re.compile(
+        r"^(R\d+|\d+)\.\s*(.+)$" if allow_recurring else r"^(\d+)\.\s*(.+)$"
+    )
     child_pattern = re.compile(r"^([a-z])\.\s*(.+)$")
     standards: list[ParsedStandard] = []
     current_code: str | None = None
