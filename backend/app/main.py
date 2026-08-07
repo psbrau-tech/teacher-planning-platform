@@ -7,6 +7,7 @@ from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from .administration_api import router as administration_router
+from .ai_planning_api import router as ai_planning_router
 from .curriculum_api import router as curriculum_router
 from .document_sections import HqiDocument
 from .document_service import (
@@ -54,6 +55,7 @@ app.include_router(teaching_assignment_router)
 app.include_router(live_planning_router)
 app.include_router(schedule_exception_router)
 app.include_router(standards_router)
+app.include_router(ai_planning_router)
 app.include_router(weekly_draft_router)
 app.include_router(friday_validation_router)
 
