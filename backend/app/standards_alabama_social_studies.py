@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections import deque
 
 from .standards_ingest import (
     ExtractedDocument,
@@ -10,7 +11,7 @@ from .standards_ingest import (
     StandardsIngestError,
 )
 
-SOCIAL_STUDIES_PARSER_VERSION = "gate-e-alabama-social-studies-2024-v2"
+SOCIAL_STUDIES_PARSER_VERSION = "gate-e-alabama-social-studies-2024-v3"
 
 _COURSES = (
     ("kindergarten", "Kindergarten", "K"),
@@ -48,9 +49,6 @@ _COURSES = (
     ("alabama_studies", "Alabama Studies", "9-12"),
 )
 
-# The 2024 authoritative PDF exposes one explicit Content Standards section for
-# each governed course. Government precedes Economics in the source even though
-# the teacher-facing catalog order above retains Economics first.
 _SOURCE_COURSE_ORDER = (
     "kindergarten",
     "grade_1",
@@ -75,8 +73,8 @@ _SOURCE_COURSE_ORDER = (
     "alabama_studies",
 )
 
-_MAIN_COMBINED = re.compile(r"^(\d+)\.\s+(.+)$")
-_MAIN_DETACHED = re.compile(r"^(\d+)$")
+_MAIN_COMBINED = re.compile(r"^([1-9]\d?)(?:\.\s+|\s+)(.+)$")
+_MAIN_DETACHED = re.compile(r"^([1-9]\d?)$")
 _CHILD_COMBINED = re.compile(r"^(\d+)([a-z])(?:\.|\s)\s*(.+)$")
 _CHILD_LETTER = re.compile(r"^([a-z])\.\s+(.+)$")
 _SUPPLEMENT_PREFIXES = (
@@ -85,6 +83,7 @@ _SUPPLEMENT_PREFIXES = (
     "Clarification:",
     "Suggested Activities:",
 )
+_SOURCE_FOOTER = "2024 Alabama Course of Study: Social Studies"
 
 
 def parse_alabama_social_studies_2024(
@@ -93,8 +92,8 @@ def parse_alabama_social_studies_2024(
     markers = _content_standard_markers(extracted.lines)
     if len(markers) != len(_SOURCE_COURSE_ORDER):
         raise StandardsIngestError(
-            "Alabama Social Studies parser did not find exactly one Content Standards section "
-            "for every expected grade or named course"
+            "Alabama Social Studies parser did not find exactly one Content Standards "
+            "section for every expected grade or named course"
         )
 
     marker_by_course = dict(zip(_SOURCE_COURSE_ORDER, markers, strict=True))
@@ -102,12 +101,24 @@ def parse_alabama_social_studies_2024(
     for course_key, display_name, grade_band in _COURSES:
         marker_index = marker_by_course[course_key]
         end = _next_marker_after(marker_index, markers, len(extracted.lines))
+        detached_before = _detached_codes_before_marker(
+            extracted.lines,
+            marker_index,
+        )
         standards = _parse_social_studies_standards(
-            extracted.lines[marker_index + 1 : end]
+            extracted.lines[marker_index + 1 : end],
+            initial_detached=detached_before,
         )
         if len(standards) < 3:
             raise StandardsIngestError(
-                f"Alabama Social Studies {display_name} standards structure changed unexpectedly"
+                f"Alabama Social Studies {display_name} standards structure changed "
+                "unexpectedly"
+            )
+        codes = [standard.code for standard in standards]
+        if len(codes) != len(set(codes)):
+            raise StandardsIngestError(
+                f"Alabama Social Studies {display_name} produced duplicate standards "
+                "identifiers"
             )
         courses.append(
             ParsedCourse(
@@ -146,10 +157,32 @@ def _next_marker_after(
     )
 
 
+def _detached_codes_before_marker(
+    lines: tuple[str, ...],
+    marker_index: int,
+) -> tuple[str, ...]:
+    footer_index: int | None = None
+    for index in range(marker_index - 1, max(-1, marker_index - 40), -1):
+        if lines[index].startswith(_SOURCE_FOOTER):
+            footer_index = index
+            break
+    if footer_index is None:
+        return ()
+
+    return tuple(
+        match.group(1)
+        for line in lines[footer_index + 1 : marker_index]
+        if (match := _MAIN_DETACHED.fullmatch(line.strip())) is not None
+    )
+
+
 def _parse_social_studies_standards(
     lines: tuple[str, ...],
+    *,
+    initial_detached: tuple[str, ...] = (),
 ) -> tuple[ParsedStandard, ...]:
     standards: list[ParsedStandard] = []
+    pending_main: deque[str] = deque(initial_detached)
     current_main: str | None = None
     current_code: str | None = None
     current_parent: str | None = None
@@ -173,35 +206,35 @@ def _parse_social_studies_standards(
         current_parent = None
         current_parts = []
 
-    for line in lines:
-        combined = _MAIN_COMBINED.match(line)
-        if combined:
-            flush()
-            current_main = combined.group(1)
-            current_code = current_main
-            current_parent = None
-            current_parts = [combined.group(2)]
-            skipping_supplement = False
-            continue
+    def begin_pending(line: str) -> bool:
+        nonlocal current_main, current_code, current_parent, current_parts
+        if current_code is not None or not pending_main:
+            return False
+        current_main = pending_main.popleft()
+        current_code = current_main
+        current_parent = None
+        current_parts = [line]
+        return True
 
-        detached = _MAIN_DETACHED.match(line)
-        if detached:
-            flush()
-            current_main = detached.group(1)
-            current_code = current_main
-            current_parent = None
-            current_parts = []
-            skipping_supplement = False
+    for raw_line in lines:
+        line = re.sub(r"\s+", " ", raw_line).strip()
+        if not line:
+            continue
+        if line.startswith(_SOURCE_FOOTER):
             continue
 
         child = _CHILD_COMBINED.match(line)
-        if child and current_main is not None and child.group(1) == current_main:
-            flush()
-            current_code = f"{child.group(1)}{child.group(2)}"
-            current_parent = current_main
-            current_parts = [child.group(3)]
-            skipping_supplement = False
-            continue
+        if child:
+            if current_code is None and pending_main:
+                current_main = pending_main.popleft()
+                current_code = current_main
+            if current_main is not None and child.group(1) == current_main:
+                flush()
+                current_code = f"{child.group(1)}{child.group(2)}"
+                current_parent = current_main
+                current_parts = [child.group(3)]
+                skipping_supplement = False
+                continue
 
         child_letter = _CHILD_LETTER.match(line)
         if child_letter and current_main is not None:
@@ -212,21 +245,56 @@ def _parse_social_studies_standards(
             skipping_supplement = False
             continue
 
+        combined = _MAIN_COMBINED.match(line)
+        if combined:
+            flush()
+            pending_main.clear()
+            current_main = combined.group(1)
+            current_code = current_main
+            current_parent = None
+            current_parts = [combined.group(2)]
+            skipping_supplement = False
+            continue
+
+        detached = _MAIN_DETACHED.fullmatch(line)
+        if detached:
+            flush()
+            pending_main.append(detached.group(1))
+            skipping_supplement = False
+            continue
+
         if any(line.startswith(prefix) for prefix in _SUPPLEMENT_PREFIXES):
             skipping_supplement = True
             continue
         if skipping_supplement:
             continue
-        if current_code is None or _is_heading_noise(line):
+        if _is_heading_noise(line):
+            continue
+
+        if begin_pending(line):
+            if pending_main and _ends_sentence(line):
+                flush()
+            continue
+        if current_code is None:
             continue
         current_parts.append(line)
+        if current_parent is None and pending_main and _ends_sentence(line):
+            flush()
 
     flush()
+    if pending_main:
+        raise StandardsIngestError(
+            "Alabama Social Studies contained detached standards without authoritative text"
+        )
     return tuple(standards)
 
 
+def _ends_sentence(line: str) -> bool:
+    return bool(re.search(r"[.!?]$", line))
+
+
 def _is_heading_noise(line: str) -> bool:
-    if line.startswith("2024 Alabama Course of Study: Social Studies"):
+    if line.startswith(_SOURCE_FOOTER):
         return True
     return (
         len(line) <= 90
