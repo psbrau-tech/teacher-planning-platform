@@ -257,35 +257,26 @@ def list_pending_snapshots(
         )
         source_by_id = {_text(row, "id"): row for row in sources}
 
+    count_rows = _records(
+        _request(
+            client,
+            "POST",
+            "rpc/platform_admin_standard_snapshot_counts",
+            payload={},
+        )
+    )
+    counts_by_id = {_text(row, "snapshot_id"): row for row in count_rows}
+
     results: list[PendingSnapshotRead] = []
     for snapshot in snapshots:
         snapshot_id = _uuid(snapshot, "id")
         source_id = _uuid(snapshot, "source_id")
         source = source_by_id.get(str(source_id))
+        counts = counts_by_id.get(str(snapshot_id))
         if source is None:
             raise HTTPException(status_code=503, detail="Pending standards source is missing")
-        course_rows = _records(
-            _request(
-                client,
-                "GET",
-                "standard_snapshot_courses",
-                params={
-                    "snapshot_id": f"eq.{snapshot_id}",
-                    "select": "course_id",
-                },
-            )
-        )
-        entry_rows = _records(
-            _request(
-                client,
-                "GET",
-                "standard_entries",
-                params={
-                    "snapshot_id": f"eq.{snapshot_id}",
-                    "select": "id",
-                },
-            )
-        )
+        if counts is None:
+            raise HTTPException(status_code=503, detail="Pending standards counts are missing")
         provenance = snapshot.get("provenance")
         provenance_record = provenance if isinstance(provenance, dict) else {}
         parser_status = provenance_record.get("parser_status")
@@ -307,8 +298,8 @@ def list_pending_snapshots(
                     str(parser_status) if isinstance(parser_status, str) else None
                 ),
                 parser_error=(str(parser_error) if isinstance(parser_error, str) else None),
-                course_count=len(course_rows),
-                standard_entry_count=len(entry_rows),
+                course_count=_int(counts, "course_count"),
+                standard_entry_count=_int(counts, "standard_entry_count"),
             )
         )
     return results
