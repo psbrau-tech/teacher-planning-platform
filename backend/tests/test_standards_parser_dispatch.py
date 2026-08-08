@@ -20,6 +20,11 @@ def test_governed_dispatch_routes_verified_comprehensive_academic_parsers(monkey
         called.append("algebra_finance")
         return _parsed("alabama_algebra_finance_revised")
 
+    def arts_parser(value: ExtractedDocument) -> ParsedStandardsDocument:
+        assert value is extracted
+        called.append("arts")
+        return _parsed("alabama_arts_2024")
+
     def career_math_parser(value: ExtractedDocument) -> ParsedStandardsDocument:
         assert value is extracted
         called.append("career_math")
@@ -66,6 +71,7 @@ def test_governed_dispatch_routes_verified_comprehensive_academic_parsers(monkey
         return _parsed("alabama_world_languages_2017")
 
     monkeypatch.setattr(dispatch, "parse_alabama_algebra_finance", algebra_finance_parser)
+    monkeypatch.setattr(dispatch, "parse_alabama_arts_2024", arts_parser)
     monkeypatch.setattr(dispatch, "parse_alabama_career_mathematics", career_math_parser)
     monkeypatch.setattr(dispatch, "parse_alabama_dlcs_2025", dlcs_parser)
     monkeypatch.setattr(
@@ -94,6 +100,13 @@ def test_governed_dispatch_routes_verified_comprehensive_academic_parsers(monkey
             extracted,
         ).parser_key
         == "alabama_algebra_finance_revised"
+    )
+    assert (
+        dispatch.parse_governed_standards_document(
+            "alabama_arts_2024",
+            extracted,
+        ).parser_key
+        == "alabama_arts_2024"
     )
     assert (
         dispatch.parse_governed_standards_document(
@@ -148,6 +161,7 @@ def test_governed_dispatch_routes_verified_comprehensive_academic_parsers(monkey
     )
     assert called == [
         "algebra_finance",
+        "arts",
         "career_math",
         "dlcs",
         "driver",
