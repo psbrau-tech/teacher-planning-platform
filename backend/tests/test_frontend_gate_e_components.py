@@ -72,16 +72,33 @@ def test_ai_planning_and_reflection_remain_teacher_reviewed_drafts() -> None:
     assert "saved weekly plan, finalized Friday validation" in reflection
 
 
+def test_ai_surfaces_show_no_student_data_notice_and_accessible_status() -> None:
+    for path in (PLANNING, REFLECTION):
+        source = path.read_text(encoding="utf-8")
+        assert "Do not include student data." in source
+        assert 'role="note"' in source
+        assert 'aria-label="Student data restriction"' in source
+        assert 'role="alert"' in source
+        assert 'role="status"' in source
+        assert 'aria-live="polite"' in source
+
+
 def test_gate_e_teacher_components_do_not_collect_student_specific_fields() -> None:
     combined = "\n".join(
         path.read_text(encoding="utf-8")
         for path in (MAPPING, STANDARDS, PLANNING, REFLECTION)
     ).lower()
 
+    # Warning copy is required to name prohibited student-data categories. This
+    # guard therefore targets actual form/API field identifiers rather than
+    # treating the mandated notice itself as evidence that TPP collects them.
     forbidden_form_terms = (
         'name="student',
-        'student_id',
-        'student name',
-        'iep field',
+        "student_id",
+        "student_name",
+        "student_email",
+        "student_grade",
+        "iep_field",
+        "student_work=",
     )
     assert all(term not in combined for term in forbidden_form_terms)
