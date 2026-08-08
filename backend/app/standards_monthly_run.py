@@ -11,6 +11,10 @@ from .standards_catalog_audit import (
 )
 from .standards_catalog_discovery import StandardsCatalogDiscoveryError
 from .standards_catalog_fetch import fetch_current_alabama_catalog
+from .standards_catalog_materialize import (
+    CatalogMaterializeError,
+    materialize_discovered_source,
+)
 from .standards_catalog_reconcile import (
     CatalogReconcileResult,
     StandardsCatalogReconcileError,
@@ -70,6 +74,22 @@ class StandardsReconciliationRunResult:
 MonthlyStandardsRunResult = StandardsReconciliationRunResult
 
 
+def _materialize_annual_catalog_candidates(
+    client: SupabaseRestClient,
+    catalog_result: CatalogReconcileResult,
+) -> None:
+    """Stage current changed/new catalog sources without approving or activating them."""
+    for item in catalog_result.items:
+        if item.state not in {"new", "changed"} or item.discovered is None:
+            continue
+        try:
+            materialize_discovered_source(client, item.discovered)
+        except CatalogMaterializeError as error:
+            raise StandardsReconciliationRunError(
+                f"Discovered standards source could not be staged: {item.source_key}"
+            ) from error
+
+
 def run_standards_reconciliation(
     client: SupabaseRestClient,
     *,
@@ -81,9 +101,10 @@ def run_standards_reconciliation(
     """Run catalog monitoring and, when appropriate, authoritative source validation.
 
     Quarterly monitoring intentionally reconciles catalog metadata only. Annual full
-    validation revalidates every governed source. Event-driven reconciliation validates
-    only explicitly supplied affected source keys. Manual runs validate explicitly
-    supplied sources, or every governed source when no restriction is supplied.
+    validation stages changed/new catalog candidates for review and revalidates every
+    governed source. Event-driven reconciliation validates only explicitly supplied
+    affected source keys. Manual runs validate explicitly supplied sources, or every
+    governed source when no restriction is supplied.
     """
     if reconciliation_kind == "event_driven" and not source_keys:
         raise StandardsReconciliationRunError(
@@ -119,6 +140,9 @@ def run_standards_reconciliation(
         raise StandardsReconciliationRunError(
             "Authoritative standards catalog reconciliation failed"
         ) from error
+
+    if reconciliation_kind == "annual_full" and catalog_result is not None:
+        _materialize_annual_catalog_candidates(client, catalog_result)
 
     if reconciliation_kind == "quarterly_monitor":
         return StandardsReconciliationRunResult(
