@@ -100,14 +100,26 @@ def _detached_table_document() -> ExtractedDocument:
                     "Please refer to Directions for Interpreting Standards.",
                     "Each content standard completes the stem Students will...",
                     "GEOGRAPHY",
-                    "Identify the location of Alabama's major geographic regions and describe their characteristics.",
-                    "1a Summarize how the geography and biodiversity of Alabama formed and evolved.",
+                    (
+                        "Identify the location of Alabama's major geographic regions "
+                        "and describe their characteristics."
+                    ),
+                    (
+                        "1a Summarize how the geography and biodiversity of Alabama "
+                        "formed and evolved."
+                    ),
                     "5",
                     "6",
                     "Alabama Studies",
                     "ORIGINS",
-                    "Describe the cultures, economies, and governments of the first Indigenous peoples to inhabit Alabama.",
-                    "Identify the locations of the major Native American tribes of Alabama during the colonial period.",
+                    (
+                        "Describe the cultures, economies, and governments of the first "
+                        "Indigenous peoples to inhabit Alabama."
+                    ),
+                    (
+                        "Identify the locations of the major Native American tribes of "
+                        "Alabama during the colonial period."
+                    ),
                     "6a Compare and contrast important characteristics of those tribes.",
                     "7 Outline a later Alabama historical development.",
                 ]
@@ -198,8 +210,12 @@ def test_social_studies_parser_recovers_numbers_split_before_and_within_table() 
         "Identify the location of Alabama's major geographic regions"
     )
     assert by_code["1a"].parent_code == "1"
-    assert by_code["5"].text.startswith("Describe the cultures, economies, and governments")
-    assert by_code["6"].text.startswith("Identify the locations of the major Native American tribes")
+    assert by_code["5"].text.startswith(
+        "Describe the cultures, economies, and governments"
+    )
+    assert by_code["6"].text.startswith(
+        "Identify the locations of the major Native American tribes"
+    )
     assert by_code["6a"].parent_code == "6"
     assert by_code["7"].text == "Outline a later Alabama historical development."
 
