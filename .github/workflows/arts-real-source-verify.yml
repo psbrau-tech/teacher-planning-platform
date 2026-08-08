@@ -23,7 +23,13 @@ jobs:
       - name: Parse current Alabama Arts source read-only
         run: |
           python - <<'PY'
-          from app.standards_alabama_arts import parse_alabama_arts_2024
+          from collections import Counter
+
+          from app.standards_alabama_arts import (
+              _course_key,
+              _discover_sections,
+              parse_alabama_arts_2024,
+          )
           from app.standards_ingest import extract_document, fetch_source
 
           url = (
@@ -32,6 +38,26 @@ jobs:
           )
           fetched = fetch_source(url, "pdf")
           extracted = extract_document(fetched)
+          markers = tuple(
+              index for index, line in enumerate(extracted.lines) if line == "Content Standards"
+          )
+          sections = _discover_sections(extracted.lines, markers)
+          candidate_keys = []
+          for section in sections:
+              print(
+                  "section="
+                  f"{section.discipline}|{section.section_name}|"
+                  f"{','.join(lane for lane, _ in section.lanes)}"
+              )
+              for lane, _ in section.lanes:
+                  candidate_keys.append(
+                      _course_key(section.discipline, section.section_name, lane)
+                  )
+          duplicate_keys = sorted(
+              key for key, count in Counter(candidate_keys).items() if count > 1
+          )
+          print(f"duplicate_candidate_keys={duplicate_keys}")
+
           parsed = parse_alabama_arts_2024(extracted)
           print(f"source_sha256={fetched.source_sha256}")
           print(f"normalized_sha256={extracted.normalized_sha256}")
