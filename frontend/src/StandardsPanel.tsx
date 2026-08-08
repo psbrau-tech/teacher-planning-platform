@@ -200,8 +200,9 @@ export function StandardsPanel({
         <div className="guidance-card">
           <strong>Standards mapping required.</strong>
           <p>
-            A platform administrator must map this teaching assignment to its approved
-            authoritative standards course before weekly standards can be selected.
+            Select the Subject / Career Cluster and Grade / Course for this teaching assignment
+            above. You control the course mapping; the platform administrator governs which
+            authoritative source snapshots are approved for use.
           </p>
         </div>
       ) : null}
