@@ -52,8 +52,8 @@ _ANCHOR_TEXT = {
 }
 _ANCHOR_TEXT_VALUES = frozenset(_ANCHOR_TEXT.values())
 _LANE_TOKEN = re.compile(
-    r"Kindergarten|Grade \d+|MS Level [123]|HS Level (?:I|II|III|IV)|"
-    r"Level (?:I|II|III|IV)"
+    r"Kindergarten|Grade \d+|MS Level [123]|HS Level (?:IV|III|II|I)|"
+    r"Level (?:IV|III|II|I)"
 )
 
 
@@ -127,7 +127,7 @@ def _discover_sections(
 
 
 def _nearest_discipline(lines: tuple[str, ...], marker: int) -> str:
-    for index in range(marker - 1, max(-1, marker - 12), -1):
+    for index in range(marker - 1, -1, -1):
         if lines[index] in _DISCIPLINES:
             return lines[index]
     raise StandardsIngestError(
