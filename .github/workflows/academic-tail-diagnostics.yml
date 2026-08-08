@@ -4,8 +4,6 @@ on:
   pull_request:
     paths:
       - "backend/app/standards_alabama_social_studies.py"
-      - "backend/app/standards_alabama_world_languages.py"
-      - "backend/app/standards_alabama_parsers.py"
       - ".github/workflows/academic-tail-diagnostics.yml"
   workflow_dispatch:
 
@@ -25,63 +23,54 @@ jobs:
       - name: Install backend
         working-directory: backend
         run: python -m pip install -e '.[dev]'
-      - name: Inspect current academic tail boundaries read-only
+      - name: Inspect Social Studies government boundary read-only
         working-directory: backend
         run: |
           python - <<'PY'
+          from collections import Counter
+
+          from app.standards_alabama_social_studies import (
+              _SOURCE_COURSE_ORDER,
+              _content_standard_markers,
+              _detached_entries_before_marker,
+              _next_course_boundary,
+              _next_marker_after,
+              _parse_social_studies_standards,
+          )
           from app.standards_catalog_fetch import fetch_current_alabama_catalog
           from app.standards_ingest import extract_document, fetch_source
 
           source_map = {source.source_key: source for source in fetch_current_alabama_catalog()}
+          source = source_map["alabama_academic_social_studies"]
+          lines = extract_document(fetch_source(source.document_url, source.document_format)).lines
+          markers = _content_standard_markers(lines)
+          marker_by_course = dict(zip(_SOURCE_COURSE_ORDER, markers, strict=True))
+          marker = marker_by_course["grade_12_us_government"]
+          next_marker = _next_marker_after(marker, markers, len(lines))
+          end = _next_course_boundary(lines, marker, next_marker)
+          detached = _detached_entries_before_marker(lines, marker)
+
           print("database_writes=0")
+          print(f"government_marker={marker}|next_marker={next_marker}|end={end}")
+          print(f"government_detached_before={detached}")
+          print("=== government_prelude ===")
+          for index in range(max(0, marker - 55), marker + 1):
+              print(f"social|{index}|{lines[index]}")
+          print("=== government_body ===")
+          for index in range(marker + 1, min(end, marker + 260)):
+              print(f"social|{index}|{lines[index]}")
 
-          def load(key):
-              source = source_map[key]
-              fetched = fetch_source(source.document_url, source.document_format)
-              return extract_document(fetched).lines
-
-          social = load("alabama_academic_social_studies")
-          social_markers = [
-              index for index, line in enumerate(social)
-              if line.lower().replace(" ", "") in {"contentstandards", "contentstandard"}
-          ]
-          last_social = social_markers[-1]
-          print("=== social_alabama_studies_tail ===")
-          for index, line in enumerate(social[last_social:last_social + 220], start=last_social):
-              print(f"social|{index}|{line}")
-
-          world = load("alabama_academic_world_languages")
-          level_iv_positions = [
-              index for index, line in enumerate(world)
-              if line.strip().lower() == "level iv"
-          ]
-          print("=== world_languages_level_iv_positions ===")
-          print(f"level_iv_positions={level_iv_positions}")
-          if level_iv_positions:
-              marker = level_iv_positions[-1]
-              for index, line in enumerate(
-                  world[max(0, marker - 40):marker + 240],
-                  start=max(0, marker - 40),
-              ):
-                  print(f"world|{index}|{line}")
-
-          ela = load("alabama_academic_english_language_arts")
-          grade_two_candidates = [
-              index for index, line in enumerate(ela)
-              if "grade 2" in line.lower()
-              and (
-                  "standard" in line.lower()
-                  or "recurring" in line.lower()
-                  or "content" in line.lower()
-              )
-          ]
-          print("=== ela_grade_2_candidates ===")
-          print(f"grade_two_candidates={grade_two_candidates}")
-          if grade_two_candidates:
-              marker = grade_two_candidates[-1]
-              for index, line in enumerate(
-                  ela[max(0, marker - 120):marker + 280],
-                  start=max(0, marker - 120),
-              ):
-                  print(f"ela|{index}|{line}")
+          parsed = _parse_social_studies_standards(
+              lines[marker + 1:end],
+              initial_detached=tuple(code for _, code in detached),
+          )
+          codes = [standard.code for standard in parsed]
+          duplicates = sorted(code for code, count in Counter(codes).items() if count > 1)
+          print(f"parsed_codes={codes}")
+          print(f"duplicate_codes={duplicates}")
+          for code in duplicates:
+              print(f"=== duplicate={code} ===")
+              for standard in parsed:
+                  if standard.code == code:
+                      print(f"{standard.code}|parent={standard.parent_code}|{standard.text}")
           PY
