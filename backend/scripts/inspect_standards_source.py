@@ -12,7 +12,8 @@ from app.standards_parser_dispatch import parse_governed_standards_document
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Fetch and inspect one authoritative standards document without writing to the database."
+            "Fetch and inspect one authoritative standards document without writing "
+            "to the database."
         )
     )
     parser.add_argument("--url", required=True)
