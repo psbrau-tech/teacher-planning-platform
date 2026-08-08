@@ -20,11 +20,15 @@ class ActReferenceSnapshotRead(BaseModel):
     source_key: str
     source_title: str
     source_type: str
+    source_document_url: str
+    source_edition: str | None
+    source_effective_date: str | None
     retrieved_at: str
     parser_version: str
     source_sha256: str
     normalized_sha256: str
     entry_count: int
+    benchmark_count: int
     status: str
 
 
@@ -51,6 +55,15 @@ def _records(payload: object) -> list[JsonRecord]:
 
 def _text(record: JsonRecord, key: str) -> str:
     value = record.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise HTTPException(status_code=503, detail="ACT reference administration data is invalid")
+    return value.strip()
+
+
+def _optional_text(record: JsonRecord, key: str) -> str | None:
+    value = record.get(key)
+    if value is None:
+        return None
     if not isinstance(value, str) or not value.strip():
         raise HTTPException(status_code=503, detail="ACT reference administration data is invalid")
     return value.strip()
@@ -94,6 +107,7 @@ def list_pending_act_reference_snapshots(
     output: list[ActReferenceSnapshotRead] = []
     for snapshot in snapshots:
         source_id = _uuid(snapshot, "source_id")
+        snapshot_id = _uuid(snapshot, "id")
         try:
             source_rows = _records(
                 client.request(
@@ -101,17 +115,29 @@ def list_pending_act_reference_snapshots(
                     "act_reference_sources",
                     params={
                         "id": f"eq.{source_id}",
-                        "select": "source_key,title,source_type",
+                        "select": (
+                            "source_key,title,source_type,document_url,edition,effective_date"
+                        ),
                         "limit": "2",
                     },
                 )
             )
-            count_rows = _records(
+            entry_rows = _records(
                 client.request(
                     "GET",
                     "act_reference_entries",
                     params={
-                        "snapshot_id": f"eq.{_uuid(snapshot, 'id')}",
+                        "snapshot_id": f"eq.{snapshot_id}",
+                        "select": "id",
+                    },
+                )
+            )
+            benchmark_rows = _records(
+                client.request(
+                    "GET",
+                    "act_readiness_benchmarks",
+                    params={
+                        "snapshot_id": f"eq.{snapshot_id}",
                         "select": "id",
                     },
                 )
@@ -125,16 +151,20 @@ def list_pending_act_reference_snapshots(
         source = source_rows[0]
         output.append(
             ActReferenceSnapshotRead(
-                id=_uuid(snapshot, "id"),
+                id=snapshot_id,
                 source_id=source_id,
                 source_key=_text(source, "source_key"),
                 source_title=_text(source, "title"),
                 source_type=_text(source, "source_type"),
+                source_document_url=_text(source, "document_url"),
+                source_edition=_optional_text(source, "edition"),
+                source_effective_date=_optional_text(source, "effective_date"),
                 retrieved_at=_text(snapshot, "retrieved_at"),
                 parser_version=_text(snapshot, "parser_version"),
                 source_sha256=_text(snapshot, "source_sha256"),
                 normalized_sha256=_text(snapshot, "normalized_sha256"),
-                entry_count=len(count_rows),
+                entry_count=len(entry_rows),
+                benchmark_count=len(benchmark_rows),
                 status=_text(snapshot, "status"),
             )
         )
