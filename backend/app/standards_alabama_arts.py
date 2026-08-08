@@ -14,6 +14,14 @@ from .standards_ingest import (
 ARTS_PARSER_VERSION = "gate-e-alabama-arts-2024-v2"
 _EXPECTED_SECTION_COUNT = 33
 _DISCIPLINES = ("DANCE", "MEDIA ARTS", "MUSIC", "THEATRE", "VISUAL ARTS")
+_MUSIC_FAMILIES = (
+    "GENERAL MUSIC",
+    "PERFORMING ENSEMBLES",
+    "HARMONIZING INSTRUMENTS",
+    "FUNDAMENTALS OF MUSIC INDUSTRIES",
+    "MUSIC TECHNOLOGY",
+    "THEORY AND COMPOSITION",
+)
 _NUMBERED = re.compile(r"^(\d+)\.\s+(.+)$")
 _NUMBERED_SPLIT = re.compile(r"(?=\d+\.\s)")
 _CONTEXT_PREFIXES = (
@@ -64,6 +72,7 @@ class _Section:
     discipline: str
     section_name: str
     lanes: tuple[tuple[str, str | None], ...]
+    course_family: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,7 +122,11 @@ def _discover_sections(
         end = markers[position + 1] if position + 1 < len(markers) else len(lines)
         discipline = _nearest_discipline(lines, marker)
         section_name = _section_name(lines, marker, discipline)
-        lanes = _discover_lanes(lines[marker + 1 : end], section_name)
+        course_family = _course_family(lines, marker, discipline)
+        lanes = _lanes_from_section_name(section_name) or _discover_lanes(
+            lines[marker + 1 : end],
+            section_name,
+        )
         sections.append(
             _Section(
                 marker_index=marker,
@@ -121,6 +134,7 @@ def _discover_sections(
                 discipline=discipline,
                 section_name=section_name,
                 lanes=lanes,
+                course_family=course_family,
             )
         )
     return tuple(sections)
@@ -146,12 +160,50 @@ def _section_name(lines: tuple[str, ...], marker: int, discipline: str) -> str:
     raise StandardsIngestError("Alabama Arts parser could not identify a section name")
 
 
+def _course_family(lines: tuple[str, ...], marker: int, discipline: str) -> str | None:
+    if discipline != "MUSIC":
+        return None
+    for index in range(marker - 1, max(-1, marker - 40), -1):
+        if lines[index] in _MUSIC_FAMILIES:
+            return lines[index]
+    return "GENERAL MUSIC"
+
+
+def _lanes_from_section_name(
+    section_name: str,
+) -> tuple[tuple[str, str | None], ...] | None:
+    normalized = section_name.lower().replace("and", "and")
+    if section_name == "Kindergarten-Grade 2":
+        return (("Kindergarten", "K"), ("Grade 1", "1"), ("Grade 2", "2"))
+    if section_name == "Grades 3-5":
+        return (("Grade 3", "3"), ("Grade 4", "4"), ("Grade 5", "5"))
+    if section_name == "Middle School Levels 1-3":
+        return (
+            ("MS Level 1", "6-8"),
+            ("MS Level 2", "6-8"),
+            ("MS Level 3", "6-8"),
+        )
+    if "high school levels i and ii" in normalized:
+        return (("HS Level I", "9-12"), ("HS Level II", "9-12"))
+    if "high school levels iii and iv" in normalized:
+        return (("HS Level III", "9-12"), ("HS Level IV", "9-12"))
+    if "high school levels i-iii" in normalized:
+        return (
+            ("HS Level I", "9-12"),
+            ("HS Level II", "9-12"),
+            ("HS Level III", "9-12"),
+        )
+    if section_name == "High School":
+        return (("High School", "9-12"),)
+    return None
+
+
 def _discover_lanes(
     lines: tuple[str, ...],
     section_name: str,
 ) -> tuple[tuple[str, str | None], ...]:
     best: tuple[str, ...] = ()
-    for line in lines:
+    for line in lines[:40]:
         tokens = _lane_tokens(line)
         if len(tokens) > len(best):
             best = tokens
@@ -205,13 +257,19 @@ def _parse_section(lines: tuple[str, ...], section: _Section) -> list[ParsedCour
             raise StandardsIngestError(
                 f"Alabama Arts {section.discipline} {lane_name} produced no standards"
             )
-        display_name = _display_name(section.discipline, section.section_name, lane_name)
+        display_name = _display_name(
+            section.discipline,
+            section.section_name,
+            lane_name,
+            section.course_family,
+        )
         courses.append(
             ParsedCourse(
                 course_key=_course_key(
                     section.discipline,
                     section.section_name,
                     lane_name,
+                    section.course_family,
                 ),
                 display_name=display_name,
                 source_course_code=section.section_name,
@@ -378,11 +436,13 @@ def _courses_from_section(
                     section.discipline,
                     section.section_name,
                     lane_name,
+                    section.course_family,
                 ),
                 display_name=_display_name(
                     section.discipline,
                     section.section_name,
                     lane_name,
+                    section.course_family,
                 ),
                 source_course_code=section.section_name,
                 grade_band=grade_band,
@@ -402,15 +462,26 @@ def _append_unique(target: list[ParsedStandard], entry: _Entry) -> None:
     target.append(ParsedStandard(code=code, text=entry.text, strand=entry.strand))
 
 
-def _display_name(discipline: str, section_name: str, lane_name: str) -> str:
-    discipline_name = discipline.title()
-    if lane_name == section_name:
-        return f"{discipline_name} {section_name}"
-    return f"{discipline_name} {section_name} — {lane_name}"
+def _display_name(
+    discipline: str,
+    section_name: str,
+    lane_name: str,
+    course_family: str | None = None,
+) -> str:
+    base = course_family.title() if course_family else discipline.title()
+    if course_family == section_name or lane_name == section_name:
+        return base if course_family == section_name else f"{base} {section_name}"
+    return f"{base} {section_name} — {lane_name}"
 
 
-def _course_key(discipline: str, section_name: str, lane_name: str) -> str:
-    value = f"{discipline}_{section_name}_{lane_name}".lower()
+def _course_key(
+    discipline: str,
+    section_name: str,
+    lane_name: str,
+    course_family: str | None = None,
+) -> str:
+    family = course_family or discipline
+    value = f"{discipline}_{family}_{section_name}_{lane_name}".lower()
     value = re.sub(r"[^a-z0-9]+", "_", value).strip("_")
     return value
 
@@ -422,6 +493,7 @@ def _is_noise(line: str, section: _Section) -> bool:
         "Content Standards",
         section.discipline,
         section.section_name,
+        section.course_family,
         "Please refer to “Directions for Interpreting Standards” on page 14.",
         "Each content standard completes the stem “Students will…”",
     }:
