@@ -5,8 +5,16 @@ from datetime import date
 from typing import Any, Literal, cast
 from uuid import UUID
 
-from .standards_course_catalog import parse_course_catalog_document
-from .standards_ingest import StandardsIngestError, extract_document, fetch_source
+from .standards_course_catalog import (
+    ParsedCourseCatalogDocument,
+    parse_course_catalog_document,
+)
+from .standards_ingest import (
+    ParsedStandardsDocument,
+    StandardsIngestError,
+    extract_document,
+    fetch_source,
+)
 from .standards_maintenance import MaintenanceResult, stage_authoritative_source
 from .standards_parser_dispatch import parse_governed_standards_document
 from .standards_source_resolver import resolve_governed_source_document
@@ -15,6 +23,7 @@ from .supabase_rest import SupabaseRestClient, SupabaseRestError
 
 JsonRecord = dict[str, Any]
 CheckStatus = Literal["unchanged", "changed", "unavailable_error"]
+RequestPayload = dict[str, object] | list[dict[str, object]] | None
 
 
 class GovernedStandardsValidationError(RuntimeError):
@@ -112,8 +121,8 @@ def validate_governed_source(
         _record_if_requested(client, source, approved, result, check_month)
         return result
 
-    parsed_standards = None
-    parsed_catalog = None
+    parsed_standards: ParsedStandardsDocument | None = None
+    parsed_catalog: ParsedCourseCatalogDocument | None = None
     parse_error: str | None = None
     parser_version: str | None = None
     try:
@@ -319,7 +328,12 @@ def _stage_pending_snapshot(
     return _uuid(rows[0], "id")
 
 
-def _persist_standards(client, source, snapshot_id, parsed) -> None:
+def _persist_standards(
+    client: SupabaseRestClient,
+    source: _Source,
+    snapshot_id: UUID,
+    parsed: ParsedStandardsDocument,
+) -> None:
     _reset_candidate(client, snapshot_id)
     for sequence, course in enumerate(parsed.courses, start=1):
         course_id = _upsert_course(
@@ -340,7 +354,7 @@ def _persist_standards(client, source, snapshot_id, parsed) -> None:
             course.grade_band,
             True,
         )
-        entries = [
+        entries: list[dict[str, object]] = [
             {
                 "snapshot_id": str(snapshot_id),
                 "course_id": str(course_id),
@@ -362,7 +376,12 @@ def _persist_standards(client, source, snapshot_id, parsed) -> None:
         )
 
 
-def _persist_course_catalog(client, source, snapshot_id, parsed) -> None:
+def _persist_course_catalog(
+    client: SupabaseRestClient,
+    source: _Source,
+    snapshot_id: UUID,
+    parsed: ParsedCourseCatalogDocument,
+) -> None:
     _reset_candidate(client, snapshot_id)
     for sequence, course in enumerate(parsed.courses, start=1):
         course_id = _upsert_course(
@@ -427,7 +446,9 @@ def _upsert_course(
         prefer="resolution=merge-duplicates,return=representation",
     )
     if len(rows) != 1:
-        raise GovernedStandardsValidationError("Governed source course save returned invalid data")
+        raise GovernedStandardsValidationError(
+            "Governed source course save returned invalid data"
+        )
     return _uuid(rows[0], "id")
 
 
@@ -503,7 +524,7 @@ def _request_records(
     resource: str,
     *,
     params: dict[str, str] | None = None,
-    payload: object | None = None,
+    payload: RequestPayload = None,
     prefer: str | None = None,
 ) -> list[JsonRecord]:
     result = _request(
@@ -527,7 +548,7 @@ def _request(
     resource: str,
     *,
     params: dict[str, str] | None = None,
-    payload: object | None = None,
+    payload: RequestPayload = None,
     prefer: str | None = None,
 ) -> object:
     try:
