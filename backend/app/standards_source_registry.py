@@ -66,6 +66,7 @@ _ACADEMIC_PARSERS = {
     "alabama_academic_english_language_arts": "alabama_ela_2021",
     "alabama_academic_health": "alabama_health_2019",
     "alabama_academic_mathematics": "alabama_math_2019",
+    "alabama_academic_physical_education": "alabama_physical_education_2019",
     "alabama_academic_science": "alabama_science_2023",
     "alabama_academic_social_studies": "alabama_social_studies_2024",
 }
