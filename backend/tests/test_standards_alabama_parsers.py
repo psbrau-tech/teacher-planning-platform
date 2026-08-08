@@ -105,3 +105,53 @@ def test_generic_cte_parser_preserves_foundational_and_content_strands() -> None
     assert finance.standards[0].strand == "Foundational Standards"
     assert finance.standards[3].code == "1"
     assert finance.standards[3].strand == "Content Standards"
+
+
+def test_generic_cte_parser_accepts_course_named_content_standards_heading() -> None:
+    parsed = parse_governed_standards_document(
+        "alabama_cte_cos_generic",
+        _extracted(
+            [
+                "STEM Technologies I",
+                "Grade Levels 6-8",
+                "Foundational",
+                "Standards",
+                "1. Shared safety foundation.",
+                "STEM Technologies I Content Standards",
+                "Each content standard completes the stem “Students will...”",
+                "1. Describe the development of technology.",
+                "2. Apply a design process.",
+            ]
+        ),
+    )
+
+    assert len(parsed.courses) == 1
+    course = parsed.courses[0]
+    assert course.course_key == "stem_technologies_i"
+    assert course.display_name == "Stem Technologies I"
+    assert [standard.code for standard in course.standards] == ["1", "1", "2"]
+    assert course.standards[0].strand == "Foundational Standards"
+    assert course.standards[1].strand == "Content Standards"
+
+
+def test_generic_cte_parser_accepts_split_standards_heading_extraction() -> None:
+    parsed = parse_governed_standards_document(
+        "alabama_cte_cos_generic",
+        _extracted(
+            [
+                "CAREER PATHWAY PROJECT IN EDUCATION AND TRAINING",
+                "Grade Levels 10-12",
+                "Foundational",
+                "Standards",
+                "1. Demonstrate safe workplace practices.",
+                "CAREER PATHWAY PROJECT IN EDUCATION AND TRAINING CONTENT ST ANDARDS",
+                "1. Create a formal project proposal.",
+                "2. Conduct and record independent research.",
+            ]
+        ),
+    )
+
+    assert len(parsed.courses) == 1
+    course = parsed.courses[0]
+    assert course.course_key == "career_pathway_project_in_education_and_training"
+    assert [standard.code for standard in course.standards] == ["1", "1", "2"]
