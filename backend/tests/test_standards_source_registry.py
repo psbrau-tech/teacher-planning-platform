@@ -33,6 +33,7 @@ def test_verified_academic_sources_have_source_specific_parsers() -> None:
         "alabama_academic_physical_education": "alabama_physical_education_2019",
         "alabama_academic_science": "alabama_science_2023",
         "alabama_academic_social_studies": "alabama_social_studies_2024",
+        "alabama_academic_world_languages": "alabama_world_languages_2017",
     }
 
     for source_key, parser_key in expected.items():
@@ -45,7 +46,7 @@ def test_verified_academic_sources_have_source_specific_parsers() -> None:
 
 def test_unverified_academic_source_is_governed_but_not_approvable_yet() -> None:
     plan = source_ingest_plan(
-        _source("alabama_academic_world_languages", "alabama_academic")
+        _source("alabama_academic_digital_literacy_computer_science", "alabama_academic")
     )
 
     assert plan.parser_ready is False
