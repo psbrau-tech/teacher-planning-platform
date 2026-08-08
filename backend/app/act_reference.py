@@ -316,7 +316,10 @@ def load_act_candidate_entries(
         )
         scored.append((overlap, code, row))
     scored.sort(key=lambda item: (-item[0], item[1]))
-    return [row for score, _, row in scored if score > 0][:limit]
+    # Positive lexical matches rank first. Zero-overlap entries fill the remaining
+    # bounded candidate window so the model can still identify a legitimate cross-
+    # curricular ACT connection without ever inventing an ACT reference.
+    return [row for _, _, row in scored][:limit]
 
 
 def load_approved_act_entries(
