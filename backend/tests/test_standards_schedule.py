@@ -4,8 +4,10 @@ import pytest
 
 from app.standards_schedule import (
     StandardsScheduleError,
+    annual_full_validation_is_due,
     first_workday,
-    monthly_check_is_due,
+    quarterly_monitor_is_due,
+    scheduled_reconciliation_kind,
 )
 
 
@@ -23,13 +25,34 @@ def test_first_workday_honors_explicit_non_working_dates() -> None:
     assert first_workday(2027, 1, non_working_dates=non_working) == date(2027, 1, 4)
 
 
-def test_monthly_check_is_due_only_on_resolved_first_workday() -> None:
-    non_working = frozenset({date(2027, 1, 1)})
+def test_annual_full_validation_defaults_to_first_workday_of_july() -> None:
+    assert annual_full_validation_is_due(date(2027, 7, 1))
+    assert not annual_full_validation_is_due(date(2027, 7, 2))
+    assert not annual_full_validation_is_due(date(2027, 8, 2))
 
-    assert not monthly_check_is_due(date(2027, 1, 1), non_working_dates=non_working)
-    assert not monthly_check_is_due(date(2027, 1, 3), non_working_dates=non_working)
-    assert monthly_check_is_due(date(2027, 1, 4), non_working_dates=non_working)
-    assert not monthly_check_is_due(date(2027, 1, 5), non_working_dates=non_working)
+
+def test_annual_full_validation_honors_school_non_working_dates() -> None:
+    non_working = frozenset({date(2027, 7, 1), date(2027, 7, 2)})
+
+    assert not annual_full_validation_is_due(
+        date(2027, 7, 2), non_working_dates=non_working
+    )
+    assert annual_full_validation_is_due(
+        date(2027, 7, 5), non_working_dates=non_working
+    )
+
+
+def test_quarterly_monitor_runs_january_april_and_october_but_not_july() -> None:
+    assert quarterly_monitor_is_due(date(2027, 1, 1))
+    assert quarterly_monitor_is_due(date(2027, 4, 1))
+    assert quarterly_monitor_is_due(date(2027, 10, 1))
+    assert not quarterly_monitor_is_due(date(2027, 7, 1))
+
+
+def test_scheduled_kind_prioritizes_annual_full_validation() -> None:
+    assert scheduled_reconciliation_kind(date(2027, 7, 1)) == "annual_full"
+    assert scheduled_reconciliation_kind(date(2027, 10, 1)) == "quarterly_monitor"
+    assert scheduled_reconciliation_kind(date(2027, 11, 1)) is None
 
 
 def test_first_workday_rejects_invalid_month() -> None:
