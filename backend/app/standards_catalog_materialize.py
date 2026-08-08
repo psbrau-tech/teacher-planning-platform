@@ -309,7 +309,9 @@ def _stage_candidate_snapshot(
             )
         )
     except SupabaseRestError as error:
-        raise CatalogMaterializeError("Discovered candidate snapshot could not be staged") from error
+        raise CatalogMaterializeError(
+            "Discovered candidate snapshot could not be staged"
+        ) from error
     if len(rows) != 1:
         raise CatalogMaterializeError("Discovered candidate snapshot returned invalid data")
     return _required_uuid(rows[0], "id")
