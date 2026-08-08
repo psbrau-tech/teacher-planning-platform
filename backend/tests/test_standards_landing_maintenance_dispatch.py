@@ -66,6 +66,8 @@ def _parsed() -> ParsedStandardsDocument:
 
 
 def test_landing_resolved_source_uses_governed_parser_dispatch(monkeypatch) -> None:
+    assert maintenance.parse_document is maintenance.parse_governed_standards_document
+
     calls: list[str] = []
     persisted: list[UUID] = []
 
@@ -87,7 +89,7 @@ def test_landing_resolved_source_uses_governed_parser_dispatch(monkeypatch) -> N
         calls.append(parser_key)
         return _parsed()
 
-    monkeypatch.setattr(maintenance, "parse_governed_standards_document", parse)
+    monkeypatch.setattr(maintenance, "parse_document", parse)
     monkeypatch.setattr(
         maintenance,
         "_stage_snapshot",
