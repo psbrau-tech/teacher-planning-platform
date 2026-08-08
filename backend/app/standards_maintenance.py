@@ -7,19 +7,17 @@ from uuid import UUID
 
 from .settings import Settings
 from .standards_course_catalog import (
-    COURSE_CATALOG_PARSER_VERSION,
     ParsedCourseCatalogDocument,
     parse_course_catalog_document,
 )
 from .standards_ingest import (
-    PARSER_VERSION,
     FetchedSource,
     ParsedStandardsDocument,
     StandardsIngestError,
     extract_document,
     fetch_source,
-    parse_document,
 )
+from .standards_parser_dispatch import parse_governed_standards_document
 from .standards_sources import (
     ResolvedStandardsSource,
     StandardsSourceResolutionError,
@@ -139,7 +137,7 @@ def stage_authoritative_source(
     parsed_standards: ParsedStandardsDocument | None = None
     parsed_catalog: ParsedCourseCatalogDocument | None = None
     parse_error: str | None = None
-    parser_version = PARSER_VERSION
+    parser_version: str | None = None
     try:
         extracted = extract_document(fetched)
         if approved is not None and approved.normalized_sha256 == extracted.normalized_sha256:
@@ -157,10 +155,11 @@ def stage_authoritative_source(
             return result
 
         if source.source_kind == "program_guide":
-            parser_version = COURSE_CATALOG_PARSER_VERSION
             parsed_catalog = parse_course_catalog_document(source.parser_key, extracted)
+            parser_version = parsed_catalog.parser_version
         elif source.provides_standard_entries:
-            parsed_standards = parse_document(source.parser_key, extracted)
+            parsed_standards = parse_governed_standards_document(source.parser_key, extracted)
+            parser_version = parsed_standards.parser_version
         else:
             raise StandardsIngestError(
                 f"Unsupported governed source role for parser: {source.source_kind}"
@@ -343,18 +342,10 @@ def _stage_snapshot(
     fetched: FetchedSource,
     normalized_sha256: str | None,
     parser_key: str,
-    parser_version: str,
+    parser_version: str | None,
     parser_succeeded: bool,
     parser_error: str | None,
 ) -> UUID:
-    existing = _find_snapshot_by_hash(client, source.id, fetched.source_sha256)
-    if existing is not None:
-        if existing.status != "pending":
-            raise StandardsMaintenanceError(
-                "Changed source fingerprint already has a non-pending snapshot"
-            )
-        return existing.id
-
     provenance: dict[str, object] = {
         "landing_url": resolved.landing_url,
         "anchor_text": resolved.anchor_text,
@@ -367,6 +358,32 @@ def _stage_snapshot(
     }
     if parser_error:
         provenance["parser_error"] = parser_error
+
+    existing = _find_snapshot_by_hash(client, source.id, fetched.source_sha256)
+    if existing is not None:
+        if existing.status != "pending":
+            raise StandardsMaintenanceError(
+                "Changed source fingerprint already has a non-pending snapshot"
+            )
+        try:
+            client.request(
+                "PATCH",
+                "standard_snapshots",
+                params={"id": f"eq.{existing.id}"},
+                payload={
+                    "normalized_sha256": normalized_sha256,
+                    "source_version": resolved.observed_version,
+                    "parser_version": parser_version,
+                    "resolved_document_url": fetched.resolved_url,
+                    "provenance": provenance,
+                },
+                prefer="return=minimal",
+            )
+        except SupabaseRestError as error:
+            raise StandardsMaintenanceError(
+                "Pending standards candidate could not be refreshed"
+            ) from error
+        return existing.id
 
     try:
         rows = _records(
