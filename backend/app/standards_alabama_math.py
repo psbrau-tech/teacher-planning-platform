@@ -10,7 +10,7 @@ from .standards_ingest import (
     StandardsIngestError,
 )
 
-MATH_PARSER_VERSION = "gate-e-alabama-math-2019-v2"
+MATH_PARSER_VERSION = "gate-e-alabama-math-2019-v3"
 _COURSES = (
     ("kindergarten", "Kindergarten", "K"),
     ("grade_1", "Grade 1", "1"),
@@ -63,14 +63,19 @@ def parse_alabama_math_2019(extracted: ExtractedDocument) -> ParsedStandardsDocu
             "Alabama Mathematics parser did not find all eight Student Mathematical Practices"
         )
 
-    ordered_markers = [index for index in marker_values if index is not None]
+    source_markers = sorted(index for index in marker_values if index is not None)
     courses: list[ParsedCourse] = []
-    for index, (course_key, display_name, grade_band) in enumerate(_COURSES):
-        start = ordered_markers[index] + 1
-        end = (
-            ordered_markers[index + 1]
-            if index + 1 < len(ordered_markers)
-            else len(extracted.lines)
+    for course_key, display_name, grade_band in _COURSES:
+        marker_index = markers[display_name]
+        if marker_index is None:
+            raise StandardsIngestError(
+                f"Alabama Mathematics parser lost marker for {display_name}"
+            )
+        start = marker_index + 1
+        end = _next_marker_after(
+            marker_index,
+            source_markers,
+            len(extracted.lines),
         )
         content = _parse_math_content(extracted.lines[start:end])
         if len(content) < 3:
@@ -100,6 +105,17 @@ def _content_marker(display_name: str) -> str:
     if display_name == "Grade 8":
         return "Grade 8 Mathematics Content Standards"
     return f"{display_name} Content Standards"
+
+
+def _next_marker_after(
+    marker_index: int,
+    source_markers: list[int],
+    document_length: int,
+) -> int:
+    return next(
+        (candidate for candidate in source_markers if candidate > marker_index),
+        document_length,
+    )
 
 
 def _parse_student_mathematical_practices(
