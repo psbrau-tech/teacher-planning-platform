@@ -19,38 +19,36 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Fix and format ACT files
+      - name: Format and repair ACT files
         run: |
+          python -m pip install ruff==0.16.2
+          ruff format backend/app/act_reference.py backend/app/act_reference_admin_api.py backend/tests/test_act_reference.py
           python - <<'PY'
           from pathlib import Path
 
-          path = Path("backend/app/act_reference.py")
-          text = path.read_text()
-          old = '                    "select": "reference_code,domain,category,score_range,exact_text,source_id,snapshot_id",\n'
-          new = (
-              '                    "select": (\n'
-              '                        "reference_code,domain,category,score_range,exact_text,"\n'
-              '                        "source_id,snapshot_id"\n'
-              '                    ),\n'
-          )
-          if text.count(old) != 1:
-              raise SystemExit("ACT entry select formatting anchor changed")
-          path.write_text(text.replace(old, new, 1))
-
-          path = Path("backend/app/act_reference_admin_api.py")
-          text = path.read_text()
-          old = '                    "select": "id,source_id,retrieved_at,parser_version,source_sha256,normalized_sha256,status",\n'
-          new = (
-              '                    "select": (\n'
-              '                        "id,source_id,retrieved_at,parser_version,source_sha256,"\n'
-              '                        "normalized_sha256,status"\n'
-              '                    ),\n'
-          )
-          if text.count(old) != 1:
-              raise SystemExit("ACT admin select formatting anchor changed")
-          path.write_text(text.replace(old, new, 1))
+          replacements = {
+              "backend/app/act_reference.py": (
+                  '                    "select": "reference_code,domain,category,score_range,exact_text,source_id,snapshot_id",\n',
+                  '                    "select": (\n'
+                  '                        "reference_code,domain,category,score_range,exact_text,"\n'
+                  '                        "source_id,snapshot_id"\n'
+                  '                    ),\n',
+              ),
+              "backend/app/act_reference_admin_api.py": (
+                  '                    "select": "id,source_id,retrieved_at,parser_version,source_sha256,normalized_sha256,status",\n',
+                  '                    "select": (\n'
+                  '                        "id,source_id,retrieved_at,parser_version,source_sha256,"\n'
+                  '                        "normalized_sha256,status"\n'
+                  '                    ),\n',
+              ),
+          }
+          for filename, (old, new) in replacements.items():
+              path = Path(filename)
+              text = path.read_text()
+              if old not in text:
+                  raise SystemExit(f"expected formatted select anchor missing: {filename}")
+              path.write_text(text.replace(old, new, 1))
           PY
-          python -m pip install ruff==0.16.2
           ruff format backend/app/act_reference.py backend/app/act_reference_admin_api.py backend/tests/test_act_reference.py
           ruff check --fix backend/app/act_reference.py backend/app/act_reference_admin_api.py backend/tests/test_act_reference.py
           ruff check backend/app/act_reference.py backend/app/act_reference_admin_api.py backend/tests/test_act_reference.py
