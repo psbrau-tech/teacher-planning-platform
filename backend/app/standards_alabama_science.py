@@ -84,7 +84,11 @@ def parse_alabama_science_2023(
 
     courses: list[ParsedCourse] = []
     for index, section in enumerate(sections):
-        end = sections[index + 1].marker_index if index + 1 < len(sections) else len(extracted.lines)
+        end = (
+            sections[index + 1].marker_index
+            if index + 1 < len(sections)
+            else len(extracted.lines)
+        )
         standards = _parse_science_standards(
             extracted.lines[section.marker_index + 1 : end]
         )
@@ -205,6 +209,4 @@ def _is_science_table_noise(line: str) -> bool:
         return True
     if line.startswith(_STEM_PREFIX):
         return True
-    if len(line) <= 55 and line.istitle() and not re.search(r"[.!?]$", line):
-        return True
-    return False
+    return len(line) <= 55 and line.istitle() and not re.search(r"[.!?]$", line)
