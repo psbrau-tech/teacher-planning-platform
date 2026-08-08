@@ -25,6 +25,10 @@ from .standards_sources import (
 )
 from .supabase_rest import SupabaseRestClient, SupabaseRestError
 
+# Compatibility hook retained for existing tests/callers; it now points to the
+# comprehensive governed dispatcher rather than the legacy ingest parser.
+parse_document = parse_governed_standards_document
+
 JsonRecord = dict[str, Any]
 CheckStatus = Literal["unchanged", "changed", "unavailable_error"]
 
@@ -158,7 +162,7 @@ def stage_authoritative_source(
             parsed_catalog = parse_course_catalog_document(source.parser_key, extracted)
             parser_version = parsed_catalog.parser_version
         elif source.provides_standard_entries:
-            parsed_standards = parse_governed_standards_document(source.parser_key, extracted)
+            parsed_standards = parse_document(source.parser_key, extracted)
             parser_version = parsed_standards.parser_version
         else:
             raise StandardsIngestError(
