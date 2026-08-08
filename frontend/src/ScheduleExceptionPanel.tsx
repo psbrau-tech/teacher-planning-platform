@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 
+import { CanonicalStandardsPanel } from "./CanonicalStandardsPanel";
 import { StandardsCourseMappingPanel } from "./StandardsCourseMappingPanel";
-import { StandardsPanel } from "./StandardsPanel";
 
 type ScheduleException = {
   id: string;
@@ -154,11 +154,12 @@ export function ScheduleExceptionPanel({
         disabled={disabled || working}
         onMappingSaved={() => setMappingRevision((current) => current + 1)}
       />
-      <StandardsPanel
+      <CanonicalStandardsPanel
         key={`${assignmentId}-${weekStart}-${mappingRevision}`}
         accessToken={accessToken}
         assignmentId={assignmentId || null}
         weekStart={weekStart}
+        disabled={disabled || working}
       />
       <div className="card">
         <div className="section-heading compact">
