@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/gate-e-final-lint-fix.yml"
+      - "backend/tests/test_act_reference.py"
 
 permissions:
   contents: write
