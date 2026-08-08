@@ -11,7 +11,7 @@ from .standards_ingest import (
     StandardsIngestError,
 )
 
-SOCIAL_STUDIES_PARSER_VERSION = "gate-e-alabama-social-studies-2024-v5"
+SOCIAL_STUDIES_PARSER_VERSION = "gate-e-alabama-social-studies-2024-v6"
 
 _COURSES = (
     ("kindergarten", "Kindergarten", "K"),
@@ -122,12 +122,9 @@ def parse_alabama_social_studies_2024(
                 f"Alabama Social Studies {display_name} standards structure changed "
                 "unexpectedly"
             )
-        codes = [standard.code for standard in standards]
-        if len(codes) != len(set(codes)):
-            raise StandardsIngestError(
-                f"Alabama Social Studies {display_name} produced duplicate standards "
-                "identifiers"
-            )
+        # Source identifiers are provenance, not generated primary keys. The authoritative
+        # 2024 source contains at least one repeated printed identifier (Government 11b).
+        # Preserve both entries exactly rather than silently renumbering source text.
         courses.append(
             ParsedCourse(
                 course_key=course_key,
