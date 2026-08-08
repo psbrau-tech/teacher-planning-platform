@@ -6,7 +6,13 @@ from typing import Any, Literal, cast
 from uuid import UUID
 
 from .settings import Settings
+from .standards_course_catalog import (
+    COURSE_CATALOG_PARSER_VERSION,
+    ParsedCourseCatalogDocument,
+    parse_course_catalog_document,
+)
 from .standards_ingest import (
+    PARSER_VERSION,
     FetchedSource,
     ParsedStandardsDocument,
     StandardsIngestError,
@@ -38,6 +44,8 @@ class StandardSourceRecord:
     document_format: str
     resolver_key: str
     parser_key: str
+    source_kind: str
+    provides_standard_entries: bool
     approved_snapshot_id: UUID | None
 
 
@@ -128,8 +136,10 @@ def stage_authoritative_source(
         return result
 
     extracted = None
-    parsed: ParsedStandardsDocument | None = None
+    parsed_standards: ParsedStandardsDocument | None = None
+    parsed_catalog: ParsedCourseCatalogDocument | None = None
     parse_error: str | None = None
+    parser_version = PARSER_VERSION
     try:
         extracted = extract_document(fetched)
         if approved is not None and approved.normalized_sha256 == extracted.normalized_sha256:
@@ -145,10 +155,20 @@ def stage_authoritative_source(
             )
             _record_result_if_requested(client, source, approved, resolved, result, check_month)
             return result
-        parsed = parse_document(source.parser_key, extracted)
+
+        if source.source_kind == "program_guide":
+            parser_version = COURSE_CATALOG_PARSER_VERSION
+            parsed_catalog = parse_course_catalog_document(source.parser_key, extracted)
+        elif source.provides_standard_entries:
+            parsed_standards = parse_document(source.parser_key, extracted)
+        else:
+            raise StandardsIngestError(
+                f"Unsupported governed source role for parser: {source.source_kind}"
+            )
     except StandardsIngestError as error:
         parse_error = str(error)
 
+    parser_succeeded = parsed_standards is not None or parsed_catalog is not None
     normalized_sha256 = extracted.normalized_sha256 if extracted is not None else None
     candidate_id = _stage_snapshot(
         client,
@@ -157,18 +177,23 @@ def stage_authoritative_source(
         fetched=fetched,
         normalized_sha256=normalized_sha256,
         parser_key=source.parser_key,
-        parser_succeeded=parsed is not None,
+        parser_version=parser_version,
+        parser_succeeded=parser_succeeded,
         parser_error=parse_error,
     )
 
-    if parsed is not None:
-        _persist_parsed_courses(client, source, candidate_id, parsed)
+    if parsed_standards is not None:
+        _persist_parsed_standards(client, source, candidate_id, parsed_standards)
+    elif parsed_catalog is not None:
+        _persist_parsed_course_catalog(client, source, candidate_id, parsed_catalog)
 
-    detail = (
-        "Authoritative standards content changed and a parsed candidate was staged"
-        if parsed is not None
-        else "Authoritative source changed; candidate requires parser review before approval"
-    )
+    if parsed_catalog is not None:
+        detail = "Authoritative course catalog changed and a parsed candidate was staged"
+    elif parsed_standards is not None:
+        detail = "Authoritative standards content changed and a parsed candidate was staged"
+    else:
+        detail = "Authoritative source changed; candidate requires parser review before approval"
+
     result = MaintenanceResult(
         source_key=source.source_key,
         status="changed",
@@ -176,7 +201,7 @@ def stage_authoritative_source(
         candidate_snapshot_id=candidate_id,
         observed_source_sha256=fetched.source_sha256,
         normalized_sha256=normalized_sha256,
-        parser_succeeded=parsed is not None,
+        parser_succeeded=parser_succeeded,
         detail=detail,
     )
     _record_result_if_requested(
@@ -204,6 +229,13 @@ def _required_text(record: JsonRecord, key: str) -> str:
     return value.strip()
 
 
+def _required_bool(record: JsonRecord, key: str) -> bool:
+    value = record.get(key)
+    if not isinstance(value, bool):
+        raise StandardsMaintenanceError(f"Standards maintenance record has invalid {key}")
+    return value
+
+
 def _optional_uuid(record: JsonRecord, key: str) -> UUID | None:
     value = record.get(key)
     if value is None:
@@ -226,7 +258,8 @@ def _load_source(client: SupabaseRestClient, source_key: str) -> StandardSourceR
                     "source_key": f"eq.{source_key}",
                     "select": (
                         "id,source_key,landing_url,document_url,document_format,"
-                        "resolver_key,parser_key,approved_snapshot_id"
+                        "resolver_key,parser_key,source_kind,provides_standard_entries,"
+                        "approved_snapshot_id"
                     ),
                     "limit": "2",
                 },
@@ -245,6 +278,8 @@ def _load_source(client: SupabaseRestClient, source_key: str) -> StandardSourceR
         document_format=_required_text(record, "document_format"),
         resolver_key=_required_text(record, "resolver_key"),
         parser_key=_required_text(record, "parser_key"),
+        source_kind=_required_text(record, "source_kind"),
+        provides_standard_entries=_required_bool(record, "provides_standard_entries"),
         approved_snapshot_id=_optional_uuid(record, "approved_snapshot_id"),
     )
 
@@ -308,6 +343,7 @@ def _stage_snapshot(
     fetched: FetchedSource,
     normalized_sha256: str | None,
     parser_key: str,
+    parser_version: str,
     parser_succeeded: bool,
     parser_error: str | None,
 ) -> UUID:
@@ -326,6 +362,8 @@ def _stage_snapshot(
         "resolved_document_url": fetched.resolved_url,
         "parser_key": parser_key,
         "parser_status": "parsed" if parser_succeeded else "failed",
+        "source_kind": source.source_kind,
+        "provides_standard_entries": source.provides_standard_entries,
     }
     if parser_error:
         provenance["parser_error"] = parser_error
@@ -341,7 +379,7 @@ def _stage_snapshot(
                     "source_sha256": fetched.source_sha256,
                     "normalized_sha256": normalized_sha256,
                     "source_version": resolved.observed_version,
-                    "parser_version": "gate-e-standards-v1",
+                    "parser_version": parser_version,
                     "status": "pending",
                     "provenance": provenance,
                 },
@@ -391,11 +429,9 @@ def _find_snapshot_by_hash(
     )
 
 
-def _persist_parsed_courses(
+def _reset_candidate_content(
     client: SupabaseRestClient,
-    source: StandardSourceRecord,
     snapshot_id: UUID,
-    parsed: ParsedStandardsDocument,
 ) -> None:
     try:
         client.request(
@@ -404,18 +440,26 @@ def _persist_parsed_courses(
             params={"snapshot_id": f"eq.{snapshot_id}"},
             prefer="return=minimal",
         )
+        client.request(
+            "DELETE",
+            "standard_snapshot_courses",
+            params={"snapshot_id": f"eq.{snapshot_id}"},
+            prefer="return=minimal",
+        )
     except SupabaseRestError as error:
         raise StandardsMaintenanceError(
-            "Existing candidate standards could not be reset"
+            "Existing candidate parsed content could not be reset"
         ) from error
 
-    for course in parsed.courses:
-        existing_allowed = _existing_course_allowed(client, source.id, course.course_key)
-        default_allowed = source.source_key in {
-            "alabama_ela_2021",
-            "army_jrotc_v12",
-        }
-        pilot_allowed = existing_allowed if existing_allowed is not None else default_allowed
+
+def _persist_parsed_standards(
+    client: SupabaseRestClient,
+    source: StandardSourceRecord,
+    snapshot_id: UUID,
+    parsed: ParsedStandardsDocument,
+) -> None:
+    _reset_candidate_content(client, snapshot_id)
+    for course_sequence, course in enumerate(parsed.courses, start=1):
         course_id = _upsert_course(
             client,
             source=source,
@@ -423,7 +467,16 @@ def _persist_parsed_courses(
             display_name=course.display_name,
             source_course_code=course.source_course_code,
             grade_band=course.grade_band,
-            pilot_allowed=pilot_allowed,
+        )
+        _persist_snapshot_course(
+            client,
+            snapshot_id=snapshot_id,
+            course_id=course_id,
+            sequence=course_sequence,
+            display_name=course.display_name,
+            source_course_code=course.source_course_code,
+            grade_band=course.grade_band,
+            metadata={"provides_standard_entries": True},
         )
         entries: list[dict[str, object]] = [
             {
@@ -451,34 +504,64 @@ def _persist_parsed_courses(
             ) from error
 
 
-def _existing_course_allowed(
+def _persist_parsed_course_catalog(
     client: SupabaseRestClient,
-    source_id: UUID,
-    course_key: str,
-) -> bool | None:
+    source: StandardSourceRecord,
+    snapshot_id: UUID,
+    parsed: ParsedCourseCatalogDocument,
+) -> None:
+    _reset_candidate_content(client, snapshot_id)
+    for course_sequence, course in enumerate(parsed.courses, start=1):
+        course_id = _upsert_course(
+            client,
+            source=source,
+            course_key=course.course_key,
+            display_name=course.display_name,
+            source_course_code=course.source_course_code,
+            grade_band=course.grade_band,
+        )
+        _persist_snapshot_course(
+            client,
+            snapshot_id=snapshot_id,
+            course_id=course_id,
+            sequence=course_sequence,
+            display_name=course.display_name,
+            source_course_code=course.source_course_code,
+            grade_band=course.grade_band,
+            metadata={"provides_standard_entries": False},
+        )
+
+
+def _persist_snapshot_course(
+    client: SupabaseRestClient,
+    *,
+    snapshot_id: UUID,
+    course_id: UUID,
+    sequence: int,
+    display_name: str,
+    source_course_code: str | None,
+    grade_band: str | None,
+    metadata: dict[str, object],
+) -> None:
     try:
-        rows = _records(
-            client.request(
-                "GET",
-                "standard_courses",
-                params={
-                    "source_id": f"eq.{source_id}",
-                    "course_key": f"eq.{course_key}",
-                    "select": "is_pilot_allowed",
-                    "limit": "2",
-                },
-            )
+        client.request(
+            "POST",
+            "standard_snapshot_courses",
+            payload={
+                "snapshot_id": str(snapshot_id),
+                "course_id": str(course_id),
+                "sequence": sequence,
+                "display_name": display_name,
+                "source_course_code": source_course_code,
+                "grade_band": grade_band,
+                "metadata": metadata,
+            },
+            prefer="return=minimal",
         )
     except SupabaseRestError as error:
-        raise StandardsMaintenanceError("Standards course lookup failed") from error
-    if not rows:
-        return None
-    if len(rows) != 1:
-        raise StandardsMaintenanceError("Standards course mapping is ambiguous")
-    value = rows[0].get("is_pilot_allowed")
-    if not isinstance(value, bool):
-        raise StandardsMaintenanceError("Standards course pilot flag is invalid")
-    return value
+        raise StandardsMaintenanceError(
+            "Parsed snapshot course manifest could not be saved"
+        ) from error
 
 
 def _upsert_course(
@@ -489,7 +572,6 @@ def _upsert_course(
     display_name: str,
     source_course_code: str | None,
     grade_band: str | None,
-    pilot_allowed: bool,
 ) -> UUID:
     try:
         rows = _records(
@@ -503,7 +585,7 @@ def _upsert_course(
                     "display_name": display_name,
                     "source_course_code": source_course_code,
                     "grade_band": grade_band,
-                    "is_pilot_allowed": pilot_allowed,
+                    "is_pilot_allowed": True,
                     "metadata": {},
                 },
                 prefer="resolution=merge-duplicates,return=representation",
@@ -542,6 +624,7 @@ def _record_result_if_requested(
             "normalized_sha256": result.normalized_sha256,
             "parser_succeeded": result.parser_succeeded,
             "detail": result.detail,
+            "source_kind": source.source_kind,
         },
     )
 
