@@ -78,6 +78,13 @@ def _uuid(record: JsonRecord, key: str) -> UUID:
         ) from error
 
 
+def _int(record: JsonRecord, key: str) -> int:
+    value = record.get(key)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise HTTPException(status_code=503, detail="ACT reference administration data is invalid")
+    return value
+
+
 @router.get("/pending", response_model=list[ActReferenceSnapshotRead])
 def list_pending_act_reference_snapshots(
     identity: Annotated[AuthenticatedTeacher, Depends(require_platform_admin)],
@@ -99,15 +106,26 @@ def list_pending_act_reference_snapshots(
                 },
             )
         )
+        count_rows = _records(
+            client.request(
+                "POST",
+                "rpc/platform_admin_act_reference_snapshot_counts",
+                payload={},
+            )
+        )
     except SupabaseRestError as error:
         raise HTTPException(
             status_code=503, detail="ACT pending snapshots are unavailable"
         ) from error
 
+    counts_by_id = {_text(row, "snapshot_id"): row for row in count_rows}
     output: list[ActReferenceSnapshotRead] = []
     for snapshot in snapshots:
         source_id = _uuid(snapshot, "source_id")
         snapshot_id = _uuid(snapshot, "id")
+        counts = counts_by_id.get(str(snapshot_id))
+        if counts is None:
+            raise HTTPException(status_code=503, detail="ACT pending snapshot counts are missing")
         try:
             source_rows = _records(
                 client.request(
@@ -119,26 +137,6 @@ def list_pending_act_reference_snapshots(
                             "source_key,title,source_type,document_url,edition,effective_date"
                         ),
                         "limit": "2",
-                    },
-                )
-            )
-            entry_rows = _records(
-                client.request(
-                    "GET",
-                    "act_reference_entries",
-                    params={
-                        "snapshot_id": f"eq.{snapshot_id}",
-                        "select": "id",
-                    },
-                )
-            )
-            benchmark_rows = _records(
-                client.request(
-                    "GET",
-                    "act_readiness_benchmarks",
-                    params={
-                        "snapshot_id": f"eq.{snapshot_id}",
-                        "select": "id",
                     },
                 )
             )
@@ -163,8 +161,8 @@ def list_pending_act_reference_snapshots(
                 parser_version=_text(snapshot, "parser_version"),
                 source_sha256=_text(snapshot, "source_sha256"),
                 normalized_sha256=_text(snapshot, "normalized_sha256"),
-                entry_count=len(entry_rows),
-                benchmark_count=len(benchmark_rows),
+                entry_count=_int(counts, "entry_count"),
+                benchmark_count=_int(counts, "benchmark_count"),
                 status=_text(snapshot, "status"),
             )
         )
