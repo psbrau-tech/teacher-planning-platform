@@ -61,10 +61,14 @@ class FakeClient:
                     "provenance": {"parser_status": "parsed"},
                 }
             ]
-        if resource == "standard_snapshot_courses":
-            return [{"course_id": str(uuid4())}, {"course_id": str(uuid4())}]
-        if resource == "standard_entries":
-            return [{"id": str(uuid4())}, {"id": str(uuid4())}, {"id": str(uuid4())}]
+        if resource == "rpc/platform_admin_standard_snapshot_counts":
+            return [
+                {
+                    "snapshot_id": str(SNAPSHOT_ID),
+                    "course_count": 2,
+                    "standard_entry_count": 1634,
+                }
+            ]
         if resource == "rpc/approve_standard_snapshot":
             return str(SNAPSHOT_ID)
         if resource == "standard_catalog_discovery_runs":
@@ -124,7 +128,7 @@ def test_standards_admin_routes_require_authentication() -> None:
     assert response.status_code == 401
 
 
-def test_platform_admin_source_and_pending_snapshot_reads(monkeypatch) -> None:
+def test_platform_admin_source_and_pending_snapshot_reads_exact_rpc_counts(monkeypatch) -> None:
     fake = FakeClient()
     _install(monkeypatch, fake)
     try:
@@ -142,8 +146,10 @@ def test_platform_admin_source_and_pending_snapshot_reads(monkeypatch) -> None:
     assert sources[0].source_key == "alabama_academic_science"
     assert pending[0].source_key == "alabama_academic_science"
     assert pending[0].course_count == 2
-    assert pending[0].standard_entry_count == 3
+    assert pending[0].standard_entry_count == 1634
     assert pending[0].parser_status == "parsed"
+    assert any(call[1] == "rpc/platform_admin_standard_snapshot_counts" for call in fake.calls)
+    assert not any(call[1] == "standard_entries" for call in fake.calls)
 
 
 def test_snapshot_approval_uses_only_governed_approval_rpc(monkeypatch) -> None:
