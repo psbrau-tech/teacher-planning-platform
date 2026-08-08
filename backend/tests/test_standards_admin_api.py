@@ -121,7 +121,7 @@ def _install(monkeypatch, fake: FakeClient) -> None:
 
 def test_standards_admin_routes_require_authentication() -> None:
     response = client.get("/api/v1/standards-admin/sources")
-    assert response.status_code == 404 or response.status_code == 401
+    assert response.status_code == 401
 
 
 def test_platform_admin_source_and_pending_snapshot_reads(monkeypatch) -> None:
