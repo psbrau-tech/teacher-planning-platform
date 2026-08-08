@@ -3,6 +3,7 @@ from pathlib import Path
 MIGRATIONS = Path(__file__).resolve().parents[2] / "supabase" / "migrations"
 SELECTION = MIGRATIONS / "20260807195800_gate_e_standards_selection_rpcs.sql"
 CATALOG = MIGRATIONS / "20260807200100_standard_catalog_mapping.sql"
+SOURCE_ROLES = MIGRATIONS / "20260807200500_standard_source_roles.sql"
 USAGE = MIGRATIONS / "20260807195900_ai_usage_response_and_cache_write.sql"
 DECISIONS = MIGRATIONS / "20260807200000_ai_suggestion_decisions.sql"
 
@@ -35,16 +36,43 @@ def test_mapping_change_requires_warning_and_preserves_validated_history() -> No
 
 
 def test_canonical_course_can_keep_multiple_authoritative_sources() -> None:
-    source = CATALOG.read_text(encoding="utf-8")
+    source = SOURCE_ROLES.read_text(encoding="utf-8")
 
     assert "standard_catalog_course_sources" in source
-    assert "relationship in ('primary', 'supplemental_authority')" in source
+    assert "relationship in ('primary', 'course_listing', 'supplemental_authority')" in source
     assert "source_course_id" in source
     assert "catalog_course_id" in source
 
 
+def test_program_guides_are_course_listings_not_standard_entry_sources() -> None:
+    source = SOURCE_ROLES.read_text(encoding="utf-8")
+
+    assert "source_kind <> 'program_guide' or not provides_standard_entries" in source
+    assert "when source_kind = 'program_guide' then 'course_listing'" in source
+    assert "sccs.relationship in ('primary', 'supplemental_authority')" in source
+    assert "src.provides_standard_entries" in source
+
+
+def test_army_curriculum_remains_supplemental_authority() -> None:
+    source = SOURCE_ROLES.read_text(encoding="utf-8")
+
+    assert "where source_key = 'army_jrotc_v12'" in source
+    assert "source_kind = 'supplemental_curriculum'" in source
+    assert "when source_kind = 'supplemental_curriculum' then 'supplemental_authority'" in source
+
+
+def test_supplemental_source_cannot_rename_existing_canonical_course() -> None:
+    source = SOURCE_ROLES.read_text(encoding="utf-8")
+
+    assert "when source_relationship = 'supplemental_authority'" in source
+    assert "then public.standard_catalog_courses.display_name" in source
+    assert "source_priority" in source
+    assert "when 'course_listing' then 5" in source
+    assert "when 'primary' then 10" in source
+
+
 def test_weekly_standard_selection_rpc_is_teacher_scoped_and_atomic() -> None:
-    source = CATALOG.read_text(encoding="utf-8")
+    source = SOURCE_ROLES.read_text(encoding="utf-8")
 
     assert "public.replace_weekly_standard_selections" in source
     assert "private.has_role('teacher'::public.app_role, null)" in source
