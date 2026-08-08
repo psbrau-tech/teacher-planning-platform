@@ -179,7 +179,7 @@ Resources:
           Value: !Sub ${ResourceNamePrefix}-task-sg
 
   ApplicationLoadBalancer:
-    Type: AWS::EC2::LoadBalancer
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
       Name: !Sub ${ResourceNamePrefix}-alb
       Scheme: internet-facing
