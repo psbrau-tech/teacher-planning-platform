@@ -28,7 +28,8 @@ def parse_alabama_ela_k12(extracted: ExtractedDocument) -> ParsedStandardsDocume
     )
     if len(marker_positions) != len(course_specs):
         raise StandardsIngestError(
-            "Alabama ELA parser did not find exactly one content-standards section for every K-12 grade"
+            "Alabama ELA parser did not find exactly one content-standards section "
+            "for every K-12 grade"
         )
 
     courses: list[ParsedCourse] = []
