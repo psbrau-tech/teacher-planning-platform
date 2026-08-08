@@ -7,12 +7,10 @@ from .standards_alabama_dlcs import parse_alabama_dlcs_2025
 from .standards_alabama_driver_traffic_safety import (
     parse_alabama_driver_traffic_safety_2007,
 )
+from .standards_alabama_ela import parse_alabama_ela_2021
 from .standards_alabama_health import parse_alabama_health_2019
 from .standards_alabama_math import parse_alabama_math_2019
-from .standards_alabama_parsers import (
-    parse_alabama_cte_course_of_study,
-    parse_alabama_ela_k12,
-)
+from .standards_alabama_parsers import parse_alabama_cte_course_of_study
 from .standards_alabama_physical_education import parse_alabama_physical_education_2019
 from .standards_alabama_science import parse_alabama_science_2023
 from .standards_alabama_social_studies import parse_alabama_social_studies_2024
@@ -39,7 +37,7 @@ def parse_governed_standards_document(
     if parser_key == "alabama_driver_traffic_safety_2007":
         return parse_alabama_driver_traffic_safety_2007(extracted)
     if parser_key == "alabama_ela_2021":
-        return parse_alabama_ela_k12(extracted)
+        return parse_alabama_ela_2021(extracted)
     if parser_key in {"alabama_bma_2021", "alabama_cte_cos_generic"}:
         return parse_alabama_cte_course_of_study(parser_key, extracted)
     if parser_key == "alabama_health_2019":
