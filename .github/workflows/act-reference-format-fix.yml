@@ -1,0 +1,64 @@
+name: ACT Reference Format Fix
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/act-reference-format-fix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/gate-e-standards-ai
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Fix and format ACT files
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("backend/app/act_reference.py")
+          text = path.read_text()
+          old = '                    "select": "reference_code,domain,category,score_range,exact_text,source_id,snapshot_id",\n'
+          new = (
+              '                    "select": (\n'
+              '                        "reference_code,domain,category,score_range,exact_text,"\n'
+              '                        "source_id,snapshot_id"\n'
+              '                    ),\n'
+          )
+          if text.count(old) != 1:
+              raise SystemExit("ACT entry select formatting anchor changed")
+          path.write_text(text.replace(old, new, 1))
+
+          path = Path("backend/app/act_reference_admin_api.py")
+          text = path.read_text()
+          old = '                    "select": "id,source_id,retrieved_at,parser_version,source_sha256,normalized_sha256,status",\n'
+          new = (
+              '                    "select": (\n'
+              '                        "id,source_id,retrieved_at,parser_version,source_sha256,"\n'
+              '                        "normalized_sha256,status"\n'
+              '                    ),\n'
+          )
+          if text.count(old) != 1:
+              raise SystemExit("ACT admin select formatting anchor changed")
+          path.write_text(text.replace(old, new, 1))
+          PY
+          python -m pip install ruff==0.16.2
+          ruff format backend/app/act_reference.py backend/app/act_reference_admin_api.py backend/tests/test_act_reference.py
+          ruff check --fix backend/app/act_reference.py backend/app/act_reference_admin_api.py backend/tests/test_act_reference.py
+          ruff check backend/app/act_reference.py backend/app/act_reference_admin_api.py backend/tests/test_act_reference.py
+      - name: Commit formatting
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/app/act_reference.py backend/app/act_reference_admin_api.py backend/tests/test_act_reference.py
+          git diff --cached --quiet && exit 0
+          git commit -m "Format ACT reference foundation"
+          git push origin HEAD:feature/gate-e-standards-ai
