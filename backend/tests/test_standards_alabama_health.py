@@ -13,15 +13,14 @@ def _document(*, omit: str | None = None) -> ExtractedDocument:
     for prefix in PREFIXES:
         if prefix == omit:
             continue
-        separator = "." if prefix not in {"HE", "HA", "WH"} else "."
         lines.extend(
             [
                 "Anchor Standard 1: Synthetic anchor wording.",
-                f"{prefix}{separator}1.1 Required health standard one for {prefix}.",
+                f"{prefix}.1.1 Required health standard one for {prefix}.",
                 "a. Required supporting sub-standard.",
                 "Examples: Example content must not become authoritative standard text.",
                 "Example continuation that must also be excluded.",
-                f"{prefix}{separator}2.1 Required health standard two for {prefix}.",
+                f"{prefix}.2.1 Required health standard two for {prefix}.",
             ]
         )
     normalized = "\n".join(lines)
@@ -86,6 +85,50 @@ def test_health_parser_accepts_source_spacing_variants() -> None:
     assert [standard.code for standard in health.standards] == ["HE.2.1", "HE.2.2"]
     assert [standard.code for standard in advocacy.standards] == ["HA.6.2", "HA.6.3"]
     assert [standard.code for standard in world.standards] == ["WH.5.1", "WH.5.2"]
+
+
+def test_health_parser_collects_text_when_pdf_splits_code_and_wording() -> None:
+    lines: list[str] = []
+    for prefix in PREFIXES:
+        lines.extend(
+            [
+                f"{prefix}.1.1",
+                f"Required split-line health standard one for {prefix}.",
+                f"{prefix}.1.2",
+                f"Required split-line health standard two for {prefix}.",
+            ]
+        )
+    normalized = "\n".join(lines)
+    parsed = parse_alabama_health_2019(
+        ExtractedDocument(
+            lines=tuple(lines),
+            normalized_sha256=sha256(normalized.encode("utf-8")).hexdigest(),
+        )
+    )
+    kindergarten = parsed.courses[0]
+    assert [standard.code for standard in kindergarten.standards] == ["K.1.1", "K.1.2"]
+    assert kindergarten.standards[0].text == "Required split-line health standard one for K."
+
+
+def test_health_parser_accepts_direct_letter_suffix_codes() -> None:
+    lines: list[str] = []
+    for prefix in PREFIXES:
+        lines.extend(
+            [
+                f"{prefix}.2.1 Required parent standard.",
+                f"{prefix}.2.1a Required source-suffixed child.",
+            ]
+        )
+    normalized = "\n".join(lines)
+    parsed = parse_alabama_health_2019(
+        ExtractedDocument(
+            lines=tuple(lines),
+            normalized_sha256=sha256(normalized.encode("utf-8")).hexdigest(),
+        )
+    )
+    kindergarten = parsed.courses[0]
+    by_code = {standard.code: standard for standard in kindergarten.standards}
+    assert by_code["K.2.1a"].parent_code == "K.2.1"
 
 
 def test_health_parser_fails_closed_when_a_required_course_family_is_missing() -> None:
