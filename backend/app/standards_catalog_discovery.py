@@ -13,6 +13,7 @@ ALABAMA_AUTHORITY = "Alabama State Department of Education"
 _ALLOWED_HOSTS = frozenset({"www.alabamaachieves.org", "alabamaachieves.org"})
 _IGNORED_ACADEMIC_CATEGORIES = frozenset(
     {
+        "career preparedness",
         "supporting documents",
         "all standards and courses of study",
     }
