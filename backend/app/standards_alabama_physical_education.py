@@ -10,7 +10,7 @@ from .standards_ingest import (
     StandardsIngestError,
 )
 
-PHYSICAL_EDUCATION_PARSER_VERSION = "gate-e-alabama-physical-education-2019-v2"
+PHYSICAL_EDUCATION_PARSER_VERSION = "gate-e-alabama-physical-education-2019-v3"
 _MAIN = re.compile(
     r"^(K|[1-8]|BK|AK|SO|AC|SC|LS|VA)\s*-\s*(\d+)\s*\.\s*(\d+)([a-z])?\.?(?:\s+(.*))?$",
     flags=re.IGNORECASE,
@@ -28,6 +28,8 @@ _SUPPLEMENT_PREFIXES = (
     "Technology:",
     "Technology Suggestions:",
 )
+_LEVEL_EXAMPLE_START = "Example of Level 1 vs. Level 2"
+_LEVEL_EXAMPLE_END = "Beginning Kinesiology"
 _COURSES = {
     "K": ("kindergarten", "Kindergarten", "K"),
     "1": ("grade_1", "Grade 1", "1"),
@@ -65,6 +67,7 @@ def parse_alabama_physical_education_2019(
     current_parent: str | None = None
     current_parts: list[str] = []
     skipping_supplement = False
+    skipping_level_example = False
 
     def flush() -> None:
         nonlocal current_prefix, current_code, current_parent, current_parts
@@ -88,6 +91,16 @@ def parse_alabama_physical_education_2019(
         line = re.sub(r"\s+", " ", raw_line).strip()
         if not line:
             continue
+
+        if line.startswith(_LEVEL_EXAMPLE_START):
+            flush()
+            skipping_level_example = True
+            continue
+        if skipping_level_example:
+            if line == _LEVEL_EXAMPLE_END:
+                skipping_level_example = False
+            else:
+                continue
 
         main = _MAIN.match(line)
         if main is not None:
