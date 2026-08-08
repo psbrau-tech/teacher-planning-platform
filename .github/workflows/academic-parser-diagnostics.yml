@@ -1,0 +1,73 @@
+name: Academic Parser Diagnostics
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/academic-parser-diagnostics.yml'
+      - 'backend/app/standards_alabama_*.py'
+      - 'backend/app/standards_alabama_parsers.py'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose-academic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install backend
+        run: python -m pip install -e '.[dev]'
+      - name: Inspect remaining current academic sources read-only
+        run: |
+          python - <<'PY'
+          import re
+
+          from app.standards_catalog_fetch import fetch_current_alabama_catalog
+          from app.standards_ingest import extract_document, fetch_source
+
+          targets = {
+              'alabama_academic_digital_literacy_computer_science',
+              'alabama_academic_driver_traffic_safety',
+              'alabama_academic_english_language_arts',
+              'alabama_academic_world_languages',
+              'alabama_academic_health',
+              'alabama_academic_mathematics',
+              'alabama_academic_physical_education',
+              'alabama_academic_science',
+              'alabama_academic_social_studies',
+          }
+          marker = re.compile(
+              r'(?:content\s+standards?|recurring\s+standards?|standards\s+for|'
+              r'kindergarten|grade\s+(?:[kK]|\d+)|level\s+(?:I|II|III|IV|V)|'
+              r'biology|chemistry|physics|science|history|civics|geography|economics|'
+              r'algebra|geometry|mathematics|health|physical education|'
+              r'digital literacy|computer science|sign language|driver|traffic)',
+              flags=re.IGNORECASE,
+          )
+          sources = {s.source_key: s for s in fetch_current_alabama_catalog()}
+          print('database_writes=0')
+          for key in sorted(targets):
+              source = sources[key]
+              extracted = extract_document(fetch_source(source.document_url, source.document_format))
+              print(f'=== {key} | {source.title} | lines={len(extracted.lines)} ===')
+              selected = []
+              for index, line in enumerate(extracted.lines):
+                  if marker.search(line) and len(line) <= 180:
+                      selected.append((index, line))
+              print(f'marker_count={len(selected)}')
+              if len(selected) <= 300:
+                  display = selected
+              else:
+                  display = selected[:150] + selected[-150:]
+                  print('marker_output_truncated=middle')
+              for index, line in display:
+                  print(f'marker[{index}]={line}')
+          PY
