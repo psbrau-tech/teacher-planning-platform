@@ -67,7 +67,11 @@ def parse_alabama_math_2019(extracted: ExtractedDocument) -> ParsedStandardsDocu
     courses: list[ParsedCourse] = []
     for index, (course_key, display_name, grade_band) in enumerate(_COURSES):
         start = ordered_markers[index] + 1
-        end = ordered_markers[index + 1] if index + 1 < len(ordered_markers) else len(extracted.lines)
+        end = (
+            ordered_markers[index + 1]
+            if index + 1 < len(ordered_markers)
+            else len(extracted.lines)
+        )
         content = _parse_math_content(extracted.lines[start:end])
         if len(content) < 3:
             raise StandardsIngestError(
@@ -98,8 +102,14 @@ def _content_marker(display_name: str) -> str:
     return f"{display_name} Content Standards"
 
 
-def _parse_student_mathematical_practices(lines: tuple[str, ...]) -> tuple[ParsedStandard, ...]:
-    marker_indexes = [index for index, line in enumerate(lines) if "STUDENT MATHEMATICAL PRACTICES" in line.upper()]
+def _parse_student_mathematical_practices(
+    lines: tuple[str, ...],
+) -> tuple[ParsedStandard, ...]:
+    marker_indexes = [
+        index
+        for index, line in enumerate(lines)
+        if "STUDENT MATHEMATICAL PRACTICES" in line.upper()
+    ]
     for marker in marker_indexes:
         raw = _parse_numbered_block(
             lines[marker + 1 : min(len(lines), marker + 160)],
@@ -143,7 +153,12 @@ def _parse_numbered_block(
             text = " ".join(current_parts).strip()
             if text:
                 standards.append(
-                    ParsedStandard(code=current_code, text=text, parent_code=current_parent, strand=strand)
+                    ParsedStandard(
+                        code=current_code,
+                        text=text,
+                        parent_code=current_parent,
+                        strand=strand,
+                    )
                 )
         current_code = None
         current_parent = None
@@ -152,7 +167,11 @@ def _parse_numbered_block(
     for line in lines:
         main = _MAIN.match(line)
         if main:
-            if stop_after is not None and current_main is not None and int(current_main) >= stop_after:
+            if (
+                stop_after is not None
+                and current_main is not None
+                and int(current_main) >= stop_after
+            ):
                 flush()
                 break
             if stop_after is not None and int(main.group(1)) > stop_after:
@@ -186,7 +205,11 @@ def _parse_numbered_block(
 
     flush()
     if stop_after is not None:
-        standards = [item for item in standards if item.parent_code is not None or int(item.code) <= stop_after]
+        standards = [
+            item
+            for item in standards
+            if item.parent_code is not None or int(item.code) <= stop_after
+        ]
     return tuple(standards)
 
 
@@ -195,7 +218,11 @@ def _is_math_heading(line: str) -> bool:
         return True
     if line.endswith("Content Standards"):
         return True
-    return len(line) <= 85 and not re.search(r"[.!?;:]$", line) and (line.isupper() or line.istitle())
+    return (
+        len(line) <= 85
+        and not re.search(r"[.!?;:]$", line)
+        and (line.isupper() or line.istitle())
+    )
 
 
 def _unique_index(lines: tuple[str, ...], marker: str) -> int | None:
