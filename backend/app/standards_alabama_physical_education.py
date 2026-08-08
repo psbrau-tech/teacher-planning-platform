@@ -10,9 +10,9 @@ from .standards_ingest import (
     StandardsIngestError,
 )
 
-PHYSICAL_EDUCATION_PARSER_VERSION = "gate-e-alabama-physical-education-2019-v1"
+PHYSICAL_EDUCATION_PARSER_VERSION = "gate-e-alabama-physical-education-2019-v2"
 _MAIN = re.compile(
-    r"^(K|[1-8]|BK|AK|SO|AC|SC|LS|VA)\s*-\s*(\d+)\s*\.\s*(\d+)\.?\s+(.+)$",
+    r"^(K|[1-8]|BK|AK|SO|AC|SC|LS|VA)\s*-\s*(\d+)\s*\.\s*(\d+)([a-z])?\.?(?:\s+(.*))?$",
     flags=re.IGNORECASE,
 )
 _CHILD = re.compile(r"^([a-z])\.\s+(.+)$")
@@ -84,15 +84,24 @@ def parse_alabama_physical_education_2019(
         current_parent = None
         current_parts = []
 
-    for line in extracted.lines:
+    for raw_line in extracted.lines:
+        line = re.sub(r"\s+", " ", raw_line).strip()
+        if not line:
+            continue
+
         main = _MAIN.match(line)
         if main is not None:
             flush()
             prefix = main.group(1).upper()
+            anchor = main.group(2)
+            item = main.group(3)
+            suffix = (main.group(4) or "").lower()
+            base_code = f"{prefix}-{anchor}.{item}"
             current_prefix = prefix
-            current_code = f"{prefix}-{main.group(2)}.{main.group(3)}"
-            current_parent = None
-            current_parts = [main.group(4)]
+            current_code = f"{base_code}{suffix}"
+            current_parent = base_code if suffix else None
+            text = (main.group(5) or "").strip()
+            current_parts = [text] if text else []
             skipping_supplement = False
             continue
 
@@ -160,8 +169,4 @@ def _noise(line: str) -> bool:
         "Students will:",
     }:
         return True
-    return (
-        len(line) <= 100
-        and not re.search(r"[.!?;:]$", line)
-        and (line.isupper() or line.istitle())
-    )
+    return bool(re.fullmatch(r"\d+", line))
