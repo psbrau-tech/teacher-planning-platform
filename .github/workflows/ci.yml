@@ -27,7 +27,15 @@ jobs:
       - name: Type check
         run: mypy app
       - name: Test
-        run: pytest --cov=app --cov-report=term-missing
+        run: pytest --cov=app --cov-report=term-missing --junitxml=pytest-results.xml
+      - name: Upload pytest failure details
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-pytest-failure
+          path: backend/pytest-results.xml
+          if-no-files-found: ignore
+          retention-days: 3
       - name: Generate HQI acceptance samples
         run: python scripts/generate_hqi_acceptance_samples.py
       - name: Upload HQI acceptance samples
