@@ -1,0 +1,93 @@
+name: Academic Marker Diagnostics
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/academic-marker-diagnostics.yml'
+      - 'backend/app/standards_alabama_math.py'
+      - 'backend/app/standards_alabama_science.py'
+      - 'backend/app/standards_alabama_social_studies.py'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose-markers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install backend
+        run: python -m pip install -e '.[dev]'
+      - name: Inspect math science and social studies marker mismatches read-only
+        run: |
+          python - <<'PY'
+          from app.standards_alabama_math import _COURSES as MATH_COURSES
+          from app.standards_alabama_science import _COURSES as SCIENCE_COURSES, _STEM_PREFIX
+          from app.standards_alabama_social_studies import _COURSES as SOCIAL_COURSES, _has_first_standard
+          from app.standards_catalog_fetch import fetch_current_alabama_catalog
+          from app.standards_ingest import extract_document, fetch_source
+
+          source_map = {s.source_key: s for s in fetch_current_alabama_catalog()}
+          print('database_writes=0')
+
+          def load(key):
+              source = source_map[key]
+              return extract_document(fetch_source(source.document_url, source.document_format)).lines
+
+          lines = load('alabama_academic_mathematics')
+          print('=== mathematics ===')
+          for _, display_name, _ in MATH_COURSES:
+              exact = f'{display_name} Content Standards'
+              positions = [i for i, line in enumerate(lines) if line == exact]
+              variants = [
+                  (i, line) for i, line in enumerate(lines)
+                  if display_name.lower() in line.lower()
+                  and 'content' in line.lower()
+                  and 'standard' in line.lower()
+                  and len(line) <= 180
+              ]
+              print(f'math|{display_name}|exact={positions}|variants={variants[:8]}')
+
+          lines = load('alabama_academic_science')
+          print('=== science ===')
+          expected = {display: (key, band) for key, display, band in SCIENCE_COURSES}
+          markers = [i for i, line in enumerate(lines) if line.startswith(_STEM_PREFIX)]
+          print(f'science_stem_markers={len(markers)}')
+          for _, display_name, _ in SCIENCE_COURSES:
+              exact_positions = [i for i, line in enumerate(lines) if line == display_name]
+              associated = []
+              for marker in markers:
+                  prior = lines[max(0, marker - 160):marker]
+                  if display_name in prior:
+                      nearest = max(i for i in range(max(0, marker - 160), marker) if lines[i] == display_name)
+                      associated.append((marker, marker - nearest))
+              variants = [
+                  (i, line) for i, line in enumerate(lines)
+                  if display_name.lower() in line.lower() and len(line) <= 160
+              ]
+              print(f'science|{display_name}|headings={exact_positions[:10]}|associated={associated}|variants={variants[:8]}')
+
+          lines = load('alabama_academic_social_studies')
+          print('=== social_studies ===')
+          for _, display_name, _, aliases in SOCIAL_COURSES:
+              details = []
+              for alias in aliases:
+                  positions = [i for i, line in enumerate(lines) if line == alias]
+                  for position in positions:
+                      details.append((alias, position, _has_first_standard(lines, position + 1, min(len(lines), position + 140))))
+              tokens = [part for part in display_name.replace('—', ' ').replace(':', ' ').split() if len(part) > 3]
+              variants = [
+                  (i, line) for i, line in enumerate(lines)
+                  if tokens and sum(token.lower() in line.lower() for token in tokens) >= min(2, len(tokens))
+                  and len(line) <= 180
+              ]
+              print(f'social|{display_name}|aliases={details}|variants={variants[:10]}')
+          PY
