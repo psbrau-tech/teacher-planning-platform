@@ -151,21 +151,20 @@ secret_names="$(
   jq -r '.taskDefinition.containerDefinitions[0].secrets[].name' <<<"$task_json" \
     | sort
 )"
-for required_secret in TPP_SUPABASE_ANON_KEY TPP_SUPABASE_URL; do
-  if ! grep -qx "$required_secret" <<<"$secret_names"; then
-    echo "Required ECS runtime secret mapping is missing: $required_secret" >&2
-    exit 1
-  fi
-done
+expected_secret_names=$'TPP_OPENAI_API_KEY\nTPP_SUPABASE_ANON_KEY\nTPP_SUPABASE_URL'
+if [[ "$secret_names" != "$expected_secret_names" ]]; then
+  echo "The deployed Gate E task does not use the exact approved runtime secret set:" >&2
+  echo "$secret_names" >&2
+  exit 1
+fi
 
 for prohibited_secret in \
   TPP_DATABASE_URL \
   TPP_GOOGLE_OAUTH_CLIENT_ID \
   TPP_GOOGLE_OAUTH_CLIENT_SECRET \
-  TPP_OPENAI_API_KEY \
   TPP_SUPABASE_SERVICE_ROLE_KEY; do
   if grep -qx "$prohibited_secret" <<<"$secret_names"; then
-    echo "Unused high-privilege credential is injected into the ECS task: $prohibited_secret" >&2
+    echo "A prohibited high-privilege credential is injected into the ECS task: $prohibited_secret" >&2
     exit 1
   fi
 done
@@ -275,8 +274,8 @@ fi
   echo "- Immutable image: \`$image\`"
   echo "- Image tags: \`$image_tags\`"
   echo "- Task definition: \`$task_definition\`"
-  echo "- Runtime secret mappings: \`TPP_SUPABASE_URL, TPP_SUPABASE_ANON_KEY\`"
-  echo "- High-privilege runtime credentials: \`absent\`"
+  echo "- Runtime secret mappings: \`TPP_SUPABASE_URL, TPP_SUPABASE_ANON_KEY, TPP_OPENAI_API_KEY\`"
+  echo "- Supabase service-role/database/OAuth runtime credentials: \`absent\`"
   echo "- Log group: \`$log_group\` with 30-day retention"
   echo "- Certificate status: \`$certificate_status\`"
   echo "- Public HTTPS checked: \`${VERIFY_PUBLIC_HOSTNAME:-false}\`"
