@@ -25,6 +25,11 @@ def test_governed_dispatch_routes_verified_comprehensive_academic_parsers(monkey
         called.append("math")
         return _parsed("alabama_math_2019")
 
+    def physical_education_parser(value: ExtractedDocument) -> ParsedStandardsDocument:
+        assert value is extracted
+        called.append("physical_education")
+        return _parsed("alabama_physical_education_2019")
+
     def science_parser(value: ExtractedDocument) -> ParsedStandardsDocument:
         assert value is extracted
         called.append("science")
@@ -37,6 +42,11 @@ def test_governed_dispatch_routes_verified_comprehensive_academic_parsers(monkey
 
     monkeypatch.setattr(dispatch, "parse_alabama_health_2019", health_parser)
     monkeypatch.setattr(dispatch, "parse_alabama_math_2019", math_parser)
+    monkeypatch.setattr(
+        dispatch,
+        "parse_alabama_physical_education_2019",
+        physical_education_parser,
+    )
     monkeypatch.setattr(dispatch, "parse_alabama_science_2023", science_parser)
     monkeypatch.setattr(dispatch, "parse_alabama_social_studies_2024", social_parser)
 
@@ -49,6 +59,13 @@ def test_governed_dispatch_routes_verified_comprehensive_academic_parsers(monkey
         == "alabama_math_2019"
     )
     assert (
+        dispatch.parse_governed_standards_document(
+            "alabama_physical_education_2019",
+            extracted,
+        ).parser_key
+        == "alabama_physical_education_2019"
+    )
+    assert (
         dispatch.parse_governed_standards_document("alabama_science_2023", extracted).parser_key
         == "alabama_science_2023"
     )
@@ -59,4 +76,4 @@ def test_governed_dispatch_routes_verified_comprehensive_academic_parsers(monkey
         ).parser_key
         == "alabama_social_studies_2024"
     )
-    assert called == ["health", "math", "science", "social"]
+    assert called == ["health", "math", "physical_education", "science", "social"]
