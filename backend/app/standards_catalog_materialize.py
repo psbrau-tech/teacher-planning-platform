@@ -202,11 +202,6 @@ def _upsert_pending_source(
         "catalog_category_type": discovered.category_type,
         "discovery_status": "pending",
         "is_active": True,
-        "metadata": {
-            "source_kind": discovered.source_kind,
-            "parser_ready": plan.parser_ready,
-            "readiness_detail": plan.readiness_detail,
-        },
     }
     try:
         if existing is None:
