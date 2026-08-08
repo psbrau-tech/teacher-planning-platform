@@ -138,8 +138,26 @@ export function AiReflectionPanel({
         </p>
       </div>
 
-      {error ? <p className="error-message">{error}</p> : null}
-      {message ? <p className="success-message">{message}</p> : null}
+      <div className="guidance-card" role="note" aria-label="Student data restriction">
+        <strong>Do not include student data.</strong>
+        <p>
+          Weekly Reflection AI assistance is limited to professional planning and finalized
+          validation context. Do not enter student names, identifiers, grades, identifiable student
+          work, IEP or 504 information, health or discipline information, or other information that
+          can reasonably be linked to a student.
+        </p>
+      </div>
+
+      {error ? (
+        <p className="error-message" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {message ? (
+        <p className="success-message" role="status" aria-live="polite">
+          {message}
+        </p>
+      ) : null}
 
       {result ? (
         <article className="ai-suggestion-card">
