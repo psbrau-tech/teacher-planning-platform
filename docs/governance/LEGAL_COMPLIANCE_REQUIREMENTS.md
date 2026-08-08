@@ -172,7 +172,11 @@ Role-based reporting must prevent unauthorized cross-school/cross-organization a
 
 ## 17. Accessibility
 
-Core workflows should target WCAG 2.2 Level AA practices. Material UI work must consider keyboard access, focus order/visibility, accessible names, error identification, contrast, zoom/reflow, and screen-reader semantics.
+For public-school and other state/local-government customers, **WCAG 2.1 Level AA is the minimum legal technical baseline for covered web/mobile content under the DOJ Title II rule**. Vendor-provided functionality may fall within the public entity's obligation; accessibility therefore cannot be treated as solely the customer's problem.
+
+Material UI work must preserve testability against WCAG 2.1 Level AA, including keyboard access, focus order/visibility, accessible names and instructions, error identification, contrast, zoom/reflow, and representative screen-reader semantics. Where practicable, TPP may also target WCAG 2.2 Level AA as an additional engineering standard, but that does not replace explicit WCAG 2.1 AA verification for the applicable Title II baseline.
+
+Generated PDFs and other conventional electronic documents must be included in accessibility review when their use falls within a public entity's covered services/programs/activities; do not assume a document exception applies without factual review.
 
 Do not claim certified WCAG conformance until tested evidence supports the claim.
 
