@@ -90,7 +90,10 @@ def test_platform_admin_act_reference_review_is_human_controlled() -> None:
     standards_admin = STANDARDS_ADMIN.read_text(encoding="utf-8")
 
     assert "/api/v1/act-reference-admin/pending" in act_admin
-    assert "/api/v1/act-reference-admin/snapshots/${encodeURIComponent(snapshot.id)}/approve" in act_admin
+    assert (
+        "/api/v1/act-reference-admin/snapshots/${encodeURIComponent(snapshot.id)}/approve"
+        in act_admin
+    )
     assert 'Authorization: `Bearer ${accessToken}`' in act_admin
     assert "window.confirm" in act_admin
     assert "entry_count" in act_admin
