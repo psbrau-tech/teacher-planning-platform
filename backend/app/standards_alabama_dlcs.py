@@ -32,6 +32,10 @@ _FOOTER_SUFFIXES = (
 )
 
 
+def _normalized(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip().lower()
+
+
 @dataclass(frozen=True, slots=True)
 class _Band:
     header: str
@@ -259,7 +263,3 @@ def _noise(line: str) -> bool:
     if line.isupper() and len(line) <= 100:
         return True
     return bool(re.fullmatch(r"Computer Science \d+", line))
-
-
-def _normalized(value: str) -> str:
-    return re.sub(r"\s+", " ", value).strip().lower()
