@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { ActReferenceAdministrationPanel } from "./ActReferenceAdministrationPanel";
 
 type SourceRow = {
   id: string;
@@ -287,6 +288,8 @@ export function StandardsAdministrationPanel({
           </div>
         ) : null}
       </section>
+
+      <ActReferenceAdministrationPanel accessToken={accessToken} disabled={disabled} />
     </section>
   );
 }
