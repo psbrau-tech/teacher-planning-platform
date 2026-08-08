@@ -64,6 +64,7 @@ def source_ingest_plan(source: DiscoveredStandardsSource) -> SourceIngestPlan:
 
 _ACADEMIC_PARSERS = {
     "alabama_academic_english_language_arts": "alabama_ela_2021",
+    "alabama_academic_health": "alabama_health_2019",
     "alabama_academic_mathematics": "alabama_math_2019",
     "alabama_academic_science": "alabama_science_2023",
     "alabama_academic_social_studies": "alabama_social_studies_2024",
