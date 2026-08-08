@@ -5,6 +5,10 @@ from uuid import uuid4
 import pytest
 
 import app.standards_maintenance as maintenance
+from app.standards_course_catalog import (
+    ParsedCourseCatalogDocument,
+    ParsedCourseListing,
+)
 from app.standards_ingest import (
     ExtractedDocument,
     FetchedSource,
@@ -35,6 +39,20 @@ SOURCE = StandardSourceRecord(
     document_format="docx",
     resolver_key="army_jrotc_current",
     parser_key="army_jrotc_v12",
+    source_kind="supplemental_curriculum",
+    provides_standard_entries=True,
+    approved_snapshot_id=APPROVED_ID,
+)
+PROGRAM_SOURCE = StandardSourceRecord(
+    id=uuid4(),
+    source_key="alabama_cte_program_government_public_administration",
+    landing_url="https://www.alabamaachieves.org/cte/",
+    document_url="https://www.alabamaachieves.org/files/gpa-program-guide.pdf",
+    document_format="pdf",
+    resolver_key="alabama_cte_program_current",
+    parser_key="alabama_cte_program_generic",
+    source_kind="program_guide",
+    provides_standard_entries=False,
     approved_snapshot_id=APPROVED_ID,
 )
 APPROVED = SnapshotRecord(
@@ -49,6 +67,12 @@ RESOLVED = ResolvedStandardsSource(
     anchor_text="JROTC Curriculum Guide v12",
     observed_version="v12",
 )
+PROGRAM_RESOLVED = ResolvedStandardsSource(
+    landing_url=PROGRAM_SOURCE.landing_url,
+    document_url=PROGRAM_SOURCE.document_url,
+    anchor_text="Government Public Administration Program Guide 2025-2026",
+    observed_version="2025-2026",
+)
 
 
 class DummyClient:
@@ -60,6 +84,16 @@ def _fetched(raw: bytes) -> FetchedSource:
         requested_url=SOURCE.document_url,
         resolved_url=SOURCE.document_url,
         document_format="docx",
+        content=raw,
+        source_sha256=sha256(raw).hexdigest(),
+    )
+
+
+def _program_fetched(raw: bytes) -> FetchedSource:
+    return FetchedSource(
+        requested_url=PROGRAM_SOURCE.document_url,
+        resolved_url=PROGRAM_SOURCE.document_url,
+        document_format="pdf",
         content=raw,
         source_sha256=sha256(raw).hexdigest(),
     )
@@ -175,7 +209,9 @@ def test_raw_file_change_with_same_normalized_text_is_unchanged(monkeypatch) -> 
     assert "normalized authoritative content is unchanged" in result.detail
 
 
-def test_changed_parsed_content_stages_candidate_and_persists_entries(monkeypatch) -> None:
+def test_changed_parsed_content_stages_candidate_and_persists_manifest_and_entries(
+    monkeypatch,
+) -> None:
     _install_common(monkeypatch)
     fetched = _fetched(b"meaningfully changed source")
     extracted = ExtractedDocument(
@@ -207,7 +243,7 @@ def test_changed_parsed_content_stages_candidate_and_persists_entries(monkeypatc
     )
     monkeypatch.setattr(
         maintenance,
-        "_persist_parsed_courses",
+        "_persist_parsed_standards",
         lambda *args: persisted.append(args),
     )
     monkeypatch.setattr(
@@ -222,6 +258,82 @@ def test_changed_parsed_content_stages_candidate_and_persists_entries(monkeypatc
     assert result.candidate_snapshot_id == CANDIDATE_ID
     assert result.parser_succeeded is True
     assert persisted and persisted[0][2] == CANDIDATE_ID
+
+
+def test_program_guide_stages_course_manifest_without_standard_entries(monkeypatch) -> None:
+    parsed = ParsedCourseCatalogDocument(
+        parser_key="alabama_cte_program_generic",
+        parser_version="gate-e-course-catalog-v1",
+        normalized_sha256="e" * 64,
+        courses=(
+            ParsedCourseListing(
+                course_key="army_jrotc_let_2",
+                display_name="Army JROTC Leadership Education and Training II",
+                source_course_code="09052G1001",
+                grade_band="9-12",
+            ),
+        ),
+    )
+    fetched = _program_fetched(b"changed program guide")
+    persisted: list[tuple[object, ...]] = []
+    monkeypatch.setattr(
+        maintenance,
+        "_load_source",
+        lambda client, source_key: PROGRAM_SOURCE,
+    )
+    monkeypatch.setattr(maintenance, "_load_snapshot", lambda client, snapshot_id: APPROVED)
+    monkeypatch.setattr(
+        maintenance,
+        "resolve_authoritative_document",
+        lambda resolver_key, landing_url: PROGRAM_RESOLVED,
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "_update_resolved_document_url",
+        lambda client, source, resolved: None,
+    )
+    monkeypatch.setattr(maintenance, "fetch_source", lambda url, document_format: fetched)
+    monkeypatch.setattr(
+        maintenance,
+        "extract_document",
+        lambda source: ExtractedDocument(
+            lines=("09052G1001 Army JROTC Leadership Education and Training II",),
+            normalized_sha256="e" * 64,
+        ),
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "parse_course_catalog_document",
+        lambda parser_key, extracted: parsed,
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "_stage_snapshot",
+        lambda *args, **kwargs: CANDIDATE_ID,
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "_persist_parsed_course_catalog",
+        lambda *args: persisted.append(args),
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "_persist_parsed_standards",
+        lambda *args: pytest.fail("Program Guide must not persist standard entries"),
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "_record_result_if_requested",
+        lambda *args, **kwargs: None,
+    )
+
+    result = stage_authoritative_source(DummyClient(), PROGRAM_SOURCE.source_key)
+
+    assert result.status == "changed"
+    assert result.parser_succeeded is True
+    assert result.candidate_snapshot_id == CANDIDATE_ID
+    assert persisted and persisted[0][2] == CANDIDATE_ID
+    assert "course catalog" in result.detail.lower()
 
 
 def test_changed_unparseable_source_stages_nonapprovable_candidate(monkeypatch) -> None:
@@ -247,7 +359,7 @@ def test_changed_unparseable_source_stages_nonapprovable_candidate(monkeypatch) 
     monkeypatch.setattr(maintenance, "_stage_snapshot", stage)
     monkeypatch.setattr(
         maintenance,
-        "_persist_parsed_courses",
+        "_persist_parsed_standards",
         lambda *args: pytest.fail("unparseable candidate must not persist standards entries"),
     )
     monkeypatch.setattr(
