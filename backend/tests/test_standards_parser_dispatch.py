@@ -15,6 +15,11 @@ def test_governed_dispatch_routes_verified_comprehensive_academic_parsers(monkey
     extracted = ExtractedDocument(lines=("synthetic",), normalized_sha256="a" * 64)
     called: list[str] = []
 
+    def health_parser(value: ExtractedDocument) -> ParsedStandardsDocument:
+        assert value is extracted
+        called.append("health")
+        return _parsed("alabama_health_2019")
+
     def math_parser(value: ExtractedDocument) -> ParsedStandardsDocument:
         assert value is extracted
         called.append("math")
@@ -30,10 +35,15 @@ def test_governed_dispatch_routes_verified_comprehensive_academic_parsers(monkey
         called.append("social")
         return _parsed("alabama_social_studies_2024")
 
+    monkeypatch.setattr(dispatch, "parse_alabama_health_2019", health_parser)
     monkeypatch.setattr(dispatch, "parse_alabama_math_2019", math_parser)
     monkeypatch.setattr(dispatch, "parse_alabama_science_2023", science_parser)
     monkeypatch.setattr(dispatch, "parse_alabama_social_studies_2024", social_parser)
 
+    assert (
+        dispatch.parse_governed_standards_document("alabama_health_2019", extracted).parser_key
+        == "alabama_health_2019"
+    )
     assert (
         dispatch.parse_governed_standards_document("alabama_math_2019", extracted).parser_key
         == "alabama_math_2019"
@@ -49,4 +59,4 @@ def test_governed_dispatch_routes_verified_comprehensive_academic_parsers(monkey
         ).parser_key
         == "alabama_social_studies_2024"
     )
-    assert called == ["math", "science", "social"]
+    assert called == ["health", "math", "science", "social"]
