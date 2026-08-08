@@ -38,7 +38,11 @@ def _section(program: str, grades: str | None, heading: str) -> list[str]:
     return lines
 
 
-def _document(*, omit_heading: str | None = None) -> ExtractedDocument:
+def _document(
+    *,
+    omit_heading: str | None = None,
+    include_appendix: bool = True,
+) -> ExtractedDocument:
     lines: list[str] = []
     for heading in PROFICIENCIES:
         if heading != omit_heading:
@@ -55,6 +59,15 @@ def _document(*, omit_heading: str | None = None) -> ExtractedDocument:
     for heading in FOUR_LEVELS:
         if f"ASL {heading}" != omit_heading:
             lines.extend(_section("American Sign Language", "Grades 7 – 12", heading))
+    if include_appendix:
+        lines.extend(
+            [
+                "Appendix A",
+                "Latin Grammar Addendum",
+                "1. Appendix numbered material must not become an ASL standard.",
+                "2. Additional appendix numbering must remain outside governed course text.",
+            ]
+        )
     normalized = "\n".join(lines)
     return ExtractedDocument(
         lines=tuple(lines),
@@ -90,6 +103,21 @@ def test_world_languages_parser_preserves_goal_strands_children_and_excludes_exa
     assert by_code["1b"].parent_code == "1"
     assert by_code["4"].strand == "Communication"
     assert by_code["5"].strand == "Cultures"
+
+
+def test_world_languages_parser_stops_final_asl_section_before_appendix() -> None:
+    parsed = parse_alabama_world_languages_2017(_document())
+    asl_four = next(course for course in parsed.courses if course.course_key == "asl_level_iv")
+
+    assert [
+        standard.code for standard in asl_four.standards if standard.parent_code is None
+    ] == [str(number) for number in range(1, 9)]
+    assert all("Appendix numbered material" not in standard.text for standard in asl_four.standards)
+
+
+def test_world_languages_parser_fails_closed_when_appendix_boundary_is_missing() -> None:
+    with pytest.raises(StandardsIngestError, match="Appendix A boundary"):
+        parse_alabama_world_languages_2017(_document(include_appendix=False))
 
 
 def test_world_languages_parser_fails_closed_when_required_section_is_missing() -> None:
