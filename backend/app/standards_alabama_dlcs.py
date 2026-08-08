@@ -140,18 +140,20 @@ def parse_alabama_dlcs_2025(extracted: ExtractedDocument) -> ParsedStandardsDocu
 
         tokens = list(_MAIN_TOKEN.finditer(line))
         if tokens and active_band is not None:
+            prefix = line[: tokens[0].start()].strip()
+            if prefix and not skipping_example and current_code is not None:
+                current_parts.append(prefix)
+            flush()
+            skipping_example = False
+
             for token_index, token in enumerate(tokens):
-                if token_index == 0:
-                    prefix = line[: token.start()].strip()
-                    if prefix and not skipping_example and current_code is not None:
-                        current_parts.append(prefix)
-                else:
+                if token_index > 0:
                     prior_end = tokens[token_index - 1].end()
                     prior_text = line[prior_end : token.start()].strip()
-                    if prior_text and not skipping_example and current_code is not None:
+                    if prior_text and current_code is not None:
                         current_parts.append(prior_text)
-                flush()
-                skipping_example = False
+                    flush()
+
                 number = int(token.group(1))
                 lane = _resolve_lane(
                     active_band,
@@ -170,12 +172,11 @@ def parse_alabama_dlcs_2025(extracted: ExtractedDocument) -> ParsedStandardsDocu
                 current_course_key = course_key
                 current_code = str(number)
                 next_number[course_key] = number + 1
-                text_end = (
-                    tokens[token_index + 1].start()
-                    if token_index + 1 < len(tokens)
-                    else len(line)
-                )
-                current_parts = [line[token.end() : text_end].strip()]
+                current_parts = []
+
+            tail = line[tokens[-1].end() :].strip()
+            if tail:
+                current_parts.append(tail)
             continue
 
         if skipping_example:
