@@ -108,18 +108,40 @@ Weekly Reflection AI is grounded only in:
 
 The reflection is a reviewable draft with the same teacher-control contract. It must not invent student performance evidence or request student-specific data.
 
-## Monthly authoritative-source validation
+## Authoritative standards reconciliation
 
-On the first workday of every month, the maintenance path:
+Alabama Courses of Study are revised by subject/cluster on multi-year cycles rather than on a uniform monthly schedule. TPP therefore uses three governed reconciliation layers.
+
+### Annual comprehensive validation
+
+On the first eligible workday of July by default, early enough to resolve changes before the next school year, the maintenance path:
 
 1. discovers the complete current Alabama academic and CTE catalogs;
 2. records catalog-level `unchanged`, `changed`, `new`, or `missing` evidence;
-3. validates every active approved governed authoritative source;
+3. validates every active approved governed standards-bearing source;
 4. records source-level `unchanged`, `changed`, or `unavailable/error` evidence;
 5. stages changed/new candidates for human review;
 6. never silently replaces an approved snapshot.
 
-If the catalog landing page is unavailable, the failure is recorded and already approved individual sources are still checked where possible. Existing approved standards remain usable for weekly planning.
+The annual month remains configurable through the governed business/school calendar if the district later requires a different pre-year window.
+
+### Quarterly lightweight monitoring
+
+On the first eligible workday of January, April, and October, TPP re-reads the authoritative Alabama catalog and adoption/revision signals to identify newly published, replaced, or withdrawn authoritative documents. The quarterly path records catalog evidence but does **not** re-fetch and re-parse every unchanged standards document merely because a quarter elapsed.
+
+July's annual comprehensive validation replaces the lightweight monitor for that quarter.
+
+### Event-driven reconciliation
+
+When ALSDE or the Alabama State Board of Education adopts, amends, replaces, or otherwise publishes an authoritative change affecting a governed standards source, TPP runs controlled reconciliation for the explicitly affected source or sources immediately rather than waiting for the next quarterly or annual run.
+
+A controlled manual reconciliation path remains available at any time.
+
+### Failure and history guarantees
+
+If a catalog or source is unavailable, the failure is recorded and the last approved snapshot remains active. Existing approved standards remain usable for weekly planning.
+
+A newly adopted Course of Study is introduced as a new governed source/snapshot/version/effective period. Validated historical lesson plans retain the exact standard-entry IDs, wording, source snapshot, and version that were used when the plan was validated. Reconciliation never rewrites historical evidence.
 
 ## Data boundary
 
