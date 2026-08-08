@@ -6,17 +6,13 @@ import sys
 from datetime import date
 
 from app.settings import Settings
-from app.standards_maintenance import (
-    MaintenanceResult,
-    StandardsMaintenanceError,
-    service_role_client,
-)
+from app.standards_maintenance import MaintenanceResult, service_role_client
 from app.standards_monthly_run import (
-    MonthlyStandardsRunResult,
-    StandardsMonthlyRunError,
-    run_monthly_standards_validation,
+    StandardsReconciliationRunError,
+    StandardsReconciliationRunResult,
+    run_standards_reconciliation,
 )
-from app.standards_schedule import monthly_check_is_due
+from app.standards_schedule import scheduled_reconciliation_kind
 
 
 def _date(value: str) -> date:
@@ -29,31 +25,37 @@ def _date(value: str) -> date:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Discover the current Alabama standards catalog and validate every governed "
-            "authoritative standards source."
+            "Reconcile the governed Alabama standards catalog using annual full, "
+            "quarterly lightweight, event-driven, or controlled manual maintenance."
         )
+    )
+    parser.add_argument(
+        "--kind",
+        choices=("annual_full", "quarterly_monitor", "event_driven", "manual"),
+        default="manual",
+        help="Reconciliation scope. Scheduled runs resolve this automatically when requested.",
     )
     parser.add_argument(
         "--source",
         action="append",
         dest="sources",
         help=(
-            "Optional source key to validate. Repeat to restrict source-content checks; "
-            "Alabama catalog discovery still evaluates the complete authoritative catalog."
+            "Affected source key. Repeat as needed. Required for event-driven runs; "
+            "optional for controlled manual runs."
         ),
     )
     parser.add_argument(
         "--check-date",
         type=_date,
-        help=(
-            "Date used for monthly evidence. Defaults to today for a manual run. "
-            "Monthly source evidence is safely upserted for retries."
-        ),
+        help="Evidence date. Defaults to today.",
     )
     parser.add_argument(
-        "--first-workday-only",
+        "--scheduled-only",
         action="store_true",
-        help="No-op unless --check-date is the resolved first workday of its month.",
+        help=(
+            "Resolve the due annual/quarterly reconciliation from --check-date and no-op "
+            "when neither scheduled layer is due."
+        ),
     )
     parser.add_argument(
         "--non-working-date",
@@ -80,7 +82,7 @@ def _result_payload(result: MaintenanceResult) -> dict[str, object]:
     }
 
 
-def _catalog_payload(result: MonthlyStandardsRunResult) -> dict[str, object]:
+def _catalog_payload(result: StandardsReconciliationRunResult) -> dict[str, object]:
     catalog = result.catalog_result
     return {
         "status": "unavailable_error" if result.catalog_error else "checked",
@@ -104,28 +106,39 @@ def run(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     check_date: date = args.check_date or date.today()
     non_working_dates = frozenset(args.non_working_date)
+    reconciliation_kind = args.kind
+    trigger_kind = "manual"
 
-    if args.first_workday_only and not monthly_check_is_due(
-        check_date,
-        non_working_dates=non_working_dates,
-    ):
-        print(
-            json.dumps(
-                {
-                    "status": "not_due",
-                    "check_date": check_date.isoformat(),
-                },
-                sort_keys=True,
-            )
+    if args.scheduled_only:
+        due_kind = scheduled_reconciliation_kind(
+            check_date,
+            non_working_dates=non_working_dates,
         )
-        return 0
+        if due_kind is None:
+            print(
+                json.dumps(
+                    {
+                        "status": "not_due",
+                        "check_date": check_date.isoformat(),
+                    },
+                    sort_keys=True,
+                )
+            )
+            return 0
+        reconciliation_kind = due_kind
+        trigger_kind = "scheduled"
+
+    if reconciliation_kind == "event_driven" and not args.sources:
+        raise StandardsReconciliationRunError(
+            "Event-driven reconciliation requires one or more --source values"
+        )
 
     settings = Settings()
     client = service_role_client(settings)
-    trigger_kind = "scheduled" if args.first_workday_only else "manual"
-    result = run_monthly_standards_validation(
+    result = run_standards_reconciliation(
         client,
         check_date=check_date,
+        reconciliation_kind=reconciliation_kind,
         trigger_kind=trigger_kind,
         source_keys=tuple(args.sources) if args.sources else None,
     )
@@ -135,6 +148,7 @@ def run(argv: list[str] | None = None) -> int:
             {
                 "check_date": check_date.isoformat(),
                 "trigger_kind": trigger_kind,
+                "reconciliation_kind": reconciliation_kind,
                 "catalog": _catalog_payload(result),
                 "sources": [_result_payload(item) for item in result.source_results],
                 "requires_review": result.requires_review,
@@ -154,7 +168,7 @@ def run(argv: list[str] | None = None) -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(run())
-    except (StandardsMaintenanceError, StandardsMonthlyRunError) as error:
+    except StandardsReconciliationRunError as error:
         print(
             json.dumps(
                 {
