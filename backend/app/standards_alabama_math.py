@@ -27,7 +27,11 @@ _COURSES = (
     ("algebra_i_probability", "Algebra I with Probability", "9-12"),
     ("algebra_ii_statistics", "Algebra II with Statistics", "9-12"),
     ("mathematical_modeling", "Mathematical Modeling", "9-12"),
-    ("applications_finite_mathematics", "Applications of Finite Mathematics", "9-12"),
+    (
+        "applications_finite_mathematics",
+        "Applications of Finite Mathematics",
+        "9-12",
+    ),
     ("precalculus", "Precalculus", "9-12"),
 )
 _MAIN = re.compile(r"^(\d+)\.\s+(.+)$")
@@ -55,18 +59,26 @@ def parse_alabama_math_2019(extracted: ExtractedDocument) -> ParsedStandardsDocu
     practices = _parse_student_mathematical_practices(extracted.lines)
     if len(practices) != 8:
         raise StandardsIngestError(
-            "Alabama Mathematics parser did not find all eight Student Mathematical Practices"
+            "Alabama Mathematics parser did not find all eight Student Mathematical "
+            "Practices"
         )
 
-    ordered_markers = [int(markers[display_name]) for _, display_name, _ in _COURSES]
+    ordered_markers = [
+        int(markers[display_name]) for _, display_name, _ in _COURSES
+    ]
     courses: list[ParsedCourse] = []
     for index, (course_key, display_name, grade_band) in enumerate(_COURSES):
         start = ordered_markers[index] + 1
-        end = ordered_markers[index + 1] if index + 1 < len(ordered_markers) else len(extracted.lines)
+        end = (
+            ordered_markers[index + 1]
+            if index + 1 < len(ordered_markers)
+            else len(extracted.lines)
+        )
         content = _parse_math_content(extracted.lines[start:end])
         if len(content) < 3:
             raise StandardsIngestError(
-                f"Alabama Mathematics {display_name} standards structure changed unexpectedly"
+                f"Alabama Mathematics {display_name} standards structure changed "
+                "unexpectedly"
             )
         courses.append(
             ParsedCourse(
@@ -100,7 +112,8 @@ def _parse_student_mathematical_practices(
             strand="Student Mathematical Practices",
             stop_after=8,
         )
-        if len(raw) == 8 and [item.code for item in raw] == [str(number) for number in range(1, 9)]:
+        expected_codes = [str(number) for number in range(1, 9)]
+        if len(raw) == 8 and [item.code for item in raw] == expected_codes:
             return tuple(
                 ParsedStandard(
                     code=f"SMP{item.code}",
@@ -151,6 +164,7 @@ def _parse_numbered_block(
         main = _MAIN.match(line)
         if main:
             if stop_after is not None and int(main.group(1)) > stop_after:
+                flush()
                 break
             flush()
             current_main = main.group(1)
@@ -180,7 +194,11 @@ def _parse_numbered_block(
 
     flush()
     if stop_after is not None:
-        standards = [item for item in standards if item.parent_code is not None or int(item.code) <= stop_after]
+        standards = [
+            item
+            for item in standards
+            if item.parent_code is not None or int(item.code) <= stop_after
+        ]
     return tuple(standards)
 
 
