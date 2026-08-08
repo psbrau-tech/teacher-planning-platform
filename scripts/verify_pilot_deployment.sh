@@ -212,13 +212,13 @@ if [[ "$retention" != "30" ]]; then
   echo "Expected a 30-day application log-group retention; found $retention." >&2
   exit 1
 fi
-stream_count="$(aws logs describe-log-streams \
+log_streams_json="$(aws logs describe-log-streams \
   --log-group-name "$log_group" \
   --order-by LastEventTime \
   --descending \
   --max-items 5 \
-  --query 'length(logStreams)' \
-  --output text)"
+  --output json)"
+stream_count="$(jq '(.logStreams // []) | length' <<<"$log_streams_json")"
 if [[ "$stream_count" -lt 1 ]]; then
   echo "No application log stream exists in $log_group." >&2
   exit 1
