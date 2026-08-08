@@ -80,10 +80,17 @@ def test_parser_pending_source_stages_metadata_only(monkeypatch) -> None:
 
     assert result.status == "parser_pending"
     assert result.source_id == SOURCE_ID
-    source_call = next(call for call in client.calls if call[1] == "standard_sources" and call[0] == "POST")
+    source_call = next(
+        call
+        for call in client.calls
+        if call[1] == "standard_sources" and call[0] == "POST"
+    )
     assert source_call[3]["discovery_status"] == "pending"
     assert source_call[3]["parser_key"] == "alabama_academic_parser_pending"
-    assert not any(call[1] == "standard_snapshots" and call[0] == "POST" for call in client.calls)
+    assert not any(
+        call[1] == "standard_snapshots" and call[0] == "POST"
+        for call in client.calls
+    )
 
 
 def test_approved_source_descriptor_is_never_patched_by_catalog_materialization() -> None:
@@ -157,13 +164,23 @@ def test_ready_academic_source_stages_parsed_candidate_without_approval(monkeypa
     assert result.status == "candidate_staged"
     assert result.candidate_snapshot_id == SNAPSHOT_ID
     assert not any(call[1] == "rpc/approve_standard_snapshot" for call in client.calls)
-    manifest_call = next(call for call in client.calls if call[1] == "standard_snapshot_courses" and call[0] == "POST")
+    manifest_call = next(
+        call
+        for call in client.calls
+        if call[1] == "standard_snapshot_courses" and call[0] == "POST"
+    )
     assert manifest_call[3]["display_name"] == "Biology"
-    entry_call = next(call for call in client.calls if call[1] == "standard_entries" and call[0] == "POST")
+    entry_call = next(
+        call
+        for call in client.calls
+        if call[1] == "standard_entries" and call[0] == "POST"
+    )
     assert entry_call[3][0]["code"] == "1"
 
 
-def test_program_guide_candidate_contains_course_manifest_but_no_standard_entries(monkeypatch) -> None:
+def test_program_guide_candidate_contains_course_manifest_but_no_standard_entries(
+    monkeypatch,
+) -> None:
     client = FakeClient()
     source = _source(
         "alabama_cte_program_finance",
@@ -203,4 +220,7 @@ def test_program_guide_candidate_contains_course_manifest_but_no_standard_entrie
 
     assert result.status == "candidate_staged"
     assert any(call[1] == "standard_snapshot_courses" for call in client.calls)
-    assert not any(call[1] == "standard_entries" and call[0] == "POST" for call in client.calls)
+    assert not any(
+        call[1] == "standard_entries" and call[0] == "POST"
+        for call in client.calls
+    )
