@@ -15,7 +15,7 @@ from .supabase_rest import SupabaseRestClient, SupabaseRestError
 
 JsonRecord = dict[str, Any]
 _PARSER_VERSION = "act-public-html-v1"
-_CODE = re.compile(r"\b([A-Z][A-Z&]{1,5})\s+([2-7]\d{2})\.\s*")
+_CODE = re.compile(r"\b([A-Z][A-Z&]{0,5})\s+([2-7]\d{2})\.\s*")
 _WORD = re.compile(r"[a-z][a-z0-9'-]{2,}")
 _STOP_WORDS = frozenset(
     {
@@ -144,7 +144,7 @@ def parse_act_ccr_html(*, source_key: str, domain: str, raw_html: str) -> Parsed
     if not matches:
         raise ActReferenceError(f"No ACT CCR standards were found for {domain}")
     entries: list[ActReferenceEntry] = []
-    seen_codes: set[str] = set()
+    seen_codes: dict[str, str] = {}
     ranges = _SCORE_RANGES.get(domain, _SCORE_RANGES["default"])
     for index, match in enumerate(matches):
         prefix, number_text = match.groups()
@@ -157,9 +157,14 @@ def parse_act_ccr_html(*, source_key: str, domain: str, raw_html: str) -> Parsed
         ].strip()
         if not exact_text:
             raise ActReferenceError(f"ACT reference {code} has no authoritative wording")
-        if code in seen_codes:
-            raise ActReferenceError(f"Duplicate ACT reference code in {domain}: {code}")
-        seen_codes.add(code)
+        previous_text = seen_codes.get(code)
+        if previous_text is not None:
+            if previous_text != exact_text:
+                raise ActReferenceError(f"Conflicting ACT reference wording for {domain}: {code}")
+            # ACT Mathematics intentionally lists shared AF standards under both
+            # Algebra and Functions. Store the shared authoritative skill once.
+            continue
+        seen_codes[code] = exact_text
         level = int(number_text[0])
         score_range = ranges.get(level)
         if score_range is None:
