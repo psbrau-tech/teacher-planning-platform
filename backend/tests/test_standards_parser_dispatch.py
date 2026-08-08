@@ -55,6 +55,11 @@ def test_governed_dispatch_routes_verified_comprehensive_academic_parsers(monkey
         called.append("social")
         return _parsed("alabama_social_studies_2024")
 
+    def world_languages_parser(value: ExtractedDocument) -> ParsedStandardsDocument:
+        assert value is extracted
+        called.append("world_languages")
+        return _parsed("alabama_world_languages_2017")
+
     monkeypatch.setattr(dispatch, "parse_alabama_algebra_finance", algebra_finance_parser)
     monkeypatch.setattr(dispatch, "parse_alabama_career_mathematics", career_math_parser)
     monkeypatch.setattr(
@@ -71,6 +76,11 @@ def test_governed_dispatch_routes_verified_comprehensive_academic_parsers(monkey
     )
     monkeypatch.setattr(dispatch, "parse_alabama_science_2023", science_parser)
     monkeypatch.setattr(dispatch, "parse_alabama_social_studies_2024", social_parser)
+    monkeypatch.setattr(
+        dispatch,
+        "parse_alabama_world_languages_2017",
+        world_languages_parser,
+    )
 
     assert (
         dispatch.parse_governed_standards_document(
@@ -119,6 +129,13 @@ def test_governed_dispatch_routes_verified_comprehensive_academic_parsers(monkey
         ).parser_key
         == "alabama_social_studies_2024"
     )
+    assert (
+        dispatch.parse_governed_standards_document(
+            "alabama_world_languages_2017",
+            extracted,
+        ).parser_key
+        == "alabama_world_languages_2017"
+    )
     assert called == [
         "algebra_finance",
         "career_math",
@@ -128,4 +145,5 @@ def test_governed_dispatch_routes_verified_comprehensive_academic_parsers(monkey
         "physical_education",
         "science",
         "social",
+        "world_languages",
     ]
