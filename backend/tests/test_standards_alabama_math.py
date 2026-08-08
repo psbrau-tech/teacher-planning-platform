@@ -5,7 +5,6 @@ import pytest
 from app.standards_alabama_math import parse_alabama_math_2019
 from app.standards_ingest import ExtractedDocument, StandardsIngestError
 
-
 COURSES = (
     "Kindergarten",
     "Grade 1",
