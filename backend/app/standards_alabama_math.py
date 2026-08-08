@@ -207,13 +207,11 @@ def _is_math_heading(line: str) -> bool:
         return True
     if line.endswith("Content Standards"):
         return True
-    if (
+    return (
         len(line) <= 85
         and not re.search(r"[.!?;:]$", line)
         and (line.isupper() or line.istitle())
-    ):
-        return True
-    return False
+    )
 
 
 def _unique_index(lines: tuple[str, ...], marker: str) -> int | None:
