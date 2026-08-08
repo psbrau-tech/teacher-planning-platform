@@ -25,6 +25,29 @@ COURSES = (
     "Precalculus",
 )
 
+# The authoritative 2019 PDF places the regular Grade 8 section before the
+# Grade 7 Accelerated section. Parser output remains in teacher-facing catalog
+# order, while source boundaries must follow the actual PDF marker positions.
+SOURCE_COURSES = (
+    "Kindergarten",
+    "Grade 1",
+    "Grade 2",
+    "Grade 3",
+    "Grade 4",
+    "Grade 5",
+    "Grade 6",
+    "Grade 7",
+    "Grade 8",
+    "Grade 7 Accelerated",
+    "Grade 8 Accelerated",
+    "Geometry with Data Analysis",
+    "Algebra I with Probability",
+    "Algebra II with Statistics",
+    "Mathematical Modeling",
+    "Applications of Finite Mathematics",
+    "Precalculus",
+)
+
 
 def _content_marker(course: str) -> str:
     if course == "Grade 8":
@@ -41,7 +64,7 @@ def _document(*, omit: str | None = None) -> ExtractedDocument:
         ],
         "Practice Notes",
     ]
-    for course in COURSES:
+    for course in SOURCE_COURSES:
         if course == omit:
             continue
         lines.extend(
@@ -66,7 +89,7 @@ def _document(*, omit: str | None = None) -> ExtractedDocument:
     )
 
 
-def test_math_parser_returns_all_17_course_sections() -> None:
+def test_math_parser_returns_all_17_course_sections_in_catalog_order() -> None:
     parsed = parse_alabama_math_2019(_document())
 
     assert len(parsed.courses) == 17
@@ -77,6 +100,22 @@ def test_math_parser_returns_all_17_course_sections() -> None:
     assert parsed.courses[-1].course_key == "precalculus"
     grade_eight = next(course for course in parsed.courses if course.course_key == "grade_8")
     assert grade_eight.source_course_code == "Grade 8 Mathematics Content Standards"
+
+
+def test_math_parser_uses_pdf_marker_order_for_section_boundaries() -> None:
+    parsed = parse_alabama_math_2019(_document())
+    grade_eight = next(course for course in parsed.courses if course.course_key == "grade_8")
+    grade_seven_accelerated = next(
+        course for course in parsed.courses if course.course_key == "grade_7_accelerated"
+    )
+
+    for course in (grade_eight, grade_seven_accelerated):
+        content_codes = [
+            standard.code
+            for standard in course.standards
+            if standard.strand == "Content Standards"
+        ]
+        assert content_codes == ["1", "2", "2a", "2b", "3"]
 
 
 def test_math_parser_attaches_all_eight_practices_to_each_course() -> None:
