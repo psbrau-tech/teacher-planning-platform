@@ -10,13 +10,14 @@ from .standards_ingest import (
     StandardsIngestError,
 )
 
-HEALTH_PARSER_VERSION = "gate-e-alabama-health-2019-v2"
+HEALTH_PARSER_VERSION = "gate-e-alabama-health-2019-v3"
 _MAIN = re.compile(
     r"^(K|[1-8]|HE|HA|WH)\s*[.-]?\s*(\d+)\s*\.\s*(\d+)([a-z])?\.?(?:\s+(.*))?$",
     flags=re.IGNORECASE,
 )
 _CHILD = re.compile(r"^([a-z])\.\s+(.+)$")
 _EXAMPLE_PREFIXES = ("Example:", "Examples:")
+_STANDARDS_START = "Grades K-5 Standards"
 _COURSES = {
     "K": ("kindergarten", "Kindergarten", "K"),
     "1": ("grade_1", "Grade 1", "1"),
@@ -40,6 +41,11 @@ def parse_alabama_health_2019(extracted: ExtractedDocument) -> ParsedStandardsDo
     current_parts: list[str] = []
     current_parent: str | None = None
     skipping_example = False
+    has_authoritative_start = any(
+        re.sub(r"\s+", " ", line).strip() == _STANDARDS_START
+        for line in extracted.lines
+    )
+    standards_started = not has_authoritative_start
 
     def flush() -> None:
         nonlocal current_prefix, current_code, current_parts, current_parent
@@ -62,6 +68,11 @@ def parse_alabama_health_2019(extracted: ExtractedDocument) -> ParsedStandardsDo
     for raw_line in extracted.lines:
         line = re.sub(r"\s+", " ", raw_line).strip()
         if not line:
+            continue
+        if line == _STANDARDS_START:
+            standards_started = True
+            continue
+        if not standards_started:
             continue
 
         main = _MAIN.match(line)
