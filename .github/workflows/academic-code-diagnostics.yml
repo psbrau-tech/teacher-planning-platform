@@ -9,6 +9,7 @@ on:
       - 'backend/app/standards_alabama_health.py'
       - 'backend/app/standards_alabama_parsers.py'
       - 'backend/app/standards_alabama_physical_education.py'
+      - 'backend/app/standards_alabama_social_studies.py'
       - 'backend/app/standards_alabama_world_languages.py'
 
 permissions:
@@ -67,4 +68,72 @@ jobs:
                   print('output_truncated=middle')
               for index, line in matches:
                   print(f'code[{index}]={line}')
+          PY
+      - name: Inspect duplicate-code contexts read-only
+        run: |
+          python - <<'PY'
+          import collections
+          import re
+
+          from app.standards_catalog_fetch import fetch_current_alabama_catalog
+          from app.standards_ingest import extract_document, fetch_source
+
+          source_map = {s.source_key: s for s in fetch_current_alabama_catalog()}
+          targets = {
+              'health': (
+                  'alabama_academic_health',
+                  re.compile(r'^(K|[1-8]|HE|HA|WH)\s*[.-]?\s*(\d+)\s*\.\s*(\d+)([a-z])?', re.I),
+                  lambda m: f'{m.group(1).upper()}.{m.group(2)}.{m.group(3)}{(m.group(4) or "").lower()}',
+              ),
+              'physical_education': (
+                  'alabama_academic_physical_education',
+                  re.compile(r'^(K|[1-8]|BK|AK|SO|AC|SC|LS|VA)\s*-\s*(\d+)\s*\.\s*(\d+)([a-z])?', re.I),
+                  lambda m: f'{m.group(1).upper()}-{m.group(2)}.{m.group(3)}{(m.group(4) or "").lower()}',
+              ),
+          }
+
+          print('duplicate_diagnostic_database_writes=0')
+          for label, (key, pattern, keyer) in targets.items():
+              source = source_map[key]
+              lines = extract_document(fetch_source(source.document_url, source.document_format)).lines
+              occurrences = collections.defaultdict(list)
+              for index, raw in enumerate(lines):
+                  line = re.sub(r'\s+', ' ', raw).strip()
+                  match = pattern.match(line)
+                  if match:
+                      occurrences[keyer(match)].append(index)
+              duplicates = {code: idxs for code, idxs in occurrences.items() if len(idxs) > 1}
+              print(f'=== duplicate_contexts:{label} count={len(duplicates)} ===')
+              for code, indexes in sorted(duplicates.items()):
+                  print(f'duplicate={code}|indexes={indexes}')
+                  for index in indexes:
+                      start = max(0, index - 2)
+                      end = min(len(lines), index + 3)
+                      for context_index in range(start, end):
+                          print(f'context[{context_index}]={lines[context_index]}')
+
+          source = source_map['alabama_academic_social_studies']
+          lines = extract_document(fetch_source(source.document_url, source.document_format)).lines
+          content_markers = [
+              index for index, line in enumerate(lines)
+              if line.lower().replace(' ', '') in {'contentstandards', 'contentstandard'}
+          ]
+          for section_number, marker in enumerate(content_markers):
+              end = content_markers[section_number + 1] if section_number + 1 < len(content_markers) else len(lines)
+              candidates = collections.defaultdict(list)
+              for index in range(max(0, marker - 25), end):
+                  line = re.sub(r'\s+', ' ', lines[index]).strip()
+                  match = re.match(r'^([1-9]\d?)(?:\.|\s|$)', line)
+                  if match:
+                      candidates[match.group(1)].append(index)
+              duplicates = {code: idxs for code, idxs in candidates.items() if len(idxs) > 1}
+              if duplicates:
+                  print(f'=== duplicate_contexts:social_section={section_number + 1}|marker={marker} ===')
+                  for code, indexes in sorted(duplicates.items(), key=lambda item: int(item[0])):
+                      print(f'duplicate={code}|indexes={indexes}')
+                      for index in indexes:
+                          start = max(0, index - 2)
+                          end_context = min(len(lines), index + 3)
+                          for context_index in range(start, end_context):
+                              print(f'context[{context_index}]={lines[context_index]}')
           PY
