@@ -1,0 +1,199 @@
+name: Verify TPP Pilot Database Target
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: Reason for verifying the protected pilot database target
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: tpp-pilot-database-target-verification
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify database secret targets the TPP pilot project
+    runs-on: ubuntu-latest
+    environment: tpp-pilot
+    env:
+      AWS_REGION: ${{ vars.TPP_AWS_REGION || 'us-east-2' }}
+      AWS_ROLE_ARN: ${{ vars.TPP_AWS_ROLE_ARN }}
+      SUPABASE_URL_SECRET_ID: ${{ vars.TPP_SUPABASE_URL_SECRET_ID || 'tpp/pilot/supabase-url' }}
+      DATABASE_URL_SECRET_ID: ${{ vars.TPP_DATABASE_URL_SECRET_ID || 'tpp/pilot/database-url' }}
+
+    steps:
+      - name: Validate verifier configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in AWS_ROLE_ARN SUPABASE_URL_SECRET_ID DATABASE_URL_SECRET_ID; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing required tpp-pilot database-target values: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+          if [[ "$AWS_REGION" != "us-east-2" ]]; then
+            echo "TPP pilot database verification is restricted to us-east-2." >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Configure AWS credentials through GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Retrieve protected targets without exposing credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase_url="$(aws secretsmanager get-secret-value \
+            --secret-id "$SUPABASE_URL_SECRET_ID" \
+            --query SecretString \
+            --output text)"
+          database_url="$(aws secretsmanager get-secret-value \
+            --secret-id "$DATABASE_URL_SECRET_ID" \
+            --query SecretString \
+            --output text)"
+          if [[ "$supabase_url" != https://* ]]; then
+            echo "The Supabase URL secret is not an HTTPS URL." >&2
+            exit 1
+          fi
+          if [[ "$database_url" != postgres://* && "$database_url" != postgresql://* ]]; then
+            echo "The database URL secret is not a PostgreSQL connection URL." >&2
+            exit 1
+          fi
+          echo "::add-mask::$supabase_url"
+          echo "::add-mask::$database_url"
+          printf 'VERIFIER_SUPABASE_URL=%s\n' "$supabase_url" >> "$GITHUB_ENV"
+          printf 'VERIFIER_DATABASE_URL=%s\n' "$database_url" >> "$GITHUB_ENV"
+
+      - name: Compare protected project targets
+        id: target
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from urllib.parse import urlsplit
+
+          api = urlsplit(os.environ["VERIFIER_SUPABASE_URL"])
+          db = urlsplit(os.environ["VERIFIER_DATABASE_URL"])
+
+          api_host = (api.hostname or "").lower()
+          if not api_host.endswith(".supabase.co"):
+              raise SystemExit("Supabase API URL does not use a recognized supabase.co project host")
+          api_ref = api_host.split(".", 1)[0]
+
+          db_host = (db.hostname or "").lower()
+          username = db.username or ""
+          db_ref = None
+          if db_host.startswith("db.") and db_host.endswith(".supabase.co"):
+              parts = db_host.split(".")
+              if len(parts) >= 4:
+                  db_ref = parts[1]
+          if db_ref is None and username.startswith("postgres."):
+              candidate = username.split(".", 1)[1]
+              if candidate:
+                  db_ref = candidate
+
+          print(f"Supabase API project ref: {api_ref}")
+          print(f"Database host: {db_host}")
+          print(f"Database target project ref: {db_ref or 'unresolved'}")
+          if db_ref is None:
+              raise SystemExit(
+                  "Could not resolve a Supabase project ref from the protected database URL"
+              )
+          if db_ref != api_ref:
+              raise SystemExit(
+                  f"DATABASE TARGET MISMATCH: Supabase API ref {api_ref} != database ref {db_ref}"
+              )
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"project_ref={api_ref}\n")
+              output.write(f"database_host={db_host}\n")
+          PY
+
+      - name: Inspect migration and Gate E schema state read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --quiet 'psycopg[binary]>=3.2,<4'
+          python - <<'PY'
+          import os
+          import psycopg
+
+          gate_e_versions = (
+              '20260807195500',
+              '20260807195600',
+              '20260807195700',
+              '20260807195800',
+              '20260807195900',
+              '20260807200000',
+              '20260807200100',
+              '20260807200200',
+              '20260807200300',
+              '20260807200400',
+              '20260807200500',
+              '20260807200600',
+              '20260808140000',
+              '20260808153000',
+              '20260808153100',
+              '20260808153200',
+          )
+          with psycopg.connect(os.environ["VERIFIER_DATABASE_URL"], autocommit=True) as conn:
+              with conn.cursor() as cur:
+                  cur.execute("select to_regclass('public.standard_sources') is not null")
+                  standard_sources_exists = bool(cur.fetchone()[0])
+                  cur.execute("select count(*) from supabase_migrations.schema_migrations")
+                  migration_count = int(cur.fetchone()[0])
+                  cur.execute(
+                      "select version from supabase_migrations.schema_migrations "
+                      "where version = any(%s) order by version",
+                      (list(gate_e_versions),),
+                  )
+                  present = [row[0] for row in cur.fetchall()]
+
+          print(f"Recorded migration count: {migration_count}")
+          print(f"Gate E migrations present: {len(present)}/{len(gate_e_versions)}")
+          print(f"public.standard_sources exists: {str(standard_sources_exists).lower()}")
+          if len(present) != len(gate_e_versions) or not standard_sources_exists:
+              missing = [version for version in gate_e_versions if version not in present]
+              print("Missing Gate E migration versions: " + ", ".join(missing))
+              raise SystemExit("Gate E schema is not fully applied to the protected TPP pilot database")
+          PY
+
+      - name: Publish read-only database-target verification
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## TPP pilot database target verification"
+            echo "- Reason: ${{ inputs.reason }}"
+            echo "- Workflow commit: \`$GITHUB_SHA\`"
+            echo "- Expected project ref from Supabase URL: \`${{ steps.target.outputs.project_ref || 'unresolved' }}\`"
+            echo "- Database host: \`${{ steps.target.outputs.database_host || 'unresolved' }}\`"
+            echo "- Region: \`$AWS_REGION\`"
+            echo "- Mutation status: none; this workflow performs read-only target/schema checks"
+            echo "- Credentials: protected values were masked and are not written to this summary"
+            echo "- Data boundary: teacher/admin and professional curriculum/reference data only; no student data"
+          } >> "$GITHUB_STEP_SUMMARY"
