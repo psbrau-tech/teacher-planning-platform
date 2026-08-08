@@ -109,15 +109,20 @@ Use this checklist before a controlled pilot with real educator accounts, before
 
 ## K. Accessibility
 
-- [ ] Core teacher workflow keyboard-only test passes.
-- [ ] Core admin workflow keyboard-only test passes.
+- [ ] Public-school/Title II applicability reviewed for the customer and release model.
+- [ ] Current DOJ Title II web/mobile rule and compliance date reverified.
+- [ ] Core teacher workflow tested explicitly against WCAG 2.1 Level AA, not only a later WCAG version.
+- [ ] Core admin workflow tested explicitly against WCAG 2.1 Level AA.
+- [ ] Keyboard-only operation passes.
 - [ ] Focus order and visible focus checked.
-- [ ] Accessible names/labels checked.
-- [ ] Required-field and error messaging checked.
+- [ ] Accessible names, labels, instructions, and relationships checked.
+- [ ] Required-field and error identification/messaging checked.
 - [ ] Contrast checked for core UI.
 - [ ] Zoom/reflow checked.
 - [ ] Representative screen-reader pass completed.
+- [ ] Generated PDFs and other conventional electronic documents reviewed for the applicable public-entity use; no exception assumed without factual review.
 - [ ] Export accessibility claims limited to tested capability.
+- [ ] If WCAG 2.2 AA is also used as an engineering target, explicit WCAG 2.1 AA evidence is still retained for the DOJ baseline.
 - [ ] Accessibility statement wording matches evidence.
 
 ## L. Terms and institutional contracting
@@ -151,6 +156,7 @@ Record:
 - Database migration/version state: `____________`
 - Privacy inventory review date: `____________`
 - Subprocessor verification date: `____________`
+- Accessibility verification date/evidence: `____________`
 - Legal review date/counsel: `____________`
 - Release approver: `____________`
 - Release date: `____________`
