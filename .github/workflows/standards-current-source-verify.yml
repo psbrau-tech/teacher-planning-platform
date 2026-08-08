@@ -1,0 +1,111 @@
+name: Standards Current Source Verify
+
+on:
+  pull_request:
+    paths:
+      - 'backend/app/standards_*.py'
+      - 'backend/tests/test_standards_*.py'
+      - '.github/workflows/standards-current-source-verify.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-current-standards:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install backend
+        run: python -m pip install -e '.[dev]'
+      - name: Discover and parse current Alabama standards read-only
+        run: |
+          python - <<'PY'
+          from app.standards_catalog_fetch import fetch_current_alabama_catalog
+          from app.standards_ingest import extract_document, fetch_source
+          from app.standards_parser_dispatch import parse_governed_standards_document
+          from app.standards_source_registry import source_ingest_plan
+
+          sources = fetch_current_alabama_catalog()
+          failures: list[str] = []
+          verified = 0
+          standards_sources = 0
+
+          print(f"discovered_source_count={len(sources)}")
+          print("database_writes=0")
+
+          for source in sources:
+              plan = source_ingest_plan(source)
+              print(
+                  "source="
+                  f"{source.source_key}|{source.family}|{source.category_name}|"
+                  f"{source.edition}|{plan.parser_key}|{source.document_format}"
+              )
+              if not plan.provides_standard_entries:
+                  print(f"skip_nonstandards_source={source.source_key}")
+                  continue
+
+              standards_sources += 1
+              if not plan.parser_ready:
+                  failures.append(
+                      f"{source.source_key}: deterministic parser is not ready"
+                  )
+                  continue
+              if source.document_format not in {"pdf", "docx"}:
+                  failures.append(
+                      f"{source.source_key}: unsupported discovered format "
+                      f"{source.document_format}"
+                  )
+                  continue
+
+              try:
+                  fetched = fetch_source(source.document_url, source.document_format)
+                  extracted = extract_document(fetched)
+                  parsed = parse_governed_standards_document(plan.parser_key, extracted)
+              except Exception as error:
+                  failures.append(f"{source.source_key}: {type(error).__name__}: {error}")
+                  continue
+
+              course_keys = [course.course_key for course in parsed.courses]
+              if not course_keys:
+                  failures.append(f"{source.source_key}: parser produced no courses")
+                  continue
+              if len(course_keys) != len(set(course_keys)):
+                  failures.append(f"{source.source_key}: parser produced duplicate course IDs")
+                  continue
+              empty_courses = [
+                  course.course_key for course in parsed.courses if not course.standards
+              ]
+              if empty_courses:
+                  failures.append(
+                      f"{source.source_key}: courses without standards: {empty_courses}"
+                  )
+                  continue
+
+              verified += 1
+              standard_count = sum(len(course.standards) for course in parsed.courses)
+              print(
+                  "verified="
+                  f"{source.source_key}|{fetched.source_sha256}|"
+                  f"{parsed.parser_version}|{len(parsed.courses)}|{standard_count}"
+              )
+
+          print(f"standards_source_count={standards_sources}")
+          print(f"verified_standards_source_count={verified}")
+          if failures:
+              print("verification_failures:")
+              for failure in failures:
+                  print(f"- {failure}")
+              raise RuntimeError(
+                  f"{len(failures)} current Alabama standards source(s) failed verification"
+              )
+          if verified != standards_sources:
+              raise RuntimeError("Not every current standards-bearing source was verified")
+          PY
