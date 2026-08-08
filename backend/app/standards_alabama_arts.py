@@ -11,17 +11,29 @@ from .standards_ingest import (
     StandardsIngestError,
 )
 
-ARTS_PARSER_VERSION = "gate-e-alabama-arts-2024-v1"
-_MAIN = re.compile(r"^(1[01]|[1-9])\.\s+(.+)$")
+ARTS_PARSER_VERSION = "gate-e-alabama-arts-2024-v2"
+_EXPECTED_SECTION_COUNT = 33
+_DISCIPLINES = ("DANCE", "MEDIA ARTS", "MUSIC", "THEATRE", "VISUAL ARTS")
+_NUMBERED = re.compile(r"^(\d+)\.\s+(.+)$")
+_NUMBERED_SPLIT = re.compile(r"(?=\d+\.\s)")
 _CONTEXT_PREFIXES = (
     "Anchor Standard",
     "Process Component:",
     "Enduring Understanding:",
     "Essential Question:",
     "Essential Questions:",
+    "EU:",
     "Example:",
     "Examples:",
 )
+_STRAND_HEADINGS = {
+    "CREATING": "Creating",
+    "PERFORMING": "Performing",
+    "PRESENTING": "Presenting",
+    "PRODUCING": "Producing",
+    "RESPONDING": "Responding",
+    "CONNECTING": "Connecting",
+}
 _ANCHOR_TEXT = {
     1: "Generate and conceptualize artistic ideas and work.",
     2: "Organize and develop artistic ideas and work.",
@@ -38,293 +50,51 @@ _ANCHOR_TEXT = {
         "context to deepen understanding."
     ),
 }
-_STRAND_BY_NUMBER = {
-    1: "Creating",
-    2: "Creating",
-    3: "Creating",
-    4: "Performing / Presenting / Producing",
-    5: "Performing / Presenting / Producing",
-    6: "Performing / Presenting / Producing",
-    7: "Responding",
-    8: "Responding",
-    9: "Responding",
-    10: "Connecting",
-    11: "Connecting",
-}
+_ANCHOR_TEXT_VALUES = frozenset(_ANCHOR_TEXT.values())
+_LANE_TOKEN = re.compile(
+    r"Kindergarten|Grade \d+|MS Level [123]|HS Level (?:I|II|III|IV)|"
+    r"Level (?:I|II|III|IV)"
+)
 
 
 @dataclass(frozen=True, slots=True)
-class _Lane:
-    course_key: str
-    display_name: str
-    grade_band: str | None
-
-
-@dataclass(frozen=True, slots=True)
-class _SectionSpec:
+class _Section:
+    marker_index: int
+    end_index: int
     discipline: str
     section_name: str
-    lanes: tuple[_Lane, ...]
-    shared_lanes: tuple[tuple[int, tuple[tuple[int, ...], ...]], ...] = ()
-    duplicate_numbers: tuple[int, ...] = ()
-
-    def shared_for(self, number: int) -> tuple[tuple[int, ...], ...] | None:
-        return dict(self.shared_lanes).get(number)
+    lanes: tuple[tuple[str, str | None], ...]
 
 
-def _lane(key: str, name: str, grade_band: str | None) -> _Lane:
-    return _Lane(course_key=key, display_name=name, grade_band=grade_band)
-
-
-def _three_grade_lanes(prefix: str, discipline: str, grades: tuple[int, int, int]) -> tuple[_Lane, ...]:
-    return tuple(
-        _lane(
-            f"{prefix}_grade_{grade}",
-            f"{discipline} Grade {grade}",
-            str(grade),
-        )
-        for grade in grades
-    )
-
-
-def _level_lanes(
-    prefix: str,
-    display_prefix: str,
-    count: int,
-    grade_band: str,
-) -> tuple[_Lane, ...]:
-    roman = ("I", "II", "III", "IV")
-    return tuple(
-        _lane(
-            f"{prefix}_level_{index + 1}",
-            f"{display_prefix} Level {roman[index]}",
-            grade_band,
-        )
-        for index in range(count)
-    )
-
-
-_K12_SHARED = (
-    (0,),
-    (1, 2),
-)
-
-_SECTION_SPECS = (
-    _SectionSpec(
-        "DANCE",
-        "Kindergarten Grade 1 Grade 2",
-        (
-            _lane("dance_kindergarten", "Dance Kindergarten", "K"),
-            _lane("dance_grade_1", "Dance Grade 1", "1"),
-            _lane("dance_grade_2", "Dance Grade 2", "2"),
-        ),
-    ),
-    _SectionSpec(
-        "DANCE",
-        "Grade 3 Grade 4 Grade 5",
-        _three_grade_lanes("dance", "Dance", (3, 4, 5)),
-    ),
-    _SectionSpec(
-        "DANCE",
-        "Grades 6-8",
-        _level_lanes("dance_middle", "Dance Grades 6-8", 3, "6-8"),
-    ),
-    _SectionSpec(
-        "DANCE",
-        "Grades 9-12",
-        _level_lanes("dance_high", "Dance Grades 9-12", 2, "9-12"),
-    ),
-    _SectionSpec(
-        "MEDIA ARTS",
-        "Kindergarten Grade 1 Grade 2",
-        (
-            _lane("media_arts_kindergarten", "Media Arts Kindergarten", "K"),
-            _lane("media_arts_grade_1", "Media Arts Grade 1", "1"),
-            _lane("media_arts_grade_2", "Media Arts Grade 2", "2"),
-        ),
-        shared_lanes=((11, _K12_SHARED),),
-    ),
-    _SectionSpec(
-        "MEDIA ARTS",
-        "Grade 3 Grade 4 Grade 5",
-        _three_grade_lanes("media_arts", "Media Arts", (3, 4, 5)),
-        shared_lanes=((11, _K12_SHARED),),
-    ),
-    _SectionSpec(
-        "MEDIA ARTS",
-        "Grades 6-8",
-        _level_lanes("media_arts_middle", "Media Arts Grades 6-8", 3, "6-8"),
-    ),
-    _SectionSpec(
-        "MEDIA ARTS",
-        "Grades 9-12",
-        _level_lanes("media_arts_high", "Media Arts Grades 9-12", 2, "9-12"),
-    ),
-    _SectionSpec(
-        "MUSIC",
-        "Kindergarten Grade 1 Grade 2",
-        (
-            _lane("music_kindergarten", "Music Kindergarten", "K"),
-            _lane("music_grade_1", "Music Grade 1", "1"),
-            _lane("music_grade_2", "Music Grade 2", "2"),
-        ),
-        shared_lanes=tuple((number, _K12_SHARED) for number in (1, 8, 10, 11)),
-    ),
-    _SectionSpec(
-        "MUSIC",
-        "Grades 3-5 General Music",
-        (_lane("general_music_3_5", "General Music Grades 3-5", "3-5"),),
-        duplicate_numbers=(7,),
-    ),
-    _SectionSpec(
-        "MUSIC",
-        "Grades 3-5 Music Technology",
-        (_lane("music_technology_3_5", "Music Technology Grades 3-5", "3-5"),),
-    ),
-    _SectionSpec(
-        "MUSIC",
-        "Grade 6 General Music",
-        (_lane("general_music_6", "General Music Grade 6", "6"),),
-        duplicate_numbers=(7,),
-    ),
-    _SectionSpec(
-        "MUSIC",
-        "Grade 6 Music Technology",
-        (_lane("music_technology_6", "Music Technology Grade 6", "6"),),
-    ),
-    _SectionSpec(
-        "MUSIC",
-        "Music Technology",
-        _level_lanes("music_technology", "Music Technology", 4, "9-12"),
-    ),
-    _SectionSpec(
-        "MUSIC",
-        "Grades 6-8 Vocal and Instrumental Ensemble",
-        (
-            _lane(
-                "vocal_instrumental_ensemble_6_8",
-                "Vocal and Instrumental Ensemble Grades 6-8",
-                "6-8",
-            ),
-        ),
-        duplicate_numbers=(7,),
-    ),
-    _SectionSpec(
-        "MUSIC",
-        "Vocal and Instrumental Ensemble",
-        _level_lanes(
-            "vocal_instrumental_ensemble",
-            "Vocal and Instrumental Ensemble",
-            4,
-            "9-12",
-        ),
-    ),
-    _SectionSpec(
-        "MUSIC",
-        "Harmonizing Instruments",
-        _level_lanes("harmonizing_instruments", "Harmonizing Instruments", 4, "9-12"),
-    ),
-    _SectionSpec(
-        "THEATRE",
-        "Kindergarten Grade 1 Grade 2",
-        (
-            _lane("theatre_kindergarten", "Theatre Kindergarten", "K"),
-            _lane("theatre_grade_1", "Theatre Grade 1", "1"),
-            _lane("theatre_grade_2", "Theatre Grade 2", "2"),
-        ),
-    ),
-    _SectionSpec(
-        "THEATRE",
-        "Grade 3",
-        (_lane("theatre_grade_3", "Theatre Grade 3", "3"),),
-    ),
-    _SectionSpec(
-        "THEATRE",
-        "Grade 4",
-        (_lane("theatre_grade_4", "Theatre Grade 4", "4"),),
-    ),
-    _SectionSpec(
-        "THEATRE",
-        "Grade 5",
-        (_lane("theatre_grade_5", "Theatre Grade 5", "5"),),
-    ),
-    _SectionSpec(
-        "THEATRE",
-        "Grades 6-8",
-        _level_lanes("theatre_middle", "Theatre Grades 6-8", 3, "6-8"),
-    ),
-    _SectionSpec(
-        "THEATRE",
-        "Grades 9-12",
-        _level_lanes("theatre_high", "Theatre Grades 9-12", 4, "9-12"),
-    ),
-    *tuple(
-        _SectionSpec(
-            "VISUAL ARTS",
-            "Kindergarten" if grade == 0 else f"Grade {grade}",
-            (
-                _lane(
-                    "visual_arts_kindergarten" if grade == 0 else f"visual_arts_grade_{grade}",
-                    "Visual Arts Kindergarten" if grade == 0 else f"Visual Arts Grade {grade}",
-                    "K" if grade == 0 else str(grade),
-                ),
-            ),
-        )
-        for grade in range(0, 6)
-    ),
-    _SectionSpec(
-        "VISUAL ARTS",
-        "Grades 6-8",
-        _level_lanes("visual_arts_middle", "Visual Arts Grades 6-8", 3, "6-8"),
-    ),
-    _SectionSpec(
-        "VISUAL ARTS",
-        "Grades 9-12 Visual Communication",
-        _level_lanes(
-            "visual_communication",
-            "Visual Communication Grades 9-12",
-            3,
-            "9-12",
-        ),
-    ),
-    _SectionSpec(
-        "VISUAL ARTS",
-        "Grades 9-12 Visual Art Disciplines",
-        _level_lanes(
-            "visual_art_disciplines",
-            "Visual Art Disciplines Grades 9-12",
-            4,
-            "9-12",
-        ),
-    ),
-)
+@dataclass(frozen=True, slots=True)
+class _Entry:
+    code: str
+    text: str
+    strand: str | None
 
 
 def parse_alabama_arts_2024(extracted: ExtractedDocument) -> ParsedStandardsDocument:
-    content_markers = tuple(
+    markers = tuple(
         index for index, line in enumerate(extracted.lines) if line == "Content Standards"
     )
-    if len(content_markers) != len(_SECTION_SPECS):
+    if len(markers) != _EXPECTED_SECTION_COUNT:
         raise StandardsIngestError(
-            "Alabama Arts parser expected exactly 33 authoritative Content Standards sections"
+            "Alabama Arts parser expected exactly "
+            f"{_EXPECTED_SECTION_COUNT} authoritative Content Standards sections "
+            f"but found {len(markers)}"
         )
 
+    sections = _discover_sections(extracted.lines, markers)
     courses: list[ParsedCourse] = []
-    for spec in _SECTION_SPECS:
-        marker = _find_section_marker(extracted.lines, spec)
-        end = min(
-            (index for index in content_markers if index > marker),
-            default=len(extracted.lines),
-        )
-        occurrences = _extract_occurrences(extracted.lines[marker + 1 : end])
-        courses.extend(_courses_from_section(spec, occurrences))
+    for section in sections:
+        courses.extend(_parse_section(extracted.lines, section))
 
-    if len(courses) != 71:
-        raise StandardsIngestError(
-            "Alabama Arts parser expected exactly 71 teacher-facing course views"
-        )
+    if not courses:
+        raise StandardsIngestError("Alabama Arts parser produced no teacher-facing courses")
     if len({course.course_key for course in courses}) != len(courses):
         raise StandardsIngestError("Alabama Arts parser produced duplicate course identifiers")
+    if any(not course.standards for course in courses):
+        raise StandardsIngestError("Alabama Arts parser produced a course without standards")
 
     return ParsedStandardsDocument(
         parser_key="alabama_arts_2024",
@@ -334,137 +104,316 @@ def parse_alabama_arts_2024(extracted: ExtractedDocument) -> ParsedStandardsDocu
     )
 
 
-def _find_section_marker(lines: tuple[str, ...], spec: _SectionSpec) -> int:
-    matches = [
-        index
-        for index, line in enumerate(lines)
-        if line == "Content Standards"
-        and index >= 2
-        and lines[index - 2] == spec.discipline
-        and lines[index - 1] == spec.section_name
-    ]
-    if len(matches) != 1:
-        raise StandardsIngestError(
-            f"Alabama Arts parser could not uniquely locate {spec.discipline} "
-            f"{spec.section_name}"
-        )
-    return matches[0]
-
-
-def _extract_occurrences(
+def _discover_sections(
     lines: tuple[str, ...],
-) -> dict[int, list[tuple[str, str]]]:
-    occurrences = {number: [] for number in range(1, 12)}
-    current_number: int | None = None
-    current_parts: list[str] = []
-    skipping_context = False
+    markers: tuple[int, ...],
+) -> tuple[_Section, ...]:
+    sections: list[_Section] = []
+    for position, marker in enumerate(markers):
+        end = markers[position + 1] if position + 1 < len(markers) else len(lines)
+        discipline = _nearest_discipline(lines, marker)
+        section_name = _section_name(lines, marker, discipline)
+        lanes = _discover_lanes(lines[marker + 1 : end], section_name)
+        sections.append(
+            _Section(
+                marker_index=marker,
+                end_index=end,
+                discipline=discipline,
+                section_name=section_name,
+                lanes=lanes,
+            )
+        )
+    return tuple(sections)
 
-    def flush() -> None:
-        nonlocal current_number, current_parts
-        if current_number is not None:
-            text = " ".join(current_parts).strip()
-            if text:
-                occurrences[current_number].append(
-                    (text, _STRAND_BY_NUMBER[current_number])
-                )
-        current_number = None
-        current_parts = []
 
+def _nearest_discipline(lines: tuple[str, ...], marker: int) -> str:
+    for index in range(marker - 1, max(-1, marker - 12), -1):
+        if lines[index] in _DISCIPLINES:
+            return lines[index]
+    raise StandardsIngestError(
+        "Alabama Arts parser could not identify the discipline for a Content Standards section"
+    )
+
+
+def _section_name(lines: tuple[str, ...], marker: int, discipline: str) -> str:
+    for index in range(marker - 1, max(-1, marker - 6), -1):
+        candidate = lines[index]
+        if candidate == discipline or candidate == "Content Standards":
+            continue
+        if candidate.startswith("2024 Alabama Course of Study:"):
+            continue
+        return candidate
+    raise StandardsIngestError("Alabama Arts parser could not identify a section name")
+
+
+def _discover_lanes(
+    lines: tuple[str, ...],
+    section_name: str,
+) -> tuple[tuple[str, str | None], ...]:
+    best: tuple[str, ...] = ()
     for line in lines:
-        match = _MAIN.match(line)
-        if match is not None:
-            number = int(match.group(1))
-            text = match.group(2).strip()
-            if text == _ANCHOR_TEXT[number]:
-                flush()
-                skipping_context = True
-                continue
-            flush()
-            current_number = number
-            current_parts = [text]
-            skipping_context = False
-            continue
+        tokens = _lane_tokens(line)
+        if len(tokens) > len(best):
+            best = tokens
+        if len(best) >= 4:
+            break
 
-        if line.startswith(_CONTEXT_PREFIXES):
-            skipping_context = True
-            continue
-        if skipping_context or current_number is None or _is_noise(line):
-            continue
-        current_parts.append(line)
-
-    flush()
-    return occurrences
+    if len(best) >= 2:
+        return tuple((token, _grade_band(token, section_name)) for token in best)
+    return ((section_name, _grade_band(section_name, section_name)),)
 
 
-def _courses_from_section(
-    spec: _SectionSpec,
-    occurrences: dict[int, list[tuple[str, str]]],
-) -> list[ParsedCourse]:
-    standards_by_lane: list[list[ParsedStandard]] = [[] for _ in spec.lanes]
+def _lane_tokens(line: str) -> tuple[str, ...]:
+    tokens = tuple(match.group(0) for match in _LANE_TOKEN.finditer(line))
+    if len(tokens) < 2:
+        return ()
+    compact = " ".join(tokens)
+    normalized_line = re.sub(r"\s+", " ", line).strip()
+    if compact not in normalized_line:
+        return ()
+    return tokens
 
-    for number in range(1, 12):
-        items = occurrences[number]
-        shared = spec.shared_for(number)
-        if len(spec.lanes) == 1:
-            expected = 2 if number in spec.duplicate_numbers else 1
-            if len(items) != expected:
-                _raise_count_error(spec, number, expected, len(items))
-            for item_index, (text, strand) in enumerate(items):
-                code = str(number) if item_index == 0 else f"{number}.{item_index + 1}"
-                standards_by_lane[0].append(
-                    ParsedStandard(code=code, text=text, strand=strand)
-                )
-            continue
 
-        lane_spans = shared or tuple((lane,) for lane in range(len(spec.lanes)))
-        if len(items) != len(lane_spans):
-            _raise_count_error(spec, number, len(lane_spans), len(items))
-        for (text, strand), lanes in zip(items, lane_spans, strict=True):
-            for lane in lanes:
-                standards_by_lane[lane].append(
-                    ParsedStandard(code=str(number), text=text, strand=strand)
-                )
+def _grade_band(label: str, section_name: str) -> str | None:
+    if label == "Kindergarten":
+        return "K"
+    grade = re.fullmatch(r"Grade (\d+)", label)
+    if grade is not None:
+        return grade.group(1)
+    context = f"{section_name} {label}"
+    if "6-8" in context or "Middle School" in context or label.startswith("MS Level"):
+        return "6-8"
+    if "9-12" in context or "High School" in context or label.startswith("HS Level"):
+        return "9-12"
+    return None
+
+
+def _parse_section(lines: tuple[str, ...], section: _Section) -> list[ParsedCourse]:
+    section_lines = lines[section.marker_index + 1 : section.end_index]
+    standards_by_lane: list[list[ParsedStandard]] = [[] for _ in section.lanes]
+    segments = _extract_segments(section_lines, section)
+    for entries in segments:
+        _assign_segment(section, entries, standards_by_lane)
 
     courses: list[ParsedCourse] = []
-    for lane, standards in zip(spec.lanes, standards_by_lane, strict=True):
-        main_codes = [standard.code for standard in standards]
-        if main_codes != [str(number) for number in range(1, 12)]:
+    for (lane_name, grade_band), standards in zip(
+        section.lanes,
+        standards_by_lane,
+        strict=True,
+    ):
+        if not standards:
             raise StandardsIngestError(
-                f"Alabama Arts {lane.display_name} did not reconstruct standards 1 through 11"
+                f"Alabama Arts {section.discipline} {lane_name} produced no standards"
             )
+        display_name = _display_name(section.discipline, lane_name)
         courses.append(
             ParsedCourse(
-                course_key=lane.course_key,
-                display_name=lane.display_name,
-                source_course_code=None,
-                grade_band=lane.grade_band,
+                course_key=_course_key(section.discipline, lane_name),
+                display_name=display_name,
+                source_course_code=section.section_name,
+                grade_band=grade_band,
                 standards=tuple(standards),
             )
         )
     return courses
 
 
-def _raise_count_error(
-    spec: _SectionSpec,
-    number: int,
-    expected: int,
-    observed: int,
+def _extract_segments(
+    lines: tuple[str, ...],
+    section: _Section,
+) -> tuple[tuple[_Entry, ...], ...]:
+    segments: list[tuple[_Entry, ...]] = []
+    current_entries: list[_Entry] = []
+    current_code: str | None = None
+    current_parts: list[str] = []
+    current_strand: str | None = None
+    skipping_context = False
+
+    def flush_entry() -> None:
+        nonlocal current_code, current_parts
+        if current_code is not None:
+            text = " ".join(current_parts).strip()
+            if text:
+                current_entries.append(
+                    _Entry(code=current_code, text=text, strand=current_strand)
+                )
+        current_code = None
+        current_parts = []
+
+    def flush_segment() -> None:
+        flush_entry()
+        if current_entries:
+            segments.append(tuple(current_entries))
+            current_entries.clear()
+
+    for line in lines:
+        lane_tokens = _lane_tokens(line)
+        if lane_tokens:
+            flush_segment()
+            skipping_context = False
+            continue
+
+        if line in _STRAND_HEADINGS:
+            flush_entry()
+            current_strand = _STRAND_HEADINGS[line]
+            skipping_context = False
+            continue
+
+        if line == "Anchor Standards":
+            flush_entry()
+            skipping_context = True
+            continue
+        if line.startswith("Process Component:"):
+            flush_entry()
+            skipping_context = True
+            continue
+        if line.startswith(_CONTEXT_PREFIXES):
+            flush_entry()
+            skipping_context = True
+            continue
+
+        pieces = _numbered_pieces(line)
+        if pieces:
+            for code, text in pieces:
+                if text in _ANCHOR_TEXT_VALUES:
+                    continue
+                flush_entry()
+                current_code = code
+                current_parts = [text]
+                skipping_context = False
+            continue
+
+        if skipping_context or current_code is None or _is_noise(line, section):
+            continue
+        current_parts.append(line)
+
+    flush_segment()
+    return tuple(segments)
+
+
+def _numbered_pieces(line: str) -> tuple[tuple[str, str], ...]:
+    pieces = [piece.strip() for piece in _NUMBERED_SPLIT.split(line) if piece.strip()]
+    result: list[tuple[str, str]] = []
+    for piece in pieces:
+        match = _NUMBERED.match(piece)
+        if match is not None:
+            result.append((match.group(1), match.group(2).strip()))
+    return tuple(result)
+
+
+def _assign_segment(
+    section: _Section,
+    entries: tuple[_Entry, ...],
+    standards_by_lane: list[list[ParsedStandard]],
 ) -> None:
-    raise StandardsIngestError(
-        f"Alabama Arts {spec.discipline} {spec.section_name} standard {number} "
-        f"expected {expected} source cells but found {observed}"
+    lane_count = len(section.lanes)
+    if lane_count == 1:
+        for entry in entries:
+            _append_unique(standards_by_lane[0], entry)
+        return
+
+    full_count = len(entries) - (len(entries) % lane_count)
+    for index in range(full_count):
+        lane_index = index % lane_count
+        _append_unique(standards_by_lane[lane_index], entries[index])
+
+    tail = entries[full_count:]
+    if not tail:
+        return
+    if len(tail) == 1:
+        for lane_index in range(lane_count):
+            _append_unique(standards_by_lane[lane_index], tail[0])
+        return
+
+    for lane_index, entry in enumerate(tail[:-1]):
+        _append_unique(standards_by_lane[lane_index], entry)
+    shared = tail[-1]
+    for lane_index in range(len(tail) - 1, lane_count):
+        _append_unique(standards_by_lane[lane_index], shared)
+
+
+def _courses_from_section(
+    section: _Section,
+    occurrences: dict[int, list[tuple[str, str]]],
+) -> list[ParsedCourse]:
+    standards_by_lane: list[list[ParsedStandard]] = [[] for _ in section.lanes]
+    lane_count = len(section.lanes)
+    for number in sorted(occurrences):
+        items = occurrences[number]
+        if not items:
+            continue
+        entries = tuple(
+            _Entry(code=str(number), text=text, strand=strand)
+            for text, strand in items
+        )
+        if lane_count == 1:
+            for entry in entries:
+                _append_unique(standards_by_lane[0], entry)
+        elif len(entries) == lane_count:
+            for lane_index, entry in enumerate(entries):
+                _append_unique(standards_by_lane[lane_index], entry)
+        elif len(entries) < lane_count:
+            for lane_index, entry in enumerate(entries[:-1]):
+                _append_unique(standards_by_lane[lane_index], entry)
+            shared = entries[-1]
+            for lane_index in range(len(entries) - 1, lane_count):
+                _append_unique(standards_by_lane[lane_index], shared)
+        else:
+            for index, entry in enumerate(entries):
+                _append_unique(standards_by_lane[index % lane_count], entry)
+
+    courses: list[ParsedCourse] = []
+    for (lane_name, grade_band), standards in zip(
+        section.lanes,
+        standards_by_lane,
+        strict=True,
+    ):
+        courses.append(
+            ParsedCourse(
+                course_key=_course_key(section.discipline, lane_name),
+                display_name=_display_name(section.discipline, lane_name),
+                source_course_code=section.section_name,
+                grade_band=grade_band,
+                standards=tuple(standards),
+            )
+        )
+    return courses
+
+
+def _append_unique(target: list[ParsedStandard], entry: _Entry) -> None:
+    same_code = sum(
+        1
+        for standard in target
+        if standard.code == entry.code or standard.code.startswith(f"{entry.code}.")
     )
+    code = entry.code if same_code == 0 else f"{entry.code}.{same_code + 1}"
+    target.append(ParsedStandard(code=code, text=entry.text, strand=entry.strand))
 
 
-def _is_noise(line: str) -> bool:
+def _display_name(discipline: str, lane_name: str) -> str:
+    discipline_name = discipline.title().replace("Media Arts", "Media Arts")
+    if lane_name.lower().startswith(discipline_name.lower()):
+        return lane_name
+    return f"{discipline_name} {lane_name}"
+
+
+def _course_key(discipline: str, lane_name: str) -> str:
+    value = f"{discipline}_{lane_name}".lower()
+    value = re.sub(r"[^a-z0-9]+", "_", value).strip("_")
+    return value
+
+
+def _is_noise(line: str, section: _Section) -> bool:
     if line.startswith("2024 Alabama Course of Study: Arts Education"):
         return True
-    if line == "Content Standards":
+    if line in {
+        "Content Standards",
+        section.discipline,
+        section.section_name,
+        "Please refer to “Directions for Interpreting Standards” on page 14.",
+        "Each content standard completes the stem “Students will…”",
+    }:
         return True
     if re.fullmatch(r"\d+", line):
         return True
-    return (
-        len(line) <= 110
-        and not re.search(r"[.!?;:]$", line)
-        and (line.isupper() or line.istitle())
-    )
+    return bool(line.isupper() and len(line) <= 80)
