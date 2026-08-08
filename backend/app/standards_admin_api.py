@@ -95,7 +95,10 @@ def _client(identity: AuthenticatedTeacher, settings: Settings) -> SupabaseRestC
 
 def _records(payload: object) -> list[JsonRecord]:
     if not isinstance(payload, list):
-        raise HTTPException(status_code=503, detail="Standards administration returned invalid data")
+        raise HTTPException(
+            status_code=503,
+            detail="Standards administration returned invalid data",
+        )
     return [cast(JsonRecord, item) for item in payload if isinstance(item, dict)]
 
 
@@ -115,7 +118,10 @@ def _uuid(record: JsonRecord, key: str) -> UUID:
     try:
         return UUID(_text(record, key))
     except ValueError as error:
-        raise HTTPException(status_code=503, detail="Standards administration data is invalid") from error
+        raise HTTPException(
+            status_code=503,
+            detail="Standards administration data is invalid",
+        ) from error
 
 
 def _optional_uuid(record: JsonRecord, key: str) -> UUID | None:
@@ -125,7 +131,10 @@ def _optional_uuid(record: JsonRecord, key: str) -> UUID | None:
     try:
         return UUID(str(value))
     except ValueError as error:
-        raise HTTPException(status_code=503, detail="Standards administration data is invalid") from error
+        raise HTTPException(
+            status_code=503,
+            detail="Standards administration data is invalid",
+        ) from error
 
 
 def _int(record: JsonRecord, key: str) -> int:
@@ -161,8 +170,14 @@ def _request(
         )
     except SupabaseRestError as error:
         if error.status_code in {401, 403}:
-            raise HTTPException(status_code=403, detail="Standards administration access was denied") from error
-        raise HTTPException(status_code=503, detail="Standards administration is unavailable") from error
+            raise HTTPException(
+                status_code=403,
+                detail="Standards administration access was denied",
+            ) from error
+        raise HTTPException(
+            status_code=503,
+            detail="Standards administration is unavailable",
+        ) from error
 
 
 @router.get("/sources", response_model=list[AdminStandardsSourceRead])
@@ -316,7 +331,10 @@ def approve_snapshot(
         payload={"target_snapshot_id": str(snapshot_id)},
     )
     if str(result).strip('"') != str(snapshot_id):
-        raise HTTPException(status_code=503, detail="Standards snapshot approval returned invalid data")
+        raise HTTPException(
+            status_code=503,
+            detail="Standards snapshot approval returned invalid data",
+        )
     return SnapshotApprovalRead(snapshot_id=snapshot_id, status="approved")
 
 
