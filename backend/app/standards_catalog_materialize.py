@@ -386,7 +386,7 @@ def _persist_standard_document(
             course.grade_band,
             provides_entries=True,
         )
-        entries = [
+        entries: list[dict[str, object]] = [
             {
                 "snapshot_id": str(snapshot_id),
                 "course_id": str(course_id),
