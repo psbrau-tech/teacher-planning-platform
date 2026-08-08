@@ -1,0 +1,43 @@
+name: Gate E Final Lint Fix
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/gate-e-final-lint-fix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/gate-e-standards-ai
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Repair final backend lint defects
+        run: |
+          python -m pip install -e 'backend[dev]'
+          ruff format backend/app/act_benchmarks.py backend/app/main.py
+          ruff check --fix backend/app/act_benchmarks.py backend/app/main.py
+          ruff check backend
+          (cd backend && mypy app)
+          (cd backend && pytest tests/test_act_reference.py tests/test_ai_planning_api.py tests/test_frontend_gate_e_components.py)
+      - name: Remove temporary Gate E repair workflows and commit
+        run: |
+          rm -f \
+            .github/workflows/act-reference-format-fix.yml \
+            .github/workflows/act-candidate-fallback-fix.yml \
+            .github/workflows/act-reference-integration-patch.yml \
+            .github/workflows/act-shared-code-fix.yml \
+            .github/workflows/gate-e-final-lint-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "Finalize Gate E ACT verification and cleanup"
+          git push origin HEAD:feature/gate-e-standards-ai
