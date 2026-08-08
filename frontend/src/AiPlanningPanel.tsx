@@ -219,8 +219,25 @@ export function AiPlanningPanel({
         </p>
       </div>
 
-      {error ? <p className="error-message">{error}</p> : null}
-      {message ? <p className="success-message">{message}</p> : null}
+      <div className="guidance-card" role="note" aria-label="Student data restriction">
+        <strong>Do not include student data.</strong>
+        <p>
+          TPP AI assistance is for professional planning context only. Do not enter student names,
+          identifiers, grades, identifiable student work, IEP or 504 information, health or
+          discipline information, or other information that can reasonably be linked to a student.
+        </p>
+      </div>
+
+      {error ? (
+        <p className="error-message" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {message ? (
+        <p className="success-message" role="status" aria-live="polite">
+          {message}
+        </p>
+      ) : null}
 
       {result ? (
         <>
