@@ -103,6 +103,31 @@ def test_physical_education_parser_normalizes_spacing_around_source_codes() -> N
     assert [standard.code for standard in kinesiology.standards] == ["BK-3.1", "BK-3.2"]
 
 
+def test_physical_education_parser_collects_split_code_and_text_rows() -> None:
+    lines: list[str] = []
+    for prefix in PREFIXES:
+        lines.extend(
+            [
+                f"{prefix}-1.1",
+                f"Required split-line physical education standard one for {prefix}.",
+                f"{prefix}-1.2",
+                f"Required split-line physical education standard two for {prefix}.",
+            ]
+        )
+    normalized = "\n".join(lines)
+    parsed = parse_alabama_physical_education_2019(
+        ExtractedDocument(
+            lines=tuple(lines),
+            normalized_sha256=sha256(normalized.encode("utf-8")).hexdigest(),
+        )
+    )
+    kindergarten = parsed.courses[0]
+    assert [standard.code for standard in kindergarten.standards] == ["K-1.1", "K-1.2"]
+    assert kindergarten.standards[0].text == (
+        "Required split-line physical education standard one for K."
+    )
+
+
 def test_physical_education_parser_fails_closed_when_course_prefix_is_missing() -> None:
     with pytest.raises(StandardsIngestError, match="Varsity Athletics"):
         parse_alabama_physical_education_2019(_document(omit="VA"))
