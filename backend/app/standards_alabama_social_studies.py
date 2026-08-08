@@ -169,7 +169,6 @@ def _parse_social_studies_standards(
     current_code: str | None = None
     current_parent: str | None = None
     current_parts: list[str] = []
-    awaiting_detached_text = False
     skipping_supplement = False
 
     def flush() -> None:
@@ -197,7 +196,6 @@ def _parse_social_studies_standards(
             current_code = current_main
             current_parent = None
             current_parts = [combined.group(2)]
-            awaiting_detached_text = False
             skipping_supplement = False
             continue
 
@@ -208,7 +206,6 @@ def _parse_social_studies_standards(
             current_code = current_main
             current_parent = None
             current_parts = []
-            awaiting_detached_text = True
             skipping_supplement = False
             continue
 
@@ -218,7 +215,6 @@ def _parse_social_studies_standards(
             current_code = f"{child.group(1)}{child.group(2)}"
             current_parent = current_main
             current_parts = [child.group(3)]
-            awaiting_detached_text = False
             skipping_supplement = False
             continue
 
@@ -228,7 +224,6 @@ def _parse_social_studies_standards(
             current_code = f"{current_main}{child_letter.group(1)}"
             current_parent = current_main
             current_parts = [child_letter.group(2)]
-            awaiting_detached_text = False
             skipping_supplement = False
             continue
 
@@ -240,7 +235,6 @@ def _parse_social_studies_standards(
         if current_code is None or _is_heading_noise(line):
             continue
         current_parts.append(line)
-        awaiting_detached_text = False
 
     flush()
     return tuple(standards)
