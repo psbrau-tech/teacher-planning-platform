@@ -2,7 +2,10 @@ from hashlib import sha256
 
 import pytest
 
-from app.standards_alabama_social_studies import parse_alabama_social_studies_2024
+from app.standards_alabama_social_studies import (
+    _parse_social_studies_standards,
+    parse_alabama_social_studies_2024,
+)
 from app.standards_ingest import ExtractedDocument, StandardsIngestError
 
 COURSES = (
@@ -218,6 +221,23 @@ def test_social_studies_parser_recovers_numbers_split_before_and_within_table() 
     )
     assert by_code["6a"].parent_code == "6"
     assert by_code["7"].text == "Outline a later Alabama historical development."
+
+
+def test_social_studies_parser_preserves_repeated_authoritative_source_codes() -> None:
+    standards = _parse_social_studies_standards(
+        (
+            "11 Analyze the electoral process.",
+            "11b Outline how the Electoral College functions.",
+            "11b Evaluate the effects of reapportionment and redistricting.",
+            "12 Describe the rights and duties of citizens.",
+        )
+    )
+
+    repeated = [standard for standard in standards if standard.code == "11b"]
+    assert len(repeated) == 2
+    assert repeated[0].parent_code == "11"
+    assert repeated[1].parent_code == "11"
+    assert repeated[0].text != repeated[1].text
 
 
 def test_social_studies_parser_fails_closed_if_expected_section_disappears() -> None:
