@@ -22,6 +22,11 @@ jobs:
           from pathlib import Path
           path = Path("backend/app/act_reference.py")
           text = path.read_text()
+          old_regex = '_CODE = re.compile(r"\\b([A-Z][A-Z&]{1,5})\\s+([2-7]\\d{2})\\.\\s*")\n'
+          new_regex = '_CODE = re.compile(r"\\b([A-Z][A-Z&]{0,5})\\s+([2-7]\\d{2})\\.\\s*")\n'
+          if text.count(old_regex) != 1:
+              raise SystemExit("ACT code regex anchor changed")
+          text = text.replace(old_regex, new_regex, 1)
           text = text.replace(
               "    seen_codes: set[str] = set()\n",
               "    seen_codes: dict[str, str] = {}\n",
@@ -66,6 +71,7 @@ jobs:
           ]) + '</p>'
           parsed = parse_act_ccr_html(source_key='math', domain='Mathematics', raw_html=html)
           assert [e.reference_code for e in parsed.entries].count('AF 201') == 1
+          assert any(e.reference_code == 'A 201' for e in parsed.entries)
           bad = html.replace('AF 201. Same shared skill.</p>', 'AF 201. Conflicting skill.</p>')
           try:
               parse_act_ccr_html(source_key='math', domain='Mathematics', raw_html=bad)
