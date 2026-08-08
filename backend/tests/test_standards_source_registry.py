@@ -22,6 +22,7 @@ def _source(source_key: str, family: str) -> DiscoveredStandardsSource:
 
 def test_verified_academic_sources_have_source_specific_parsers() -> None:
     expected = {
+        "alabama_academic_digital_literacy_computer_science": "alabama_dlcs_2025",
         "alabama_academic_driver_traffic_safety": "alabama_driver_traffic_safety_2007",
         "alabama_academic_english_language_arts": "alabama_ela_2021",
         "alabama_academic_health": "alabama_health_2019",
@@ -46,7 +47,7 @@ def test_verified_academic_sources_have_source_specific_parsers() -> None:
 
 def test_unverified_academic_source_is_governed_but_not_approvable_yet() -> None:
     plan = source_ingest_plan(
-        _source("alabama_academic_digital_literacy_computer_science", "alabama_academic")
+        _source("alabama_academic_future_subject", "alabama_academic")
     )
 
     assert plan.parser_ready is False
