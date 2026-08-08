@@ -52,7 +52,7 @@ def test_act_parser_preserves_codes_text_and_score_range() -> None:
     assert parsed.entries[2].exact_text == "Locate important details in a passage."
 
 
-def test_act_parser_rejects_duplicate_reference_codes() -> None:
+def test_act_parser_rejects_conflicting_reference_codes() -> None:
     html = (
         "<p>"
         + " ".join(
@@ -76,9 +76,9 @@ def test_act_parser_rejects_duplicate_reference_codes() -> None:
     try:
         parse_act_ccr_html(source_key="act_ccrs_reading", domain="Reading", raw_html=html)
     except ActReferenceError as error:
-        assert "Duplicate ACT reference code" in str(error)
+        assert "Conflicting ACT reference wording" in str(error)
     else:
-        raise AssertionError("duplicate ACT reference codes must fail closed")
+        raise AssertionError("conflicting ACT reference codes must fail closed")
 
 
 def test_act_candidate_selection_is_bounded_and_lexical() -> None:
