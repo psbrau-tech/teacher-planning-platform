@@ -25,6 +25,35 @@ jobs:
           cache: pip
       - name: Install backend
         run: python -m pip install -e '.[dev]'
+      - name: Resolve governed standards landing pages read-only
+        run: |
+          python - <<'PY'
+          from app.standards_sources import resolve_authoritative_document
+
+          governed_sources = (
+              (
+                  "alabama_ela_current",
+                  "https://www.alabamaachieves.org/content-areas-specialty/english-language-arts/",
+              ),
+              (
+                  "alabama_bma_current",
+                  "https://www.alabamaachieves.org/cte/cte-course-of-study/",
+              ),
+              (
+                  "army_jrotc_current",
+                  "https://usarmyjrotc.army.mil/jsocc-course-documents/",
+              ),
+          )
+
+          print("database_writes=0")
+          for resolver_key, landing_url in governed_sources:
+              resolved = resolve_authoritative_document(resolver_key, landing_url)
+              print(
+                  "governed_resolver="
+                  f"{resolver_key}|{resolved.landing_url}|{resolved.document_url}|"
+                  f"{resolved.observed_version or ''}"
+              )
+          PY
       - name: Discover and parse current Alabama standards read-only
         run: |
           python - <<'PY'
