@@ -69,7 +69,10 @@ _BENCHMARK_PATTERNS: tuple[tuple[str, str, re.Pattern[str]], ...] = (
     ),
     (
         "ELA",
-        "English Composition I, American History, Other History, Psychology, Sociology, Political Science, Economics",
+        (
+            "English Composition I, American History, Other History, Psychology, "
+            "Sociology, Political Science, Economics"
+        ),
         re.compile(
             r"ELA\s+English Composition I, American History, Other History, Psychology, "
             r"Sociology, Political Science, Economics\s+(\d{1,2})",
@@ -132,7 +135,9 @@ def stage_act_benchmarks(
             ),
         )
         if len(sources) != 1:
-            raise ActReferenceError("ACT readiness benchmark source registry is missing or ambiguous")
+            raise ActReferenceError(
+                "ACT readiness benchmark source registry is missing or ambiguous"
+            )
         source_id = UUID(str(sources[0]["id"]))
         existing = cast(
             list[JsonRecord],

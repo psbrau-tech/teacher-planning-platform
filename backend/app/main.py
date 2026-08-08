@@ -6,8 +6,8 @@ from typing import Annotated
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
-from .administration_api import router as administration_router
 from .act_reference_admin_api import router as act_reference_admin_router
+from .administration_api import router as administration_router
 from .ai_planning_api import router as ai_planning_router
 from .ai_reflection_api import router as ai_reflection_router
 from .curriculum_api import router as curriculum_router
