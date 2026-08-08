@@ -49,6 +49,29 @@ jobs:
                   f"{section.discipline}|{section.section_name}|"
                   f"{','.join(lane for lane, _ in section.lanes)}"
               )
+              suspicious = (
+                  section.discipline == "MUSIC"
+                  or (
+                      section.discipline == "MEDIA ARTS"
+                      and "III and IV" in section.section_name
+                  )
+                  or (
+                      section.discipline == "VISUAL ARTS"
+                      and "Middle School" in section.section_name
+                  )
+              )
+              if suspicious:
+                  before = extracted.lines[
+                      max(0, section.marker_index - 24) : section.marker_index
+                  ]
+                  after = extracted.lines[
+                      section.marker_index + 1 : min(
+                          section.end_index,
+                          section.marker_index + 24,
+                      )
+                  ]
+                  print("context_before=" + " || ".join(before))
+                  print("context_after=" + " || ".join(after))
               for lane, _ in section.lanes:
                   candidate_keys.append(
                       _course_key(section.discipline, section.section_name, lane)
