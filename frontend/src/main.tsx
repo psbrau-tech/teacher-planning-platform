@@ -1,8 +1,13 @@
 import { createClient, type Session } from "@supabase/supabase-js";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
-import "./styles.css";
+import { AiPlanningPanel, type PlanningFieldKey } from "./AiPlanningPanel";
+import { AiReflectionPanel } from "./AiReflectionPanel";
 import { ScheduleExceptionPanel } from "./ScheduleExceptionPanel";
+import { StandardsAdministrationPanel } from "./StandardsAdministrationPanel";
+import { StandardsCourseMappingPanel } from "./StandardsCourseMappingPanel";
+import { StandardsPanel, type StandardEntry } from "./StandardsPanel";
+import "./styles.css";
 
 type View =
   | "dashboard"
@@ -200,6 +205,8 @@ function App() {
   const [draft, setDraft] = useState<Record<string, string>>(emptyDraft);
   const [draftRevision, setDraftRevision] = useState<number | null>(null);
   const [validations, setValidations] = useState<Record<string, ValidationEntry>>({});
+  const [validationFinalized, setValidationFinalized] = useState(false);
+  const [standardsMappingVersion, setStandardsMappingVersion] = useState(0);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -221,6 +228,7 @@ function App() {
   function clearPlanningContext(assignment: Assignment | null, nextWeekStart: string) {
     setPlan([]);
     setValidations({});
+    setValidationFinalized(false);
     setDraftRevision(null);
     setDraft({
       ...emptyDraft,
@@ -277,6 +285,16 @@ function App() {
       week_of: weekStart,
     }));
   }, [identity, selectedAssignment, weekStart]);
+
+  const resolveSelectedStandards = useCallback((selected: StandardEntry[]) => {
+    const exactText = selected.map((standard) => `${standard.code} — ${standard.text}`).join("\n");
+    setDraft((current) => ({ ...current, standards: exactText }));
+  }, []);
+
+  const applyAiPlanningField = useCallback((field: PlanningFieldKey, value: string) => {
+    const draftKey = field === "do_statement" ? "do" : field;
+    setDraft((current) => ({ ...current, [draftKey]: value }));
+  }, []);
 
   async function api<T>(path: string, init?: RequestInit): Promise<T> {
     if (!session?.access_token) throw new Error("Your authenticated session is unavailable.");
@@ -625,8 +643,8 @@ function App() {
           }),
         }),
       });
+      setValidationFinalized(true);
       setMessage(`Friday validation saved. ${addDays(weekStart, 7)} is ready to generate.`);
-      setView("dashboard");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Friday validation failed.");
     } finally {
@@ -776,8 +794,10 @@ function App() {
             ) : <div className="empty-state"><p>Administration reporting is loading or unavailable.</p></div>}
 
             {isPlatformAdmin && (
-              <section>
-                <div className="section-heading compact"><div><p className="eyebrow">Platform Administrator</p><h2>AI cost reporting</h2><p className="supporting">Cost reporting is visible only to the Platform Administrator role.</p></div></div>
+              <>
+                <StandardsAdministrationPanel accessToken={session.access_token} disabled={busy} />
+                <section>
+                  <div className="section-heading compact"><div><p className="eyebrow">Platform Administrator</p><h2>AI cost reporting</h2><p className="supporting">Cost reporting is visible only to the Platform Administrator role.</p></div></div>
                 {adminCosts.length === 0 ? <div className="empty-state"><p>No AI usage has been recorded.</p></div> : (
                   <div className="grid">
                     {adminCosts.map((cost) => (
@@ -790,7 +810,8 @@ function App() {
                     ))}
                   </div>
                 )}
-              </section>
+                </section>
+              </>
             )}
           </section>
         )}
@@ -853,10 +874,23 @@ function App() {
               }}
             />
             {plan.length > 0 && <div className="plan-list">{plan.map((lesson) => <article key={lesson.scheduled_lesson_id}><div><strong>{lesson.lesson_date}</strong><span>{lesson.planned_minutes} minutes</span></div><div><small>{lesson.unit_title}</small><h3>{lesson.lesson_title}</h3></div><span className="badge">Segment {lesson.segment_number}</span></article>)}</div>}
+            <StandardsCourseMappingPanel
+              accessToken={session.access_token}
+              assignmentId={selectedAssignmentId || null}
+              disabled={busy}
+              onMappingSaved={() => setStandardsMappingVersion((current) => current + 1)}
+            />
+            <StandardsPanel
+              key={`${selectedAssignmentId}-${weekStart}-${standardsMappingVersion}`}
+              accessToken={session.access_token}
+              assignmentId={selectedAssignmentId || null}
+              weekStart={weekStart}
+              onSelectionResolved={resolveSelectedStandards}
+            />
             <div className="section-heading compact draft-heading"><div><p className="eyebrow">Anniston HQI fields</p><h2>Planning narrative</h2><p className="supporting">Literacy Standards and ACT Preparation are required.</p></div><span className="badge">Draft revision {draftRevision ?? 0}</span></div>
             <div className="form-grid">
               <label>Unit / topic<input value={draft.unit_topic} onChange={(event) => setDraft({ ...draft, unit_topic: event.target.value })} /></label>
-              <label>Standards<input value={draft.standards} onChange={(event) => setDraft({ ...draft, standards: event.target.value })} /></label>
+              <label className="full-width">Selected authoritative standards<textarea rows={4} value={draft.standards} readOnly aria-readonly="true" /></label>
               <label className="full-width required-field">Literacy Standards<textarea rows={3} value={draft.literacy_standards} onChange={(event) => setDraft({ ...draft, literacy_standards: event.target.value })} required /></label>
               <label className="full-width required-field">ACT Preparation<textarea rows={3} value={draft.act_preparation} onChange={(event) => setDraft({ ...draft, act_preparation: event.target.value })} required /></label>
               <label className="full-width">Learning targets<textarea rows={3} value={draft.learning_targets} onChange={(event) => setDraft({ ...draft, learning_targets: event.target.value })} /></label>
@@ -868,6 +902,20 @@ function App() {
               <label>Resources<textarea rows={4} value={draft.resources} onChange={(event) => setDraft({ ...draft, resources: event.target.value })} /></label>
               {[["monday","Monday"],["tuesday","Tuesday"],["wednesday","Wednesday"],["thursday","Thursday"],["friday","Friday"]].map(([key,label]) => <label key={key}>{label}<textarea rows={3} value={draft[key]} onChange={(event) => setDraft({ ...draft, [key]: event.target.value })} /></label>)}
             </div>
+            <AiPlanningPanel
+              accessToken={session.access_token}
+              assignmentId={selectedAssignmentId || null}
+              weekStart={weekStart}
+              currentFields={{
+                unit_topic: draft.unit_topic, literacy_standards: draft.literacy_standards,
+                act_preparation: draft.act_preparation, learning_targets: draft.learning_targets,
+                know: draft.know, understand: draft.understand, do_statement: draft.do,
+                activities: draft.activities, assessments: draft.assessments, resources: draft.resources,
+                monday: draft.monday, tuesday: draft.tuesday, wednesday: draft.wednesday,
+                thursday: draft.thursday, friday: draft.friday,
+              }}
+              onApplyField={applyAiPlanningField}
+            />
             <div className="action-bar">
               <div><strong>{selectedAssignment?.course_name ?? "Select a course"}</strong><span>{selectedCurriculum ? `${selectedCurriculum.name} · ${selectedCurriculum.version}` : "No curriculum selected"}</span></div>
               <div className="button-group">
@@ -888,6 +936,14 @@ function App() {
             <div className="toolbar"><label>Course<select value={selectedAssignmentId} onChange={(event) => selectPlanningAssignment(event.target.value)}><option value="">Select a course</option>{assignments.map((assignment) => <option value={assignment.id} key={assignment.id}>{assignment.course_name}</option>)}</select></label><label>Week of<input type="date" value={weekStart} onChange={(event) => selectPlanningWeek(event.target.value)} /></label><button className="secondary" disabled={!selectedAssignmentId || busy} onClick={() => void loadPlan()}>Load scheduled lessons</button></div>
             {plan.length === 0 ? <div className="empty-state"><p>Load or generate the week before completing Friday validation.</p></div> : <div className="validation-list">{plan.map((lesson) => { const entry = validations[lesson.scheduled_lesson_id] ?? { status: "", reason: "", teacherNote: "", carryForward: false }; return <article className="validation-row" key={lesson.scheduled_lesson_id}><div className="day-block"><strong>{lesson.lesson_date}</strong><span>{lesson.planned_minutes} minutes</span></div><div className="lesson-block"><small>{lesson.unit_title}</small><strong>{lesson.lesson_title}</strong><label>Status<select value={entry.status} onChange={(event) => { const status = event.target.value as LessonStatus | ""; updateValidation(lesson.scheduled_lesson_id, { status, carryForward: status === "missed" }); }}><option value="">Select outcome</option><option value="completed">Completed</option><option value="modified">Modified</option><option value="missed">Missed</option><option value="skipped">Skipped / not needed</option></select></label><label>Reason or note<input value={entry.reason} required={entry.status === "missed"} placeholder={entry.status === "missed" ? "Required for a missed lesson" : "Optional"} onChange={(event) => updateValidation(lesson.scheduled_lesson_id, { reason: event.target.value })} /></label><label>Teacher reflection<input value={entry.teacherNote} placeholder="What should change next time?" onChange={(event) => updateValidation(lesson.scheduled_lesson_id, { teacherNote: event.target.value })} /></label><label className="check"><input type="checkbox" checked={entry.carryForward || entry.status === "missed"} disabled={entry.status === "completed" || entry.status === "skipped" || entry.status === "missed"} onChange={(event) => updateValidation(lesson.scheduled_lesson_id, { carryForward: event.target.checked })} />Carry this lesson forward</label></div></article>; })}</div>}
             <div className="action-bar"><div><strong>{plan.filter((lesson) => !validations[lesson.scheduled_lesson_id]?.status).length} lessons still pending</strong><span>Missed lessons automatically lead next week&apos;s queue.</span></div><button className="primary" disabled={!plan.length || plan.some((lesson) => !validations[lesson.scheduled_lesson_id]?.status) || busy} onClick={() => void saveValidation()}>Complete Friday validation</button></div>
+            <AiReflectionPanel
+              accessToken={session.access_token}
+              assignmentId={selectedAssignmentId || null}
+              weekStart={weekStart}
+              disabled={!validationFinalized || busy}
+              onApplyReflection={(value) => setDraft((current) => ({ ...current, reflection: value }))}
+            />
+            {validationFinalized ? <p className="guidance-text">Friday validation is finalized. Review the optional reflection draft above; accepted text remains in the working form until you save the weekly draft.</p> : null}
           </section>
         )}
       </main>
