@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from functools import lru_cache
+from functools import cache
 
 from .standards_ingest import (
     ExtractedDocument,
@@ -217,7 +217,7 @@ def parse_alabama_dlcs_2025(extracted: ExtractedDocument) -> ParsedStandardsDocu
 def _solve_band_lanes(band: _Band, events: list[_Event]) -> tuple[int, ...]:
     terminal = tuple(final + 1 for final in band.expected_final)
 
-    @lru_cache(maxsize=None)
+    @cache
     def solve(
         index: int,
         state: tuple[int, ...],
@@ -243,7 +243,8 @@ def _solve_band_lanes(band: _Band, events: list[_Event]) -> tuple[int, ...]:
     assignment = solve(0, tuple(1 for _ in band.course_keys), -1)
     if assignment is None:
         raise StandardsIngestError(
-            f"Alabama DLCS could not reconstruct complete grade lanes within {band.header}"
+            f"Alabama DLCS could not reconstruct complete grade lanes within "
+            f"{band.header}"
         )
     return assignment
 
