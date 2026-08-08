@@ -6,6 +6,7 @@ from .standards_alabama_parsers import (
     parse_alabama_cte_course_of_study,
     parse_alabama_ela_k12,
 )
+from .standards_alabama_physical_education import parse_alabama_physical_education_2019
 from .standards_alabama_science import parse_alabama_science_2023
 from .standards_alabama_social_studies import parse_alabama_social_studies_2024
 from .standards_ingest import (
@@ -27,6 +28,8 @@ def parse_governed_standards_document(
         return parse_alabama_health_2019(extracted)
     if parser_key == "alabama_math_2019":
         return parse_alabama_math_2019(extracted)
+    if parser_key == "alabama_physical_education_2019":
+        return parse_alabama_physical_education_2019(extracted)
     if parser_key == "alabama_science_2023":
         return parse_alabama_science_2023(extracted)
     if parser_key == "alabama_social_studies_2024":
