@@ -6,6 +6,8 @@ STANDARDS = FRONTEND / "CanonicalStandardsPanel.tsx"
 PLANNING = FRONTEND / "AiPlanningPanel.tsx"
 REFLECTION = FRONTEND / "AiReflectionPanel.tsx"
 WEEKLY_CONTEXT = FRONTEND / "ScheduleExceptionPanel.tsx"
+STANDARDS_ADMIN = FRONTEND / "StandardsAdministrationPanel.tsx"
+ACT_ADMIN = FRONTEND / "ActReferenceAdministrationPanel.tsx"
 
 
 def test_teacher_mapping_uses_two_step_catalog_and_explicit_correction_warning() -> None:
@@ -83,10 +85,29 @@ def test_ai_surfaces_show_no_student_data_notice_and_accessible_status() -> None
         assert 'aria-live="polite"' in source
 
 
+def test_platform_admin_act_reference_review_is_human_controlled() -> None:
+    act_admin = ACT_ADMIN.read_text(encoding="utf-8")
+    standards_admin = STANDARDS_ADMIN.read_text(encoding="utf-8")
+
+    assert "/api/v1/act-reference-admin/pending" in act_admin
+    assert (
+        "/api/v1/act-reference-admin/snapshots/${encodeURIComponent(snapshot.id)}/approve"
+        in act_admin
+    )
+    assert 'Authorization: `Bearer ${accessToken}`' in act_admin
+    assert "window.confirm" in act_admin
+    assert "entry_count" in act_admin
+    assert "benchmark_count" in act_admin
+    assert "Inspect authoritative ACT source" in act_admin
+    assert "Nothing is approved automatically" in act_admin
+    assert 'from "./ActReferenceAdministrationPanel"' in standards_admin
+    assert "<ActReferenceAdministrationPanel" in standards_admin
+
+
 def test_gate_e_teacher_components_do_not_collect_student_specific_fields() -> None:
     combined = "\n".join(
         path.read_text(encoding="utf-8")
-        for path in (MAPPING, STANDARDS, PLANNING, REFLECTION)
+        for path in (MAPPING, STANDARDS, PLANNING, REFLECTION, ACT_ADMIN)
     ).lower()
 
     # Warning copy is required to name prohibited student-data categories. This
