@@ -11,7 +11,7 @@ from .standards_ingest import (
     StandardsIngestError,
 )
 
-DLCS_PARSER_VERSION = "gate-e-alabama-dlcs-2025-v2"
+DLCS_PARSER_VERSION = "gate-e-alabama-dlcs-2025-v3"
 _MAIN_TOKEN = re.compile(r"(?<![A-Za-z0-9])([1-9]\d?)\.\s+")
 _DEVELOPMENTAL = re.compile(
     r"developmentally appropriate beginning in Grade\s+(\d+)",
@@ -126,6 +126,7 @@ def parse_alabama_dlcs_2025(extracted: ExtractedDocument) -> ParsedStandardsDocu
         if line in _THEMES:
             flush()
             current_theme = line
+            minimum_lane = 0
             skipping_example = False
             continue
 
