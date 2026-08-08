@@ -10,9 +10,9 @@ from .standards_ingest import (
     StandardsIngestError,
 )
 
-HEALTH_PARSER_VERSION = "gate-e-alabama-health-2019-v1"
+HEALTH_PARSER_VERSION = "gate-e-alabama-health-2019-v2"
 _MAIN = re.compile(
-    r"^(K|[1-8]|HE|HA|WH)\s*[.-]?\s*(\d+)\s*\.\s*(\d+)\.?\s+(.+)$",
+    r"^(K|[1-8]|HE|HA|WH)\s*[.-]?\s*(\d+)\s*\.\s*(\d+)([a-z])?\.?(?:\s+(.*))?$",
     flags=re.IGNORECASE,
 )
 _CHILD = re.compile(r"^([a-z])\.\s+(.+)$")
@@ -59,32 +59,37 @@ def parse_alabama_health_2019(extracted: ExtractedDocument) -> ParsedStandardsDo
         current_parts = []
         current_parent = None
 
-    for line in extracted.lines:
+    for raw_line in extracted.lines:
+        line = re.sub(r"\s+", " ", raw_line).strip()
+        if not line:
+            continue
+
         main = _MAIN.match(line)
         if main is not None:
             flush()
             prefix = main.group(1).upper()
             anchor = main.group(2)
             item = main.group(3)
+            suffix = (main.group(4) or "").lower()
+            base_code = _code(prefix, anchor, item)
             current_prefix = prefix
-            current_code = _code(prefix, anchor, item)
-            current_parent = None
-            current_parts = [main.group(4)]
+            current_code = f"{base_code}{suffix}"
+            current_parent = base_code if suffix else None
+            text = (main.group(5) or "").strip()
+            current_parts = [text] if text else []
             skipping_example = False
             continue
 
         child = _CHILD.match(line)
         if child is not None and current_prefix is not None and current_code is not None:
-            parent = current_code.split(".", 3)
-            if len(parent) >= 3:
-                parent_code = current_code
-                flush()
-                current_prefix = parent[0]
-                current_parent = parent_code
-                current_code = f"{parent_code}{child.group(1)}"
-                current_parts = [child.group(2)]
-                skipping_example = False
-                continue
+            parent_code = current_code
+            flush()
+            current_prefix = parent_code.split(".", 1)[0]
+            current_parent = parent_code
+            current_code = f"{parent_code}{child.group(1)}"
+            current_parts = [child.group(2)]
+            skipping_example = False
+            continue
 
         if any(line.startswith(prefix) for prefix in _EXAMPLE_PREFIXES):
             skipping_example = True
@@ -139,8 +144,4 @@ def _noise(line: str) -> bool:
         "Each content standard completes the sentence stem Students can…",
     }:
         return True
-    return (
-        len(line) <= 90
-        and not re.search(r"[.!?;:]$", line)
-        and (line.isupper() or line.istitle())
-    )
+    return bool(re.fullmatch(r"\d+", line))
