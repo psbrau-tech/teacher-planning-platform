@@ -157,7 +157,7 @@ def _request(
     resource: str,
     *,
     params: dict[str, str] | None = None,
-    payload: object | None = None,
+    payload: dict[str, object] | list[dict[str, object]] | None = None,
     prefer: str | None = None,
 ) -> object:
     try:
