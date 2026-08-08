@@ -115,29 +115,35 @@ def parse_alabama_science_2023(
 
 
 def _locate_course_sections(lines: tuple[str, ...]) -> tuple[_CourseSection, ...]:
-    sections: list[_CourseSection] = []
-    used_markers: set[int] = set()
-    for course_key, display_name, grade_band in _COURSES:
-        candidates: list[int] = []
-        for marker_index, line in enumerate(lines):
-            if not line.startswith(_STEM_PREFIX) or marker_index in used_markers:
-                continue
-            lower_bound = max(0, marker_index - 100)
-            if any(
-                lines[index] == display_name
-                for index in range(marker_index - 1, lower_bound - 1, -1)
-            ):
-                candidates.append(marker_index)
-        if len(candidates) != 1:
+    expected = {
+        display_name: (course_key, grade_band)
+        for course_key, display_name, grade_band in _COURSES
+    }
+    markers_by_course: dict[str, list[int]] = {display_name: [] for display_name in expected}
+
+    for marker_index, line in enumerate(lines):
+        if not line.startswith(_STEM_PREFIX):
             continue
-        marker_index = candidates[0]
-        used_markers.add(marker_index)
+        lower_bound = max(0, marker_index - 100)
+        nearest_course: str | None = None
+        for index in range(marker_index - 1, lower_bound - 1, -1):
+            if lines[index] in expected:
+                nearest_course = lines[index]
+                break
+        if nearest_course is not None:
+            markers_by_course[nearest_course].append(marker_index)
+
+    sections: list[_CourseSection] = []
+    for course_key, display_name, grade_band in _COURSES:
+        markers = markers_by_course[display_name]
+        if len(markers) != 1:
+            continue
         sections.append(
             _CourseSection(
                 course_key=course_key,
                 display_name=display_name,
                 grade_band=grade_band,
-                marker_index=marker_index,
+                marker_index=markers[0],
             )
         )
     return tuple(sorted(sections, key=lambda item: item.marker_index))
