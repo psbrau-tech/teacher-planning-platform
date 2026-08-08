@@ -85,6 +85,51 @@ def _document(*, omit: str | None = None) -> ExtractedDocument:
     )
 
 
+def _detached_table_document() -> ExtractedDocument:
+    lines: list[str] = []
+    for course_key in SOURCE_COURSE_KEYS:
+        display_name = DISPLAY_BY_KEY[course_key]
+        if course_key == "alabama_studies":
+            lines.extend(
+                [
+                    "2024 Alabama Course of Study: Social Studies 149",
+                    "1",
+                    "Alabama Studies",
+                    "ALABAMA STUDIES",
+                    "Content Standards",
+                    "Please refer to Directions for Interpreting Standards.",
+                    "Each content standard completes the stem Students will...",
+                    "GEOGRAPHY",
+                    "Identify the location of Alabama's major geographic regions and describe their characteristics.",
+                    "1a Summarize how the geography and biodiversity of Alabama formed and evolved.",
+                    "5",
+                    "6",
+                    "Alabama Studies",
+                    "ORIGINS",
+                    "Describe the cultures, economies, and governments of the first Indigenous peoples to inhabit Alabama.",
+                    "Identify the locations of the major Native American tribes of Alabama during the colonial period.",
+                    "6a Compare and contrast important characteristics of those tribes.",
+                    "7 Outline a later Alabama historical development.",
+                ]
+            )
+            continue
+        lines.extend(
+            [
+                display_name,
+                "Course Overview",
+                "Content Standards",
+                "1. Required first standard.",
+                "2. Required second standard.",
+                "3. Required third standard.",
+            ]
+        )
+    normalized = "\n".join(lines)
+    return ExtractedDocument(
+        lines=tuple(lines),
+        normalized_sha256=sha256(normalized.encode("utf-8")).hexdigest(),
+    )
+
+
 def test_social_studies_parser_returns_all_expected_courses_in_catalog_order() -> None:
     parsed = parse_alabama_social_studies_2024(_document())
 
@@ -140,6 +185,23 @@ def test_social_studies_parser_reconstructs_detached_main_codes_and_children() -
         "Evaluate causes and effects of a significant historical event."
     )
     assert by_code["3"].parent_code is None
+
+
+def test_social_studies_parser_recovers_numbers_split_before_and_within_table() -> None:
+    parsed = parse_alabama_social_studies_2024(_detached_table_document())
+    alabama = next(
+        course for course in parsed.courses if course.course_key == "alabama_studies"
+    )
+    by_code = {standard.code: standard for standard in alabama.standards}
+
+    assert by_code["1"].text.startswith(
+        "Identify the location of Alabama's major geographic regions"
+    )
+    assert by_code["1a"].parent_code == "1"
+    assert by_code["5"].text.startswith("Describe the cultures, economies, and governments")
+    assert by_code["6"].text.startswith("Identify the locations of the major Native American tribes")
+    assert by_code["6a"].parent_code == "6"
+    assert by_code["7"].text == "Outline a later Alabama historical development."
 
 
 def test_social_studies_parser_fails_closed_if_expected_section_disappears() -> None:
