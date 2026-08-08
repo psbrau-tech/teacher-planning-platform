@@ -56,8 +56,8 @@ jobs:
           python -m pip install -e 'backend[dev]'
           ruff format backend/app/act_reference.py
           ruff check backend/app/act_reference.py
-          python - <<'PY'
-          from backend.app.act_reference import parse_act_ccr_html, ActReferenceError
+          PYTHONPATH=backend python - <<'PY'
+          from app.act_reference import ActReferenceError, parse_act_ccr_html
           html = '<p>' + ' '.join([
               'AF 201. Same shared skill.', 'A 201. Skill two.', 'A 301. Skill three.',
               'A 401. Skill four.', 'A 501. Skill five.', 'A 601. Skill six.',
