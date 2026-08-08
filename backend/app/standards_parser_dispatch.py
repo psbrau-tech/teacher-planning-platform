@@ -14,6 +14,7 @@ from .standards_alabama_parsers import (
 from .standards_alabama_physical_education import parse_alabama_physical_education_2019
 from .standards_alabama_science import parse_alabama_science_2023
 from .standards_alabama_social_studies import parse_alabama_social_studies_2024
+from .standards_alabama_world_languages import parse_alabama_world_languages_2017
 from .standards_ingest import (
     ExtractedDocument,
     ParsedStandardsDocument,
@@ -45,4 +46,6 @@ def parse_governed_standards_document(
         return parse_alabama_science_2023(extracted)
     if parser_key == "alabama_social_studies_2024":
         return parse_alabama_social_studies_2024(extracted)
+    if parser_key == "alabama_world_languages_2017":
+        return parse_alabama_world_languages_2017(extracted)
     return parse_document(parser_key, extracted)
