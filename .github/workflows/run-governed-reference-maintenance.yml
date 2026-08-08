@@ -1,0 +1,194 @@
+name: Run TPP Governed Reference Maintenance
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: Reason for running privileged governed reference maintenance
+        required: true
+        type: string
+      target_commit:
+        description: Exact 40-character commit SHA containing the reviewed maintenance code
+        required: true
+        type: string
+      check_date:
+        description: Evidence date for Alabama reconciliation (YYYY-MM-DD)
+        required: true
+        type: string
+      run_alabama:
+        description: Run governed Alabama standards reconciliation and staging
+        required: true
+        default: true
+        type: boolean
+      run_act:
+        description: Run governed ACT public-reference ingestion and staging
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: tpp-pilot-governed-reference-maintenance
+  cancel-in-progress: false
+
+jobs:
+  maintenance:
+    name: Stage governed Alabama and ACT authoritative snapshots
+    runs-on: ubuntu-latest
+    environment: tpp-pilot
+    env:
+      AWS_REGION: ${{ vars.TPP_AWS_REGION || 'us-east-2' }}
+      AWS_ROLE_ARN: ${{ vars.TPP_AWS_ROLE_ARN }}
+      SUPABASE_URL_SECRET_ID: ${{ vars.TPP_SUPABASE_URL_SECRET_ID || 'tpp/pilot/supabase-url' }}
+      SUPABASE_SERVICE_ROLE_KEY_SECRET_ID: ${{ vars.TPP_SUPABASE_SERVICE_ROLE_KEY_SECRET_ID || 'tpp/pilot/supabase-service-role-key' }}
+      REQUESTED_TARGET_COMMIT: ${{ inputs.target_commit }}
+      REQUESTED_CHECK_DATE: ${{ inputs.check_date }}
+
+    steps:
+      - name: Validate governed maintenance request
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in AWS_ROLE_ARN SUPABASE_URL_SECRET_ID SUPABASE_SERVICE_ROLE_KEY_SECRET_ID; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing required tpp-pilot maintenance values: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+          if [[ "$AWS_REGION" != "us-east-2" ]]; then
+            echo "TPP pilot governed maintenance is restricted to us-east-2." >&2
+            exit 1
+          fi
+          normalized_commit="$(printf '%s' "$REQUESTED_TARGET_COMMIT" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+          if [[ ! "$normalized_commit" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "target_commit must be one exact 40-character Git commit SHA." >&2
+            exit 1
+          fi
+          normalized_date="$(python - <<'PY'
+          from datetime import date
+          import os
+          value = os.environ['REQUESTED_CHECK_DATE'].strip()
+          date.fromisoformat(value)
+          print(value)
+          PY
+          )"
+          printf 'TARGET_COMMIT=%s\n' "$normalized_commit" >> "$GITHUB_ENV"
+          printf 'CHECK_DATE=%s\n' "$normalized_date" >> "$GITHUB_ENV"
+          if [[ "${{ inputs.run_alabama }}" != "true" && "${{ inputs.run_act }}" != "true" ]]; then
+            echo "At least one governed maintenance target must be selected." >&2
+            exit 1
+          fi
+
+      - name: Check out exact reviewed maintenance code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_COMMIT }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact maintenance code provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_commit="$(git rev-parse HEAD)"
+          if [[ "$actual_commit" != "$TARGET_COMMIT" ]]; then
+            echo "Maintenance checkout provenance mismatch: expected $TARGET_COMMIT, received $actual_commit" >&2
+            exit 1
+          fi
+          echo "Exact maintenance code verified: $actual_commit"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install reviewed backend maintenance code
+        working-directory: backend
+        run: python -m pip install -e .
+
+      - name: Configure AWS credentials through GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Retrieve privileged maintenance credentials without exposing them
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase_url="$(aws secretsmanager get-secret-value \
+            --secret-id "$SUPABASE_URL_SECRET_ID" \
+            --query SecretString \
+            --output text)"
+          service_role_key="$(aws secretsmanager get-secret-value \
+            --secret-id "$SUPABASE_SERVICE_ROLE_KEY_SECRET_ID" \
+            --query SecretString \
+            --output text)"
+          if [[ "$supabase_url" != https://* ]]; then
+            echo "The configured Supabase URL secret is not an HTTPS URL." >&2
+            exit 1
+          fi
+          if [[ -z "$service_role_key" || "$service_role_key" == "None" ]]; then
+            echo "The configured Supabase service-role secret is empty." >&2
+            exit 1
+          fi
+          echo "::add-mask::$supabase_url"
+          echo "::add-mask::$service_role_key"
+          printf 'TPP_SUPABASE_URL=%s\n' "$supabase_url" >> "$GITHUB_ENV"
+          printf 'TPP_SUPABASE_SERVICE_ROLE_KEY=%s\n' "$service_role_key" >> "$GITHUB_ENV"
+          printf 'TPP_ENVIRONMENT=pilot-maintenance\n' >> "$GITHUB_ENV"
+          printf 'TPP_DATA_BOUNDARY=teacher-and-curriculum-only\n' >> "$GITHUB_ENV"
+
+      - name: Run governed Alabama maintenance
+        if: ${{ inputs.run_alabama }}
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          python scripts/run_standards_maintenance.py \
+            --kind annual_full \
+            --check-date "$CHECK_DATE"
+          status=$?
+          set -e
+          if [[ "$status" -eq 3 ]]; then
+            echo "Alabama maintenance staged changed/new authoritative candidates requiring Platform Administrator review."
+          elif [[ "$status" -ne 0 ]]; then
+            echo "Alabama governed maintenance failed with exit code $status." >&2
+            exit "$status"
+          else
+            echo "Alabama governed maintenance completed without a review-required exit status."
+          fi
+
+      - name: Run governed ACT public-reference maintenance
+        if: ${{ inputs.run_act }}
+        working-directory: backend
+        shell: bash
+        run: python scripts/run_act_reference_maintenance.py
+
+      - name: Publish governed maintenance handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## TPP governed reference maintenance"
+            echo "- Reason: ${{ inputs.reason }}"
+            echo "- Workflow commit: \`$GITHUB_SHA\`"
+            echo "- Reviewed maintenance code: \`$TARGET_COMMIT\`"
+            echo "- Alabama evidence date: \`$CHECK_DATE\`"
+            echo "- Alabama maintenance requested: \`${{ inputs.run_alabama }}\`"
+            echo "- ACT maintenance requested: \`${{ inputs.run_act }}\`"
+            echo "- Region: \`$AWS_REGION\`"
+            echo "- Privilege boundary: Supabase service-role credential retrieved only inside this protected maintenance job"
+            echo "- Interactive ECS runtime: unchanged; service-role credential was not injected"
+            echo "- Authoritative content status: staged only; Platform Administrator approval remains required"
+            echo "- Data boundary: teacher/admin and professional curriculum/reference data only; no student data"
+          } >> "$GITHUB_STEP_SUMMARY"
