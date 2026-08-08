@@ -43,7 +43,9 @@ def _client(identity: AuthenticatedTeacher, settings: Settings) -> SupabaseRestC
 
 def _records(payload: object) -> list[JsonRecord]:
     if not isinstance(payload, list):
-        raise HTTPException(status_code=503, detail="ACT reference administration returned invalid data")
+        raise HTTPException(
+            status_code=503, detail="ACT reference administration returned invalid data"
+        )
     return [cast(JsonRecord, item) for item in payload if isinstance(item, dict)]
 
 
@@ -58,7 +60,9 @@ def _uuid(record: JsonRecord, key: str) -> UUID:
     try:
         return UUID(_text(record, key))
     except ValueError as error:
-        raise HTTPException(status_code=503, detail="ACT reference administration data is invalid") from error
+        raise HTTPException(
+            status_code=503, detail="ACT reference administration data is invalid"
+        ) from error
 
 
 @router.get("/pending", response_model=list[ActReferenceSnapshotRead])
@@ -74,13 +78,18 @@ def list_pending_act_reference_snapshots(
                 "act_reference_snapshots",
                 params={
                     "status": "eq.pending",
-                    "select": "id,source_id,retrieved_at,parser_version,source_sha256,normalized_sha256,status",
+                    "select": (
+                        "id,source_id,retrieved_at,parser_version,source_sha256,"
+                        "normalized_sha256,status"
+                    ),
                     "order": "retrieved_at.desc",
                 },
             )
         )
     except SupabaseRestError as error:
-        raise HTTPException(status_code=503, detail="ACT pending snapshots are unavailable") from error
+        raise HTTPException(
+            status_code=503, detail="ACT pending snapshots are unavailable"
+        ) from error
 
     output: list[ActReferenceSnapshotRead] = []
     for snapshot in snapshots:
@@ -108,7 +117,9 @@ def list_pending_act_reference_snapshots(
                 )
             )
         except SupabaseRestError as error:
-            raise HTTPException(status_code=503, detail="ACT pending snapshot detail is unavailable") from error
+            raise HTTPException(
+                status_code=503, detail="ACT pending snapshot detail is unavailable"
+            ) from error
         if len(source_rows) != 1:
             raise HTTPException(status_code=503, detail="ACT reference source is unavailable")
         source = source_rows[0]
@@ -145,14 +156,22 @@ def approve_act_reference_snapshot(
         )
     except SupabaseRestError as error:
         if error.status_code in {400, 409, 422}:
-            raise HTTPException(status_code=409, detail="ACT reference snapshot approval was rejected") from error
-        raise HTTPException(status_code=503, detail="ACT reference snapshot approval is unavailable") from error
+            raise HTTPException(
+                status_code=409, detail="ACT reference snapshot approval was rejected"
+            ) from error
+        raise HTTPException(
+            status_code=503, detail="ACT reference snapshot approval is unavailable"
+        ) from error
     if not isinstance(payload, dict):
-        raise HTTPException(status_code=503, detail="ACT reference snapshot approval returned invalid data")
+        raise HTTPException(
+            status_code=503, detail="ACT reference snapshot approval returned invalid data"
+        )
     record = cast(JsonRecord, payload)
     changed = record.get("changed")
     if not isinstance(changed, bool):
-        raise HTTPException(status_code=503, detail="ACT reference snapshot approval returned invalid data")
+        raise HTTPException(
+            status_code=503, detail="ACT reference snapshot approval returned invalid data"
+        )
     return ActReferenceApprovalRead(
         snapshot_id=_uuid(record, "snapshot_id"),
         source_id=_uuid(record, "source_id"),

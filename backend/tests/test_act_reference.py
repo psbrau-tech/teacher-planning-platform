@@ -53,13 +53,26 @@ def test_act_parser_preserves_codes_text_and_score_range() -> None:
 
 
 def test_act_parser_rejects_duplicate_reference_codes() -> None:
-    html = "<p>" + " ".join(
-        [
-            "CLR 201. One.", "CLR 301. Two.", "CLR 401. Three.", "CLR 501. Four.",
-            "CLR 601. Five.", "CLR 701. Six.", "IDT 201. Seven.", "IDT 301. Eight.",
-            "IDT 401. Nine.", "IDT 501. Ten.", "IDT 601. Eleven.", "CLR 401. Duplicate.",
-        ]
-    ) + "</p>"
+    html = (
+        "<p>"
+        + " ".join(
+            [
+                "CLR 201. One.",
+                "CLR 301. Two.",
+                "CLR 401. Three.",
+                "CLR 501. Four.",
+                "CLR 601. Five.",
+                "CLR 701. Six.",
+                "IDT 201. Seven.",
+                "IDT 301. Eight.",
+                "IDT 401. Nine.",
+                "IDT 501. Ten.",
+                "IDT 601. Eleven.",
+                "CLR 401. Duplicate.",
+            ]
+        )
+        + "</p>"
+    )
     try:
         parse_act_ccr_html(source_key="act_ccrs_reading", domain="Reading", raw_html=html)
     except ActReferenceError as error:
