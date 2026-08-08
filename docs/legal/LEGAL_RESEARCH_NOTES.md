@@ -57,12 +57,28 @@ TPP-specific regional claims must come from actual deployed configuration. Curre
 
 Current DPA observed as version dated June 1, 2026. Production project region, enabled services, backup retention, and exact contractual posture must still be verified in the actual TPP Supabase project before publication.
 
-## Accessibility
+## Accessibility — public-school customers
 
-**Web Content Accessibility Guidelines (WCAG) 2.2 — W3C Recommendation:**
+**U.S. Department of Justice ADA Title II web/mobile accessibility guidance:**
+- https://www.ada.gov/resources/web-rule-first-steps/
+- https://www.ada.gov/resources/small-entity-compliance-guide/
+- https://www.ada.gov/title-ii-web-rule/
+
+DOJ's Title II web/mobile rule uses **WCAG 2.1 Level AA** as the technical standard for covered state/local-government web content and mobile apps. DOJ guidance specifically explains that public entities must address covered web content/apps supplied through contractors or vendors and generally cannot use the third-party-content exception for a vendor providing the service under a contractual or licensing arrangement.
+
+As verified 2026-08-08, DOJ's April 20, 2026 interim final rule extends compliance dates to:
+- April 26, 2027 for public entities with a total population of 50,000 or more;
+- April 26, 2028 for public entities below 50,000 or special district governments.
+
+Official IFR PDF:
+- https://www.ada.gov/assets/pdfs/2026-ifr.pdf
+
+Other Title II obligations, including effective communication, reasonable modification, and equal opportunity, continue before the technical-standard compliance dates.
+
+**WCAG 2.2 — W3C Recommendation:**
 - https://www.w3.org/TR/WCAG22/
 
-WCAG 2.2 is a W3C Recommendation. TPP's pre-release accessibility statement uses Level AA as an engineering target, not a certification claim.
+TPP may use WCAG 2.2 Level AA as an additional engineering target, but public-school release evidence should explicitly verify the applicable WCAG 2.1 Level AA DOJ baseline rather than assuming later-version testing automatically satisfies the legal rule.
 
 ## Repository implementation facts verified 2026-08-08
 
