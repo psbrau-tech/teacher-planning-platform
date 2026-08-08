@@ -69,7 +69,7 @@ class FakeClient:
 
 def test_parser_pending_source_stages_metadata_only(monkeypatch) -> None:
     client = FakeClient()
-    source = _source("alabama_academic_world_languages", "alabama_academic")
+    source = _source("alabama_academic_future_subject", "alabama_academic")
     monkeypatch.setattr(
         materialize,
         "fetch_source",
