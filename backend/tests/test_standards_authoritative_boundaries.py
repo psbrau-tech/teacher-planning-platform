@@ -74,7 +74,10 @@ def test_pe_ignores_level_comparison_example_before_beginning_kinesiology() -> N
 
     lines.extend(
         [
-            "Example of Level 1 vs. Level 2 with Suggested Method to Implement and Differentiate Between the Levels",
+            (
+                "Example of Level 1 vs. Level 2 with Suggested Method to Implement "
+                "and Differentiate Between the Levels"
+            ),
             "Standard 3 Level 1",
             "Students can:",
             "Level 2",
