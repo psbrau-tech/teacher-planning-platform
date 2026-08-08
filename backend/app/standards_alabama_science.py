@@ -11,8 +11,9 @@ from .standards_ingest import (
     StandardsIngestError,
 )
 
-SCIENCE_PARSER_VERSION = "gate-e-alabama-science-2023-v1"
+SCIENCE_PARSER_VERSION = "gate-e-alabama-science-2023-v2"
 _STEM_PREFIX = "Each content standard completes the stem"
+_COURSE_HEADING_LOOKBACK = 30
 _COURSES = (
     ("kindergarten", "Kindergarten", "K"),
     ("grade_1", "Grade 1", "1"),
@@ -94,7 +95,8 @@ def parse_alabama_science_2023(
         )
         if len(standards) < 3:
             raise StandardsIngestError(
-                f"Alabama Science {section.display_name} standards structure changed unexpectedly"
+                f"Alabama Science {section.display_name} standards structure changed "
+                "unexpectedly"
             )
         courses.append(
             ParsedCourse(
@@ -115,38 +117,30 @@ def parse_alabama_science_2023(
 
 
 def _locate_course_sections(lines: tuple[str, ...]) -> tuple[_CourseSection, ...]:
-    expected = {
-        display_name: (course_key, grade_band)
-        for course_key, display_name, grade_band in _COURSES
-    }
-    markers_by_course: dict[str, list[int]] = {display_name: [] for display_name in expected}
-
-    for marker_index, line in enumerate(lines):
-        if not line.startswith(_STEM_PREFIX):
-            continue
-        lower_bound = max(0, marker_index - 100)
-        nearest_course: str | None = None
-        for index in range(marker_index - 1, lower_bound - 1, -1):
-            if lines[index] in expected:
-                nearest_course = lines[index]
-                break
-        if nearest_course is not None:
-            markers_by_course[nearest_course].append(marker_index)
+    markers = tuple(
+        index for index, line in enumerate(lines) if line.startswith(_STEM_PREFIX)
+    )
+    if len(markers) != len(_COURSES):
+        return ()
 
     sections: list[_CourseSection] = []
-    for course_key, display_name, grade_band in _COURSES:
-        markers = markers_by_course[display_name]
-        if len(markers) != 1:
-            continue
+    for (course_key, display_name, grade_band), marker_index in zip(
+        _COURSES,
+        markers,
+        strict=True,
+    ):
+        context = lines[max(0, marker_index - _COURSE_HEADING_LOOKBACK) : marker_index]
+        if display_name not in context:
+            return ()
         sections.append(
             _CourseSection(
                 course_key=course_key,
                 display_name=display_name,
                 grade_band=grade_band,
-                marker_index=markers[0],
+                marker_index=marker_index,
             )
         )
-    return tuple(sorted(sections, key=lambda item: item.marker_index))
+    return tuple(sections)
 
 
 def _parse_science_standards(lines: tuple[str, ...]) -> tuple[ParsedStandard, ...]:
