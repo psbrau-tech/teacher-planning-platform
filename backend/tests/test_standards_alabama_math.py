@@ -26,6 +26,12 @@ COURSES = (
 )
 
 
+def _content_marker(course: str) -> str:
+    if course == "Grade 8":
+        return "Grade 8 Mathematics Content Standards"
+    return f"{course} Content Standards"
+
+
 def _document(*, omit: str | None = None) -> ExtractedDocument:
     lines: list[str] = [
         "STUDENT MATHEMATICAL PRACTICES",
@@ -40,7 +46,7 @@ def _document(*, omit: str | None = None) -> ExtractedDocument:
             continue
         lines.extend(
             [
-                f"{course} Content Standards",
+                _content_marker(course),
                 "Number and Quantity",
                 "1. Solve a mathematical problem using an appropriate representation",
                 "and explain the reasoning used.",
@@ -69,6 +75,8 @@ def test_math_parser_returns_all_17_course_sections() -> None:
     assert parsed.courses[8].course_key == "grade_7_accelerated"
     assert parsed.courses[11].course_key == "geometry_data_analysis"
     assert parsed.courses[-1].course_key == "precalculus"
+    grade_eight = next(course for course in parsed.courses if course.course_key == "grade_8")
+    assert grade_eight.source_course_code == "Grade 8 Mathematics Content Standards"
 
 
 def test_math_parser_attaches_all_eight_practices_to_each_course() -> None:
