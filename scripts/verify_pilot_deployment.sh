@@ -151,10 +151,24 @@ secret_names="$(
   jq -r '.taskDefinition.containerDefinitions[0].secrets[].name' <<<"$task_json" \
     | sort
 )"
-expected_secret_names=$'TPP_OPENAI_API_KEY\nTPP_SUPABASE_ANON_KEY\nTPP_SUPABASE_URL'
-if [[ "$secret_names" != "$expected_secret_names" ]]; then
-  echo "The deployed Gate E task does not use the exact approved runtime secret set:" >&2
+legacy_secret_names=$'TPP_SUPABASE_ANON_KEY\nTPP_SUPABASE_URL'
+gate_e_secret_names=$'TPP_OPENAI_API_KEY\nTPP_SUPABASE_ANON_KEY\nTPP_SUPABASE_URL'
+runtime_secret_profile=""
+if [[ "$secret_names" == "$legacy_secret_names" ]]; then
+  runtime_secret_profile="legacy-pre-gate-e"
+elif [[ "$secret_names" == "$gate_e_secret_names" ]]; then
+  runtime_secret_profile="gate-e"
+else
+  echo "The pilot task does not use an approved runtime secret set:" >&2
   echo "$secret_names" >&2
+  exit 1
+fi
+
+# Pre-deployment baseline checks may legitimately observe the legacy two-secret runtime.
+# Once an exact expected Gate E commit is supplied, require the Gate E OpenAI runtime secret.
+if [[ -n "${EXPECTED_COMMIT:-}" && "$runtime_secret_profile" != "gate-e" ]]; then
+  echo "Exact Gate E commit verification requires the Gate E runtime secret profile." >&2
+  echo "Observed profile: $runtime_secret_profile" >&2
   exit 1
 fi
 
@@ -212,13 +226,16 @@ if [[ "$retention" != "30" ]]; then
   echo "Expected a 30-day application log-group retention; found $retention." >&2
   exit 1
 fi
-stream_count="$(aws logs describe-log-streams \
+
+# describe-log-streams is paginated. Avoid a scalar JMESPath query with --output text,
+# which AWS CLI pagination can evaluate against a page where the list is null.
+log_streams_json="$(aws logs describe-log-streams \
   --log-group-name "$log_group" \
   --order-by LastEventTime \
   --descending \
   --max-items 5 \
-  --query 'length(logStreams)' \
-  --output text)"
+  --output json)"
+stream_count="$(jq '(.logStreams // []) | length' <<<"$log_streams_json")"
 if [[ "$stream_count" -lt 1 ]]; then
   echo "No application log stream exists in $log_group." >&2
   exit 1
@@ -274,9 +291,10 @@ fi
   echo "- Immutable image: \`$image\`"
   echo "- Image tags: \`$image_tags\`"
   echo "- Task definition: \`$task_definition\`"
-  echo "- Runtime secret mappings: \`TPP_SUPABASE_URL, TPP_SUPABASE_ANON_KEY, TPP_OPENAI_API_KEY\`"
+  echo "- Runtime secret profile: \`$runtime_secret_profile\`"
   echo "- Supabase service-role/database/OAuth runtime credentials: \`absent\`"
   echo "- Log group: \`$log_group\` with 30-day retention"
+  echo "- Application log streams observed: \`$stream_count\`"
   echo "- Certificate status: \`$certificate_status\`"
   echo "- Public HTTPS checked: \`${VERIFY_PUBLIC_HOSTNAME:-false}\`"
   echo "- Data boundary: \`teacher-and-curriculum-only\`"
