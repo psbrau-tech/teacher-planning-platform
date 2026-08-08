@@ -11,7 +11,7 @@ from .standards_ingest import (
     StandardsIngestError,
 )
 
-SOCIAL_STUDIES_PARSER_VERSION = "gate-e-alabama-social-studies-2024-v3"
+SOCIAL_STUDIES_PARSER_VERSION = "gate-e-alabama-social-studies-2024-v4"
 
 _COURSES = (
     ("kindergarten", "Kindergarten", "K"),
@@ -100,10 +100,19 @@ def parse_alabama_social_studies_2024(
     courses: list[ParsedCourse] = []
     for course_key, display_name, grade_band in _COURSES:
         marker_index = marker_by_course[course_key]
-        end = _next_marker_after(marker_index, markers, len(extracted.lines))
-        detached_before = _detached_codes_before_marker(
-            extracted.lines,
-            marker_index,
+        next_marker = _next_marker_after(marker_index, markers, len(extracted.lines))
+        next_prelude = (
+            _detached_entries_before_marker(extracted.lines, next_marker)
+            if next_marker < len(extracted.lines)
+            else ()
+        )
+        end = next_prelude[0][0] if next_prelude else next_marker
+        detached_before = tuple(
+            code
+            for _, code in _detached_entries_before_marker(
+                extracted.lines,
+                marker_index,
+            )
         )
         standards = _parse_social_studies_standards(
             extracted.lines[marker_index + 1 : end],
@@ -157,10 +166,10 @@ def _next_marker_after(
     )
 
 
-def _detached_codes_before_marker(
+def _detached_entries_before_marker(
     lines: tuple[str, ...],
     marker_index: int,
-) -> tuple[str, ...]:
+) -> tuple[tuple[int, str], ...]:
     footer_index: int | None = None
     for index in range(marker_index - 1, max(-1, marker_index - 40), -1):
         if lines[index].startswith(_SOURCE_FOOTER):
@@ -169,11 +178,12 @@ def _detached_codes_before_marker(
     if footer_index is None:
         return ()
 
-    return tuple(
-        match.group(1)
-        for line in lines[footer_index + 1 : marker_index]
-        if (match := _MAIN_DETACHED.fullmatch(line.strip())) is not None
-    )
+    entries: list[tuple[int, str]] = []
+    for index in range(footer_index + 1, marker_index):
+        match = _MAIN_DETACHED.fullmatch(lines[index].strip())
+        if match is not None:
+            entries.append((index, match.group(1)))
+    return tuple(entries)
 
 
 def _parse_social_studies_standards(
