@@ -25,6 +25,11 @@ def test_governed_dispatch_routes_verified_comprehensive_academic_parsers(monkey
         called.append("career_math")
         return _parsed("alabama_career_mathematics")
 
+    def dlcs_parser(value: ExtractedDocument) -> ParsedStandardsDocument:
+        assert value is extracted
+        called.append("dlcs")
+        return _parsed("alabama_dlcs_2025")
+
     def driver_parser(value: ExtractedDocument) -> ParsedStandardsDocument:
         assert value is extracted
         called.append("driver")
@@ -62,6 +67,7 @@ def test_governed_dispatch_routes_verified_comprehensive_academic_parsers(monkey
 
     monkeypatch.setattr(dispatch, "parse_alabama_algebra_finance", algebra_finance_parser)
     monkeypatch.setattr(dispatch, "parse_alabama_career_mathematics", career_math_parser)
+    monkeypatch.setattr(dispatch, "parse_alabama_dlcs_2025", dlcs_parser)
     monkeypatch.setattr(
         dispatch,
         "parse_alabama_driver_traffic_safety_2007",
@@ -95,6 +101,10 @@ def test_governed_dispatch_routes_verified_comprehensive_academic_parsers(monkey
             extracted,
         ).parser_key
         == "alabama_career_mathematics"
+    )
+    assert (
+        dispatch.parse_governed_standards_document("alabama_dlcs_2025", extracted).parser_key
+        == "alabama_dlcs_2025"
     )
     assert (
         dispatch.parse_governed_standards_document(
@@ -139,6 +149,7 @@ def test_governed_dispatch_routes_verified_comprehensive_academic_parsers(monkey
     assert called == [
         "algebra_finance",
         "career_math",
+        "dlcs",
         "driver",
         "health",
         "math",
