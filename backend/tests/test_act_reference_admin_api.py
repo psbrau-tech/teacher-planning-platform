@@ -31,6 +31,14 @@ class FakeClient:
                     "status": "pending",
                 }
             ]
+        if resource == "rpc/platform_admin_act_reference_snapshot_counts":
+            return [
+                {
+                    "snapshot_id": str(SNAPSHOT_ID),
+                    "entry_count": 0,
+                    "benchmark_count": 6,
+                }
+            ]
         if resource == "act_reference_sources":
             return [
                 {
@@ -42,10 +50,6 @@ class FakeClient:
                     "effective_date": None,
                 }
             ]
-        if resource == "act_reference_entries":
-            return []
-        if resource == "act_readiness_benchmarks":
-            return [{"id": str(uuid4())} for _ in range(6)]
         if resource == "rpc/approve_act_reference_snapshot":
             return {
                 "snapshot_id": str(SNAPSHOT_ID),
@@ -95,6 +99,8 @@ def test_pending_act_benchmark_snapshot_exposes_review_provenance_and_counts(mon
     assert snapshot.benchmark_count == 6
     assert snapshot.source_document_url.startswith("https://www.act.org/")
     assert snapshot.source_edition == "current public web edition"
+    assert any(call[1] == "rpc/platform_admin_act_reference_snapshot_counts" for call in fake.calls)
+    assert not any(call[1] == "act_readiness_benchmarks" for call in fake.calls)
 
 
 def test_act_snapshot_approval_uses_only_governed_approval_rpc(monkeypatch) -> None:
