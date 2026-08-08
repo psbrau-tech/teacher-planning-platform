@@ -12,6 +12,14 @@ from .standards_ingest import (
 )
 
 ALABAMA_PARSER_VERSION = "gate-e-alabama-comprehensive-v1"
+_CTE_CONTENT_HEADING = re.compile(
+    r"^(?:(?P<title>.+?)\s+)?CONTENT\s+ST\s*ANDARDS$",
+    flags=re.IGNORECASE,
+)
+_CTE_NONCOURSE_PREFIXES = {
+    "minimum required",
+    "minimum required course",
+}
 
 
 def parse_alabama_ela_k12(extracted: ExtractedDocument) -> ParsedStandardsDocument:
@@ -90,14 +98,12 @@ def parse_alabama_cte_course_of_study(
     parser_key: str,
     extracted: ExtractedDocument,
 ) -> ParsedStandardsDocument:
-    markers = [
-        index for index, line in enumerate(extracted.lines) if line == "CONTENT STANDARDS"
-    ]
+    markers = _cte_content_markers(extracted.lines)
     courses: list[ParsedCourse] = []
     seen_keys: set[str] = set()
 
-    for marker in markers:
-        title = _nearest_uppercase_title(extracted.lines, marker)
+    for marker, heading_title in markers:
+        title = heading_title or _nearest_uppercase_title(extracted.lines, marker)
         if not title or title in {"MIDDLE SCHOOL COURSES", "HIGH SCHOOL COURSES"}:
             continue
 
@@ -145,6 +151,22 @@ def parse_alabama_cte_course_of_study(
         normalized_sha256=extracted.normalized_sha256,
         courses=tuple(courses),
     )
+
+
+def _cte_content_markers(lines: tuple[str, ...]) -> list[tuple[int, str | None]]:
+    markers: list[tuple[int, str | None]] = []
+    for index, raw_line in enumerate(lines):
+        normalized = re.sub(r"\s+", " ", raw_line).strip()
+        match = _CTE_CONTENT_HEADING.fullmatch(normalized)
+        if match is None:
+            continue
+        title = match.group("title")
+        if title is not None:
+            title = title.strip()
+            if title.lower() in _CTE_NONCOURSE_PREFIXES or len(title) > 140:
+                continue
+        markers.append((index, title))
+    return markers
 
 
 def _unique_marker_positions(
@@ -331,17 +353,19 @@ def _grade_band_before(lines: tuple[str, ...], marker_index: int) -> str | None:
 
 
 def _cte_noise(line: str) -> bool:
-    if line in {
-        "CONTENT STANDARDS",
+    normalized = re.sub(r"\s+", " ", line).strip()
+    if _CTE_CONTENT_HEADING.fullmatch(normalized):
+        return True
+    if normalized in {
         "FOUNDATIONAL STANDARDS",
         "FOUNDATIONAL",
         "STANDARDS",
         "Students will:",
     }:
         return True
-    if line.startswith("20") and "Course of Study" in line:
+    if normalized.startswith("20") and "Course of Study" in normalized:
         return True
-    return bool(line.isupper() and len(line) <= 100)
+    return bool(normalized.isupper() and len(normalized) <= 100)
 
 
 def _slug(value: str) -> str:
