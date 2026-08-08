@@ -1,0 +1,81 @@
+name: Academic Tail Diagnostics
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/standards_alabama_social_studies.py"
+      - "backend/app/standards_alabama_world_languages.py"
+      - "backend/app/standards_alabama_parsers.py"
+      - ".github/workflows/academic-tail-diagnostics.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose-academic-tails:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+      - name: Install backend
+        working-directory: backend
+        run: python -m pip install -e '.[dev]'
+      - name: Inspect current academic tail boundaries read-only
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from app.standards_catalog_fetch import fetch_current_alabama_catalog
+          from app.standards_ingest import extract_document, fetch_source
+          from app.standards_alabama_parsers import _ela_content_marker, _ela_recurring_marker
+
+          source_map = {source.source_key: source for source in fetch_current_alabama_catalog()}
+          print("database_writes=0")
+
+          def load(key):
+              source = source_map[key]
+              fetched = fetch_source(source.document_url, source.document_format)
+              return extract_document(fetched).lines
+
+          social = load("alabama_academic_social_studies")
+          social_markers = [
+              index for index, line in enumerate(social)
+              if line.lower().replace(" ", "") in {"contentstandards", "contentstandard"}
+          ]
+          last_social = social_markers[-1]
+          print("=== social_alabama_studies_tail ===")
+          for index, line in enumerate(social[last_social:last_social + 220], start=last_social):
+              print(f"social|{index}|{line}")
+
+          world = load("alabama_academic_world_languages")
+          asl_iv_candidates = [
+              index for index, line in enumerate(world)
+              if line.strip().lower() == "level iv"
+              and any(
+                  "american sign language" in nearby.lower()
+                  for nearby in world[max(0, index - 8):index]
+              )
+          ]
+          print("=== asl_level_iv_tail ===")
+          print(f"asl_iv_candidates={asl_iv_candidates}")
+          for marker in asl_iv_candidates:
+              for index, line in enumerate(world[marker:marker + 220], start=marker):
+                  print(f"world|{index}|{line}")
+
+          ela = load("alabama_academic_english_language_arts")
+          content = _ela_content_marker("Grade 2")
+          recurring = _ela_recurring_marker("Grade 2")
+          content_positions = [i for i, line in enumerate(ela) if line == content]
+          recurring_positions = [i for i, line in enumerate(ela) if line == recurring]
+          print("=== ela_grade_2 ===")
+          print(f"content_positions={content_positions}")
+          print(f"recurring_positions={recurring_positions}")
+          if content_positions:
+              marker = content_positions[0]
+              for index, line in enumerate(ela[max(0, marker - 80):marker + 220], start=max(0, marker - 80)):
+                  print(f"ela|{index}|{line}")
+          PY
