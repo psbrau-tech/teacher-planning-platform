@@ -5,7 +5,6 @@ import pytest
 from app.standards_alabama_social_studies import parse_alabama_social_studies_2024
 from app.standards_ingest import ExtractedDocument, StandardsIngestError
 
-
 COURSE_HEADINGS = (
     ("KINDERGARTEN", "kindergarten"),
     ("GRADE 1", "grade_1"),
