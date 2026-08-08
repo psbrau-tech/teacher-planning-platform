@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .standards_alabama_health import parse_alabama_health_2019
 from .standards_alabama_math import parse_alabama_math_2019
 from .standards_alabama_parsers import (
     parse_alabama_cte_course_of_study,
@@ -22,6 +23,8 @@ def parse_governed_standards_document(
         return parse_alabama_ela_k12(extracted)
     if parser_key in {"alabama_bma_2021", "alabama_cte_cos_generic"}:
         return parse_alabama_cte_course_of_study(parser_key, extracted)
+    if parser_key == "alabama_health_2019":
+        return parse_alabama_health_2019(extracted)
     if parser_key == "alabama_math_2019":
         return parse_alabama_math_2019(extracted)
     if parser_key == "alabama_science_2023":
