@@ -10,7 +10,7 @@ from .standards_ingest import (
     StandardsIngestError,
 )
 
-DRIVER_TRAFFIC_SAFETY_PARSER_VERSION = "gate-e-alabama-driver-traffic-safety-2007-v2"
+DRIVER_TRAFFIC_SAFETY_PARSER_VERSION = "gate-e-alabama-driver-traffic-safety-2007-v3"
 _MAIN = re.compile(r"^(\d+)\.\s+(.+)$")
 _CHILD = re.compile(r"^([a-z])\.\s+(.+)$")
 _SUPPLEMENT_PREFIXES = ("Example:", "Examples:", "Note:", "Notes:")
@@ -19,6 +19,8 @@ _PHASE_HEADINGS = {
     "BEHIND-THE-WHEEL PHASE": "Behind-the-Wheel Phase",
     "BEHIND THE WHEEL PHASE": "Behind-the-Wheel Phase",
 }
+_COURSE_MARKER = "DRIVER AND TRAFFIC SAFETY EDUCATION COURSE"
+_APPENDIX_MARKER = "Web Sites for Driver and Traffic Safety Education"
 _EXPECTED_MAIN_COUNT = 21
 
 
@@ -32,6 +34,7 @@ def parse_alabama_driver_traffic_safety_2007(
     current_strand = "Content Standards"
     current_parts: list[str] = []
     skipping_supplement = False
+    in_course = False
 
     def flush() -> None:
         nonlocal current_code, current_parent, current_parts
@@ -51,6 +54,15 @@ def parse_alabama_driver_traffic_safety_2007(
         current_parts = []
 
     for line in extracted.lines:
+        if not in_course:
+            if line == _COURSE_MARKER:
+                in_course = True
+            continue
+
+        if line == _APPENDIX_MARKER:
+            flush()
+            break
+
         phase = _PHASE_HEADINGS.get(line.upper())
         if phase is not None:
             flush()
@@ -88,6 +100,11 @@ def parse_alabama_driver_traffic_safety_2007(
         if skipping_supplement or current_code is None or _noise(line):
             continue
         current_parts.append(line)
+
+    if not in_course:
+        raise StandardsIngestError(
+            "Alabama Driver and Traffic Safety parser did not find the authoritative course section"
+        )
 
     flush()
 
