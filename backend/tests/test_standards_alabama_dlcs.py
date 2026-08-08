@@ -6,11 +6,11 @@ from app.standards_alabama_dlcs import parse_alabama_dlcs_2025
 from app.standards_ingest import ExtractedDocument, StandardsIngestError
 
 
-def _standards(first: int, last: int, label: str) -> str:
-    return " ".join(
+def _standard_lines(first: int, last: int, label: str) -> list[str]:
+    return [
         f"{number}. Required {label} content for this standard."
         for number in range(first, last + 1)
-    )
+    ]
 
 
 def _interleaved_k2(first: int, last: int) -> list[str]:
@@ -32,8 +32,9 @@ def _document(*, omit_grade_8_standard: int | None = None) -> ExtractedDocument:
     lines: list[str] = ["Computational Thinking"]
 
     # The current Alabama PDF linearizes K-2 tables row-by-row across grade
-    # columns. The parser must therefore return to earlier grade lanes on later
-    # rows instead of assuming a monotonic left-to-right lane cursor.
+    # columns. Within a row, multiple grade lanes may be present. A sequence of
+    # standards for one grade is extracted on separate rows rather than being
+    # concatenated into one synthetic row.
     lines.extend(
         [
             "Kindergarten Grade 1 Grade 2",
@@ -50,9 +51,9 @@ def _document(*, omit_grade_8_standard: int | None = None) -> ExtractedDocument:
             ),
             "Digital Proficiency",
             "Kindergarten Grade 1 Grade 2",
-            _standards(11, 15, "Kindergarten"),
-            _standards(12, 17, "Grade 1"),
-            _standards(13, 20, "Grade 2"),
+            *_standard_lines(11, 15, "Kindergarten"),
+            *_standard_lines(12, 17, "Grade 1"),
+            *_standard_lines(13, 20, "Grade 2"),
         ]
     )
 
@@ -60,29 +61,27 @@ def _document(*, omit_grade_8_standard: int | None = None) -> ExtractedDocument:
         [
             "Computational Thinking",
             "Grade 3 Grade 4 Grade 5",
-            _standards(1, 19, "Grade 3"),
-            _standards(1, 26, "Grade 4"),
-            _standards(1, 24, "Grade 5"),
+            *_standard_lines(1, 19, "Grade 3"),
+            *_standard_lines(1, 26, "Grade 4"),
+            *_standard_lines(1, 24, "Grade 5"),
             "Computing Systems",
             "Grade 6 Grade 7 Grade 8",
-            _standards(1, 31, "Grade 6"),
-            _standards(1, 32, "Grade 7"),
+            *_standard_lines(1, 31, "Grade 6"),
+            *_standard_lines(1, 32, "Grade 7"),
         ]
     )
     grade_8_numbers = [
         number for number in range(1, 37) if number != omit_grade_8_standard
     ]
-    lines.append(
-        " ".join(
-            f"{number}. Required Grade 8 content for this standard."
-            for number in grade_8_numbers
-        )
+    lines.extend(
+        f"{number}. Required Grade 8 content for this standard."
+        for number in grade_8_numbers
     )
     lines.extend(
         [
             "Digital Proficiency",
             "Grades 9-12",
-            _standards(1, 45, "Grades 9-12"),
+            *_standard_lines(1, 45, "Grades 9-12"),
         ]
     )
 
@@ -149,5 +148,8 @@ def test_dlcs_parser_splits_multiple_linearized_standards_on_one_line_without_du
 
 
 def test_dlcs_parser_fails_closed_when_a_grade_lane_has_a_sequence_gap() -> None:
-    with pytest.raises(StandardsIngestError, match="could not assign standard"):
+    with pytest.raises(
+        StandardsIngestError,
+        match="could not reconstruct complete grade lanes",
+    ):
         parse_alabama_dlcs_2025(_document(omit_grade_8_standard=17))
