@@ -162,6 +162,13 @@ def _parse_numbered_block(
     for line in lines:
         main = _MAIN.match(line)
         if main:
+            if (
+                stop_after is not None
+                and current_main is not None
+                and int(current_main) >= stop_after
+            ):
+                flush()
+                break
             if stop_after is not None and int(main.group(1)) > stop_after:
                 flush()
                 break
