@@ -80,20 +80,19 @@ def resolve_authoritative_document(
             follow_redirects=True,
             timeout=timeout_seconds,
             headers={"User-Agent": "TeacherPlanningPlatform-Standards/1.0"},
-        ) as client:
-            with client.stream("GET", landing_url) as response:
-                response.raise_for_status()
-                resolved_landing = str(response.url)
-                _require_allowed_url(resolved_landing)
-                encoding = response.encoding or "utf-8"
-                for chunk in response.iter_bytes():
-                    if not chunk:
-                        continue
-                    if len(content) + len(chunk) > MAX_LANDING_BYTES:
-                        raise StandardsSourceResolutionError(
-                            "Authoritative standards landing page has an invalid size"
-                        )
-                    content.extend(chunk)
+        ) as client, client.stream("GET", landing_url) as response:
+            response.raise_for_status()
+            resolved_landing = str(response.url)
+            _require_allowed_url(resolved_landing)
+            encoding = response.encoding or "utf-8"
+            for chunk in response.iter_bytes():
+                if not chunk:
+                    continue
+                if len(content) + len(chunk) > MAX_LANDING_BYTES:
+                    raise StandardsSourceResolutionError(
+                        "Authoritative standards landing page has an invalid size"
+                    )
+                content.extend(chunk)
     except httpx.HTTPError as error:
         raise StandardsSourceResolutionError(
             "Authoritative standards landing page is unavailable"
