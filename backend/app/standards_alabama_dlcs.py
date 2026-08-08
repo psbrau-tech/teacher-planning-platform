@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from functools import lru_cache
 
 from .standards_ingest import (
     ExtractedDocument,
@@ -11,7 +12,7 @@ from .standards_ingest import (
     StandardsIngestError,
 )
 
-DLCS_PARSER_VERSION = "gate-e-alabama-dlcs-2025-v3"
+DLCS_PARSER_VERSION = "gate-e-alabama-dlcs-2025-v4"
 _MAIN_TOKEN = re.compile(r"(?<![A-Za-z0-9])([1-9]\d?)\.\s+")
 _DEVELOPMENTAL = re.compile(
     r"developmentally appropriate beginning in Grade\s+(\d+)",
@@ -43,6 +44,15 @@ class _Band:
     display_names: tuple[str, ...]
     grade_bands: tuple[str, ...]
     expected_final: tuple[int, ...]
+
+
+@dataclass(slots=True)
+class _Event:
+    number: int
+    minimum_lane: int
+    theme: str
+    row_id: int
+    parts: list[str] = field(default_factory=list)
 
 
 _BANDS = (
@@ -79,54 +89,30 @@ _BAND_BY_HEADER = {_normalized(band.header): band for band in _BANDS}
 
 
 def parse_alabama_dlcs_2025(extracted: ExtractedDocument) -> ParsedStandardsDocument:
-    standards_by_course: dict[str, list[ParsedStandard]] = {
-        course_key: [] for band in _BANDS for course_key in band.course_keys
-    }
-    next_number: dict[str, int] = {
-        course_key: 1 for course_key in standards_by_course
-    }
+    events_by_band: dict[str, list[_Event]] = {band.header: [] for band in _BANDS}
     active_band: _Band | None = None
     minimum_lane = 0
-    current_course_key: str | None = None
-    current_code: str | None = None
     current_theme = "Content Standards"
-    current_parts: list[str] = []
+    current_event: _Event | None = None
     skipping_example = False
 
-    def flush() -> None:
-        nonlocal current_course_key, current_code, current_parts
-        if current_course_key is not None and current_code is not None:
-            text = " ".join(current_parts).strip()
-            if text:
-                standards_by_course[current_course_key].append(
-                    ParsedStandard(
-                        code=current_code,
-                        text=text,
-                        parent_code=None,
-                        strand=current_theme,
-                    )
-                )
-        current_course_key = None
-        current_code = None
-        current_parts = []
-
-    for raw_line in extracted.lines:
+    for row_id, raw_line in enumerate(extracted.lines):
         line = _clean_line(raw_line)
         if not line:
             continue
 
         band = _BAND_BY_HEADER.get(_normalized(line))
         if band is not None:
-            flush()
             active_band = band
             minimum_lane = 0
+            current_event = None
             skipping_example = False
             continue
 
         if line in _THEMES:
-            flush()
             current_theme = line
             minimum_lane = 0
+            current_event = None
             skipping_example = False
             continue
 
@@ -138,56 +124,66 @@ def parse_alabama_dlcs_2025(extracted: ExtractedDocument) -> ParsedStandardsDocu
             )
             line = line[developmental.end() :].lstrip(" .:-")
             if not line:
+                current_event = None
                 continue
 
         if line.startswith(("Example:", "Examples:")):
             skipping_example = True
+            current_event = None
             continue
 
         tokens = list(_MAIN_TOKEN.finditer(line))
         if tokens and active_band is not None:
             prefix = line[: tokens[0].start()].strip()
-            if prefix and not skipping_example and current_code is not None:
-                current_parts.append(prefix)
-            flush()
+            if prefix and not skipping_example and current_event is not None:
+                current_event.parts.append(prefix)
             skipping_example = False
 
             for token_index, token in enumerate(tokens):
-                if token_index > 0:
+                if token_index > 0 and current_event is not None:
                     prior_end = tokens[token_index - 1].end()
                     prior_text = line[prior_end : token.start()].strip()
-                    if prior_text and current_code is not None:
-                        current_parts.append(prior_text)
-                    flush()
+                    if prior_text:
+                        current_event.parts.append(prior_text)
 
-                number = int(token.group(1))
-                lane = _resolve_lane(
-                    active_band,
+                current_event = _Event(
+                    number=int(token.group(1)),
                     minimum_lane=minimum_lane,
-                    number=number,
-                    next_number=next_number,
+                    theme=current_theme,
+                    row_id=row_id,
                 )
-                if lane is None:
-                    raise StandardsIngestError(
-                        f"Alabama DLCS could not assign standard {number} "
-                        f"within {active_band.header}"
-                    )
-                course_key = active_band.course_keys[lane]
-                current_course_key = course_key
-                current_code = str(number)
-                next_number[course_key] = number + 1
-                current_parts = []
+                events_by_band[active_band.header].append(current_event)
 
             tail = line[tokens[-1].end() :].strip()
-            if tail:
-                current_parts.append(tail)
+            if tail and current_event is not None:
+                current_event.parts.append(tail)
             continue
 
-        if skipping_example or current_code is None or _noise(line):
+        if skipping_example or current_event is None or _noise(line):
             continue
-        current_parts.append(line)
+        current_event.parts.append(line)
 
-    flush()
+    standards_by_course: dict[str, list[ParsedStandard]] = {
+        course_key: [] for band in _BANDS for course_key in band.course_keys
+    }
+    for band in _BANDS:
+        events = events_by_band[band.header]
+        lanes = _solve_band_lanes(band, events)
+        for event, lane in zip(events, lanes, strict=True):
+            text = " ".join(event.parts).strip()
+            if not text:
+                raise StandardsIngestError(
+                    f"Alabama DLCS {band.display_names[lane]} standard "
+                    f"{event.number} has no authoritative text"
+                )
+            standards_by_course[band.course_keys[lane]].append(
+                ParsedStandard(
+                    code=str(event.number),
+                    text=text,
+                    parent_code=None,
+                    strand=event.theme,
+                )
+            )
 
     courses: list[ParsedCourse] = []
     for band in _BANDS:
@@ -218,17 +214,38 @@ def parse_alabama_dlcs_2025(extracted: ExtractedDocument) -> ParsedStandardsDocu
     )
 
 
-def _resolve_lane(
-    band: _Band,
-    *,
-    minimum_lane: int,
-    number: int,
-    next_number: dict[str, int],
-) -> int | None:
-    for lane in range(minimum_lane, len(band.course_keys)):
-        if next_number[band.course_keys[lane]] == number:
-            return lane
-    return None
+def _solve_band_lanes(band: _Band, events: list[_Event]) -> tuple[int, ...]:
+    terminal = tuple(final + 1 for final in band.expected_final)
+
+    @lru_cache(maxsize=None)
+    def solve(
+        index: int,
+        state: tuple[int, ...],
+        previous_lane: int,
+    ) -> tuple[int, ...] | None:
+        if index == len(events):
+            return () if state == terminal else None
+
+        event = events[index]
+        same_row = index > 0 and events[index - 1].row_id == event.row_id
+        lane_floor = max(event.minimum_lane, previous_lane + 1 if same_row else 0)
+
+        for lane in range(lane_floor, len(band.course_keys)):
+            if state[lane] != event.number:
+                continue
+            next_state = list(state)
+            next_state[lane] += 1
+            suffix = solve(index + 1, tuple(next_state), lane)
+            if suffix is not None:
+                return (lane, *suffix)
+        return None
+
+    assignment = solve(0, tuple(1 for _ in band.course_keys), -1)
+    if assignment is None:
+        raise StandardsIngestError(
+            f"Alabama DLCS could not reconstruct complete grade lanes within {band.header}"
+        )
+    return assignment
 
 
 def _minimum_lane_for_grade(band: _Band, grade: str) -> int:
