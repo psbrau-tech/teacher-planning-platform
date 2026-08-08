@@ -1,0 +1,84 @@
+name: ACT Shared Code Fix
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/act-shared-code-fix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/gate-e-standards-ai
+          fetch-depth: 0
+      - name: Preserve ACT shared-code semantics
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("backend/app/act_reference.py")
+          text = path.read_text()
+          text = text.replace(
+              "    seen_codes: set[str] = set()\n",
+              "    seen_codes: dict[str, str] = {}\n",
+              1,
+          )
+          old = (
+              '        if code in seen_codes:\n'
+              '            raise ActReferenceError(f"Duplicate ACT reference code in {domain}: {code}")\n'
+              '        seen_codes.add(code)\n'
+          )
+          new = (
+              '        previous_text = seen_codes.get(code)\n'
+              '        if previous_text is not None:\n'
+              '            if previous_text != exact_text:\n'
+              '                raise ActReferenceError(\n'
+              '                    f"Conflicting ACT reference wording for {domain}: {code}"\n'
+              '                )\n'
+              '            # ACT Mathematics intentionally lists shared AF standards under both\n'
+              '            # Algebra and Functions. Store the shared authoritative skill once.\n'
+              '            continue\n'
+              '        seen_codes[code] = exact_text\n'
+          )
+          if old not in text:
+              raise SystemExit("ACT duplicate-code anchor changed")
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify
+        run: |
+          python -m pip install -e 'backend[dev]'
+          ruff format backend/app/act_reference.py
+          ruff check backend/app/act_reference.py
+          python - <<'PY'
+          from backend.app.act_reference import parse_act_ccr_html, ActReferenceError
+          html = '<p>' + ' '.join([
+              'AF 201. Same shared skill.', 'A 201. Skill two.', 'A 301. Skill three.',
+              'A 401. Skill four.', 'A 501. Skill five.', 'A 601. Skill six.',
+              'F 201. Skill seven.', 'F 301. Skill eight.', 'F 401. Skill nine.',
+              'F 501. Skill ten.', 'F 601. Skill eleven.', 'AF 201. Same shared skill.'
+          ]) + '</p>'
+          parsed = parse_act_ccr_html(source_key='math', domain='Mathematics', raw_html=html)
+          assert [e.reference_code for e in parsed.entries].count('AF 201') == 1
+          bad = html.replace('AF 201. Same shared skill.</p>', 'AF 201. Conflicting skill.</p>')
+          try:
+              parse_act_ccr_html(source_key='math', domain='Mathematics', raw_html=bad)
+          except ActReferenceError as exc:
+              assert 'Conflicting ACT reference wording' in str(exc)
+          else:
+              raise AssertionError('conflicting repeated ACT code must fail closed')
+          PY
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/app/act_reference.py
+          git diff --cached --quiet && exit 0
+          git commit -m "Preserve shared ACT mathematics reference codes"
+          git push origin HEAD:feature/gate-e-standards-ai
