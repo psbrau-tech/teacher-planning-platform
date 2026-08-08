@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 
 from .standards_ingest import (
     ExtractedDocument,
@@ -11,59 +10,69 @@ from .standards_ingest import (
     StandardsIngestError,
 )
 
-SOCIAL_STUDIES_PARSER_VERSION = "gate-e-alabama-social-studies-2024-v1"
+SOCIAL_STUDIES_PARSER_VERSION = "gate-e-alabama-social-studies-2024-v2"
 
 _COURSES = (
-    ("kindergarten", "Kindergarten", "K", ("KINDERGARTEN",)),
-    ("grade_1", "Grade 1", "1", ("GRADE 1",)),
-    ("grade_2", "Grade 2", "2", ("GRADE 2",)),
-    ("grade_3", "Grade 3", "3", ("GRADE 3",)),
-    ("grade_4", "Grade 4", "4", ("GRADE 4",)),
-    ("grade_5", "Grade 5", "5", ("GRADE 5",)),
-    ("grade_6", "Grade 6", "6", ("GRADE 6",)),
-    ("grade_7", "Grade 7", "7", ("GRADE 7",)),
-    ("grade_8", "Grade 8", "8", ("GRADE 8",)),
+    ("kindergarten", "Kindergarten", "K"),
+    ("grade_1", "Grade 1", "1"),
+    ("grade_2", "Grade 2", "2"),
+    ("grade_3", "Grade 3", "3"),
+    ("grade_4", "Grade 4", "4"),
+    ("grade_5", "Grade 5", "5"),
+    ("grade_6", "Grade 6", "6"),
+    ("grade_7", "Grade 7", "7"),
+    ("grade_8", "Grade 8", "8"),
     (
         "grade_9",
         "Grade 9 — World History and Geography: Age of Revolution to Present",
         "9",
-        ("GRADE 9",),
     ),
-    ("grade_10", "Grade 10", "10", ("GRADE 10",)),
+    ("grade_10", "Grade 10", "10"),
     (
         "grade_11",
         "Grade 11 — United States History II: World War I to Present",
         "11",
-        ("GRADE 11",),
     ),
-    (
-        "grade_12_economics",
-        "Grade 12 — Economics",
-        "12",
-        ("GRADE 12 — ECONOMICS", "GRADE 12 - ECONOMICS", "ECONOMICS"),
-    ),
+    ("grade_12_economics", "Grade 12 — Economics", "12"),
     (
         "grade_12_us_government",
         "Grade 12 — United States Government",
         "12",
-        (
-            "GRADE 12 — UNITED STATES GOVERNMENT",
-            "GRADE 12 - UNITED STATES GOVERNMENT",
-            "UNITED STATES GOVERNMENT",
-        ),
     ),
-    ("psychology", "Psychology", "9-12", ("PSYCHOLOGY",)),
-    ("sociology", "Sociology", "9-12", ("SOCIOLOGY",)),
-    (
-        "contemporary_world_issues",
-        "Contemporary World Issues",
-        "9-12",
-        ("CONTEMPORARY WORLD ISSUES",),
-    ),
-    ("human_geography", "Human Geography", "9-12", ("HUMAN GEOGRAPHY",)),
-    ("historical_studies", "Historical Studies", "9-12", ("HISTORICAL STUDIES",)),
-    ("holocaust_studies", "Holocaust Studies", "9-12", ("HOLOCAUST STUDIES",)),
-    ("alabama_studies", "Alabama Studies", "9-12", ("ALABAMA STUDIES",)),
+    ("psychology", "Psychology", "9-12"),
+    ("sociology", "Sociology", "9-12"),
+    ("contemporary_world_issues", "Contemporary World Issues", "9-12"),
+    ("human_geography", "Human Geography", "9-12"),
+    ("historical_studies", "Historical Studies", "9-12"),
+    ("holocaust_studies", "Holocaust Studies", "9-12"),
+    ("alabama_studies", "Alabama Studies", "9-12"),
+)
+
+# The 2024 authoritative PDF exposes one explicit Content Standards section for
+# each governed course. Government precedes Economics in the source even though
+# the teacher-facing catalog order above retains Economics first.
+_SOURCE_COURSE_ORDER = (
+    "kindergarten",
+    "grade_1",
+    "grade_2",
+    "grade_3",
+    "grade_4",
+    "grade_5",
+    "grade_6",
+    "grade_7",
+    "grade_8",
+    "grade_9",
+    "grade_10",
+    "grade_11",
+    "grade_12_us_government",
+    "grade_12_economics",
+    "psychology",
+    "sociology",
+    "contemporary_world_issues",
+    "human_geography",
+    "historical_studies",
+    "holocaust_studies",
+    "alabama_studies",
 )
 
 _MAIN_COMBINED = re.compile(r"^(\d+)\.\s+(.+)$")
@@ -78,45 +87,34 @@ _SUPPLEMENT_PREFIXES = (
 )
 
 
-@dataclass(frozen=True, slots=True)
-class _CourseSection:
-    course_key: str
-    display_name: str
-    grade_band: str
-    heading_index: int
-
-
 def parse_alabama_social_studies_2024(
     extracted: ExtractedDocument,
 ) -> ParsedStandardsDocument:
-    sections = _locate_sections(extracted.lines)
-    if len(sections) != len(_COURSES):
+    markers = _content_standard_markers(extracted.lines)
+    if len(markers) != len(_SOURCE_COURSE_ORDER):
         raise StandardsIngestError(
-            "Alabama Social Studies parser did not find exactly one standards section for "
-            "every expected grade or named course"
+            "Alabama Social Studies parser did not find exactly one Content Standards section "
+            "for every expected grade or named course"
         )
 
+    marker_by_course = dict(zip(_SOURCE_COURSE_ORDER, markers, strict=True))
     courses: list[ParsedCourse] = []
-    for index, section in enumerate(sections):
-        end = (
-            sections[index + 1].heading_index
-            if index + 1 < len(sections)
-            else len(extracted.lines)
-        )
+    for course_key, display_name, grade_band in _COURSES:
+        marker_index = marker_by_course[course_key]
+        end = _next_marker_after(marker_index, markers, len(extracted.lines))
         standards = _parse_social_studies_standards(
-            extracted.lines[section.heading_index + 1 : end]
+            extracted.lines[marker_index + 1 : end]
         )
         if len(standards) < 3:
             raise StandardsIngestError(
-                f"Alabama Social Studies {section.display_name} standards structure changed "
-                "unexpectedly"
+                f"Alabama Social Studies {display_name} standards structure changed unexpectedly"
             )
         courses.append(
             ParsedCourse(
-                course_key=section.course_key,
-                display_name=section.display_name,
-                source_course_code=None,
-                grade_band=section.grade_band,
+                course_key=course_key,
+                display_name=display_name,
+                source_course_code="Content Standards",
+                grade_band=grade_band,
                 standards=standards,
             )
         )
@@ -129,35 +127,22 @@ def parse_alabama_social_studies_2024(
     )
 
 
-def _locate_sections(lines: tuple[str, ...]) -> tuple[_CourseSection, ...]:
-    sections: list[_CourseSection] = []
-    used_indexes: set[int] = set()
-    for course_key, display_name, grade_band, aliases in _COURSES:
-        candidates: list[int] = []
-        for index, line in enumerate(lines):
-            if index in used_indexes or line not in aliases:
-                continue
-            if _has_first_standard(lines, index + 1, min(len(lines), index + 90)):
-                candidates.append(index)
-        if len(candidates) != 1:
-            continue
-        heading_index = candidates[0]
-        used_indexes.add(heading_index)
-        sections.append(
-            _CourseSection(
-                course_key=course_key,
-                display_name=display_name,
-                grade_band=grade_band,
-                heading_index=heading_index,
-            )
-        )
-    return tuple(sorted(sections, key=lambda item: item.heading_index))
+def _content_standard_markers(lines: tuple[str, ...]) -> list[int]:
+    return [
+        index
+        for index, line in enumerate(lines)
+        if line.lower().replace(" ", "") in {"contentstandards", "contentstandard"}
+    ]
 
 
-def _has_first_standard(lines: tuple[str, ...], start: int, end: int) -> bool:
-    return any(
-        line == "1" or line.startswith("1. ")
-        for line in lines[start:end]
+def _next_marker_after(
+    marker_index: int,
+    markers: list[int],
+    document_length: int,
+) -> int:
+    return next(
+        (candidate for candidate in markers if candidate > marker_index),
+        document_length,
     )
 
 
