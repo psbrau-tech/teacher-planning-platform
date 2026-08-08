@@ -10,7 +10,7 @@ from .standards_ingest import (
     StandardsIngestError,
 )
 
-DRIVER_TRAFFIC_SAFETY_PARSER_VERSION = "gate-e-alabama-driver-traffic-safety-2007-v1"
+DRIVER_TRAFFIC_SAFETY_PARSER_VERSION = "gate-e-alabama-driver-traffic-safety-2007-v2"
 _MAIN = re.compile(r"^(\d+)\.\s+(.+)$")
 _CHILD = re.compile(r"^([a-z])\.\s+(.+)$")
 _SUPPLEMENT_PREFIXES = ("Example:", "Examples:", "Note:", "Notes:")
@@ -19,6 +19,7 @@ _PHASE_HEADINGS = {
     "BEHIND-THE-WHEEL PHASE": "Behind-the-Wheel Phase",
     "BEHIND THE WHEEL PHASE": "Behind-the-Wheel Phase",
 }
+_EXPECTED_MAIN_COUNT = 21
 
 
 def parse_alabama_driver_traffic_safety_2007(
@@ -60,6 +61,10 @@ def parse_alabama_driver_traffic_safety_2007(
 
         main = _MAIN.match(line)
         if main is not None:
+            next_main = int(main.group(1))
+            if current_main is not None and next_main <= int(current_main):
+                flush()
+                break
             flush()
             current_main = main.group(1)
             current_code = current_main
@@ -89,10 +94,10 @@ def parse_alabama_driver_traffic_safety_2007(
     main_codes = [
         standard.code for standard in standards if standard.parent_code is None
     ]
-    expected_codes = [str(number) for number in range(1, 27)]
+    expected_codes = [str(number) for number in range(1, _EXPECTED_MAIN_COUNT + 1)]
     if main_codes != expected_codes:
         raise StandardsIngestError(
-            "Alabama Driver and Traffic Safety parser expected main standards 1 through 26"
+            "Alabama Driver and Traffic Safety parser expected main standards 1 through 21"
         )
     if len({standard.code for standard in standards}) != len(standards):
         raise StandardsIngestError(
