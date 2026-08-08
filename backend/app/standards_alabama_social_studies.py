@@ -243,10 +243,8 @@ def _parse_social_studies_standards(
 def _is_heading_noise(line: str) -> bool:
     if line.startswith("2024 Alabama Course of Study: Social Studies"):
         return True
-    if (
+    return (
         len(line) <= 90
         and not re.search(r"[.!?;:]$", line)
         and (line.isupper() or line.istitle())
-    ):
-        return True
-    return False
+    )
