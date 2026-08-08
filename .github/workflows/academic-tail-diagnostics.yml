@@ -31,7 +31,6 @@ jobs:
           python - <<'PY'
           from app.standards_catalog_fetch import fetch_current_alabama_catalog
           from app.standards_ingest import extract_document, fetch_source
-          from app.standards_alabama_parsers import _ela_content_marker, _ela_recurring_marker
 
           source_map = {source.source_key: source for source in fetch_current_alabama_catalog()}
           print("database_writes=0")
@@ -52,30 +51,37 @@ jobs:
               print(f"social|{index}|{line}")
 
           world = load("alabama_academic_world_languages")
-          asl_iv_candidates = [
+          level_iv_positions = [
               index for index, line in enumerate(world)
               if line.strip().lower() == "level iv"
-              and any(
-                  "american sign language" in nearby.lower()
-                  for nearby in world[max(0, index - 8):index]
-              )
           ]
-          print("=== asl_level_iv_tail ===")
-          print(f"asl_iv_candidates={asl_iv_candidates}")
-          for marker in asl_iv_candidates:
-              for index, line in enumerate(world[marker:marker + 220], start=marker):
+          print("=== world_languages_level_iv_positions ===")
+          print(f"level_iv_positions={level_iv_positions}")
+          if level_iv_positions:
+              marker = level_iv_positions[-1]
+              for index, line in enumerate(
+                  world[max(0, marker - 40):marker + 240],
+                  start=max(0, marker - 40),
+              ):
                   print(f"world|{index}|{line}")
 
           ela = load("alabama_academic_english_language_arts")
-          content = _ela_content_marker("Grade 2")
-          recurring = _ela_recurring_marker("Grade 2")
-          content_positions = [i for i, line in enumerate(ela) if line == content]
-          recurring_positions = [i for i, line in enumerate(ela) if line == recurring]
-          print("=== ela_grade_2 ===")
-          print(f"content_positions={content_positions}")
-          print(f"recurring_positions={recurring_positions}")
-          if content_positions:
-              marker = content_positions[0]
-              for index, line in enumerate(ela[max(0, marker - 80):marker + 220], start=max(0, marker - 80)):
+          grade_two_candidates = [
+              index for index, line in enumerate(ela)
+              if "grade 2" in line.lower()
+              and (
+                  "standard" in line.lower()
+                  or "recurring" in line.lower()
+                  or "content" in line.lower()
+              )
+          ]
+          print("=== ela_grade_2_candidates ===")
+          print(f"grade_two_candidates={grade_two_candidates}")
+          if grade_two_candidates:
+              marker = grade_two_candidates[-1]
+              for index, line in enumerate(
+                  ela[max(0, marker - 120):marker + 280],
+                  start=max(0, marker - 120),
+              ):
                   print(f"ela|{index}|{line}")
           PY
