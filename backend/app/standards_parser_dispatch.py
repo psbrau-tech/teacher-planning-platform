@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .standards_alabama_algebra_finance import parse_alabama_algebra_finance
+from .standards_alabama_arts import parse_alabama_arts_2024
 from .standards_alabama_career_mathematics import parse_alabama_career_mathematics
 from .standards_alabama_dlcs import parse_alabama_dlcs_2025
 from .standards_alabama_driver_traffic_safety import (
@@ -29,6 +30,8 @@ def parse_governed_standards_document(
 ) -> ParsedStandardsDocument:
     if parser_key == "alabama_algebra_finance_revised":
         return parse_alabama_algebra_finance(extracted)
+    if parser_key == "alabama_arts_2024":
+        return parse_alabama_arts_2024(extracted)
     if parser_key == "alabama_career_mathematics":
         return parse_alabama_career_mathematics(extracted)
     if parser_key == "alabama_dlcs_2025":
