@@ -1,0 +1,70 @@
+name: Academic Code Diagnostics
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/academic-code-diagnostics.yml'
+      - 'backend/app/standards_alabama_dlcs.py'
+      - 'backend/app/standards_alabama_driver_traffic_safety.py'
+      - 'backend/app/standards_alabama_health.py'
+      - 'backend/app/standards_alabama_parsers.py'
+      - 'backend/app/standards_alabama_physical_education.py'
+      - 'backend/app/standards_alabama_world_languages.py'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose-codes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install backend
+        run: python -m pip install -e '.[dev]'
+      - name: Inspect remaining academic code formats read-only
+        run: |
+          python - <<'PY'
+          import re
+
+          from app.standards_catalog_fetch import fetch_current_alabama_catalog
+          from app.standards_ingest import extract_document, fetch_source
+
+          targets = (
+              'alabama_academic_digital_literacy_computer_science',
+              'alabama_academic_driver_traffic_safety',
+              'alabama_academic_english_language_arts',
+              'alabama_academic_health',
+              'alabama_academic_physical_education',
+              'alabama_academic_world_languages',
+          )
+          source_map = {s.source_key: s for s in fetch_current_alabama_catalog()}
+          patterns = {
+              'alabama_academic_digital_literacy_computer_science': re.compile(r'^(?:K|[1-8]|9-12|\d+)[ .-]|^\d+\.'),
+              'alabama_academic_driver_traffic_safety': re.compile(r'^(?:\d+|[A-Z]{1,4})[ .-]'),
+              'alabama_academic_english_language_arts': re.compile(r'^(?:R?\d+\.|(?:KINDERGARTEN|GRADE \d+|RECURRING STANDARDS))', re.I),
+              'alabama_academic_health': re.compile(r'^(?:K|[1-8]|HE|HA|WH)[ .-]|^\d+\.'),
+              'alabama_academic_physical_education': re.compile(r'^(?:K|[1-8]|BK|AK|SO|AC|SC|LS|VA)[ .-]|^\d+\.'),
+              'alabama_academic_world_languages': re.compile(r'^(?:\d+|[A-Z]{1,5})[ .-]|Level (?:I|II|III|IV)', re.I),
+          }
+          print('database_writes=0')
+          for key in targets:
+              source = source_map[key]
+              fetched = fetch_source(source.document_url, source.document_format)
+              lines = extract_document(fetched).lines
+              pattern = patterns[key]
+              matches = [(i, line) for i, line in enumerate(lines) if pattern.search(line) and len(line) <= 220]
+              print(f'=== {key} | matches={len(matches)} ===')
+              if len(matches) > 240:
+                  matches = matches[:120] + matches[-120:]
+                  print('output_truncated=middle')
+              for index, line in matches:
+                  print(f'code[{index}]={line}')
+          PY
