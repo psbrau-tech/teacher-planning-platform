@@ -1,6 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 
-import { CanonicalStandardsPanel } from "./CanonicalStandardsPanel";
+import {
+  CanonicalStandardsPanel,
+  type CanonicalStandardEntry,
+} from "./CanonicalStandardsPanel";
 import { StandardsCourseMappingPanel } from "./StandardsCourseMappingPanel";
 
 type ScheduleException = {
@@ -18,6 +21,7 @@ type Props = {
   weekStart: string;
   disabled?: boolean;
   onChanged: () => void;
+  onStandardsSelectionSaved?: (selected: CanonicalStandardEntry[]) => void;
 };
 
 function addDays(isoDate: string, days: number): string {
@@ -41,6 +45,7 @@ export function ScheduleExceptionPanel({
   weekStart,
   disabled = false,
   onChanged,
+  onStandardsSelectionSaved,
 }: Props) {
   const [exceptions, setExceptions] = useState<ScheduleException[]>([]);
   const [exceptionDate, setExceptionDate] = useState(weekStart);
@@ -160,6 +165,7 @@ export function ScheduleExceptionPanel({
         assignmentId={assignmentId || null}
         weekStart={weekStart}
         disabled={disabled || working}
+        onSelectionSaved={onStandardsSelectionSaved}
       />
       <div className="card">
         <div className="section-heading compact">
