@@ -11,10 +11,11 @@ from .standards_ingest import (
     StandardsIngestError,
 )
 
-WORLD_LANGUAGES_PARSER_VERSION = "gate-e-alabama-world-languages-2017-v1"
+WORLD_LANGUAGES_PARSER_VERSION = "gate-e-alabama-world-languages-2017-v2"
 _MAIN = re.compile(r"^(\d+)\.\s+(.+)$")
 _CHILD = re.compile(r"^([a-z])\.\s+(.+)$")
 _SUPPLEMENT_PREFIXES = ("Example:", "Examples:")
+_APPENDIX_MARKER = "Appendix A"
 _PROFICIENCY_RANGES = (
     ("novice_low", "Novice Low Proficiency Range"),
     ("novice_mid", "Novice Mid Proficiency Range"),
@@ -73,12 +74,22 @@ def parse_alabama_world_languages_2017(
             + ", ".join(missing)
         )
 
+    appendix_index = _unique_index_after(
+        extracted.lines,
+        _APPENDIX_MARKER,
+        sections[-1].marker_index,
+    )
+    if appendix_index is None:
+        raise StandardsIngestError(
+            "Alabama World Languages parser did not find the authoritative Appendix A boundary"
+        )
+
     courses: list[ParsedCourse] = []
     for index, section in enumerate(sections):
         end = (
             sections[index + 1].marker_index
             if index + 1 < len(sections)
-            else len(extracted.lines)
+            else appendix_index
         )
         standards = _parse_section(
             extracted.lines[section.marker_index + 1 : end]
@@ -283,6 +294,19 @@ def _validate_section_sequence(
         raise StandardsIngestError(
             f"Alabama World Languages {display_name} produced duplicate standards identifiers"
         )
+
+
+def _unique_index_after(
+    lines: tuple[str, ...],
+    marker: str,
+    after: int,
+) -> int | None:
+    positions = [
+        index
+        for index, line in enumerate(lines)
+        if index > after and _normalized(line) == _normalized(marker)
+    ]
+    return positions[0] if len(positions) == 1 else None
 
 
 def _noise(line: str) -> bool:
