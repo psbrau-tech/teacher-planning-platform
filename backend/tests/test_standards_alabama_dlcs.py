@@ -8,7 +8,7 @@ from app.standards_ingest import ExtractedDocument, StandardsIngestError
 
 def _standards(first: int, last: int, label: str) -> str:
     return " ".join(
-        f"{number}. Required {label} standard {number}."
+        f"{number}. Required {label} content for this standard."
         for number in range(first, last + 1)
     )
 
@@ -28,7 +28,7 @@ def _document(*, omit_grade_8_standard: int | None = None) -> ExtractedDocument:
             "Kindergarten Grade 1 Grade 2",
             (
                 "Standards for this focus area are developmentally appropriate beginning "
-                "in Grade 2. 12. Required Grade 2 standard 12."
+                "in Grade 2. 12. Required Grade 2 content for this standard."
             ),
             "Digital Proficiency",
             "Kindergarten Grade 1 Grade 2",
@@ -58,7 +58,7 @@ def _document(*, omit_grade_8_standard: int | None = None) -> ExtractedDocument:
     ]
     lines.append(
         " ".join(
-            f"{number}. Required Grade 8 standard {number}."
+            f"{number}. Required Grade 8 content for this standard."
             for number in grade_8_numbers
         )
     )
@@ -112,9 +112,9 @@ def test_dlcs_parser_uses_developmental_notice_to_skip_blank_grade_lanes() -> No
     grade_2 = next(course for course in parsed.courses if course.course_key == "grade_2")
 
     assert grade_1.standards[11].code == "12"
-    assert grade_1.standards[11].text == "Required Grade 1 standard 12."
+    assert grade_1.standards[11].text == "Required Grade 1 content for this standard."
     assert grade_2.standards[11].code == "12"
-    assert grade_2.standards[11].text == "Required Grade 2 standard 12."
+    assert grade_2.standards[11].text == "Required Grade 2 content for this standard."
 
 
 def test_dlcs_parser_splits_multiple_linearized_standards_on_one_line_without_duplication() -> None:
@@ -123,9 +123,13 @@ def test_dlcs_parser_splits_multiple_linearized_standards_on_one_line_without_du
         course for course in parsed.courses if course.course_key == "kindergarten"
     )
 
-    assert kindergarten.standards[0].text == "Required Kindergarten standard 1."
-    assert kindergarten.standards[1].text == "Required Kindergarten standard 2."
-    assert "Required Kindergarten standard 1." not in kindergarten.standards[1].text
+    assert kindergarten.standards[0].text == (
+        "Required Kindergarten content for this standard."
+    )
+    assert kindergarten.standards[1].text == (
+        "Required Kindergarten content for this standard."
+    )
+    assert kindergarten.standards[1].code == "2"
 
 
 def test_dlcs_parser_fails_closed_when_a_grade_lane_has_a_sequence_gap() -> None:
