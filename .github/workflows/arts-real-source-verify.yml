@@ -46,40 +46,26 @@ jobs:
           for section in sections:
               print(
                   "section="
-                  f"{section.discipline}|{section.section_name}|"
+                  f"{section.discipline}|{section.course_family or '-'}|"
+                  f"{section.section_name}|"
                   f"{','.join(lane for lane, _ in section.lanes)}"
               )
-              suspicious = (
-                  section.discipline == "MUSIC"
-                  or (
-                      section.discipline == "MEDIA ARTS"
-                      and "III and IV" in section.section_name
-                  )
-                  or (
-                      section.discipline == "VISUAL ARTS"
-                      and "Middle School" in section.section_name
-                  )
-              )
-              if suspicious:
-                  before = extracted.lines[
-                      max(0, section.marker_index - 24) : section.marker_index
-                  ]
-                  after = extracted.lines[
-                      section.marker_index + 1 : min(
-                          section.end_index,
-                          section.marker_index + 24,
-                      )
-                  ]
-                  print("context_before=" + " || ".join(before))
-                  print("context_after=" + " || ".join(after))
               for lane, _ in section.lanes:
                   candidate_keys.append(
-                      _course_key(section.discipline, section.section_name, lane)
+                      _course_key(
+                          section.discipline,
+                          section.section_name,
+                          lane,
+                          section.course_family,
+                      )
                   )
           duplicate_keys = sorted(
               key for key, count in Counter(candidate_keys).items() if count > 1
           )
-          print(f"duplicate_candidate_keys={duplicate_keys}")
+          if duplicate_keys:
+              raise RuntimeError(
+                  f"duplicate canonical Arts course identities: {duplicate_keys}"
+              )
 
           parsed = parse_alabama_arts_2024(extracted)
           print(f"source_sha256={fetched.source_sha256}")
