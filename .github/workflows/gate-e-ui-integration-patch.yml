@@ -1,0 +1,135 @@
+name: Gate E UI Integration Patch
+
+on:
+  push:
+    branches:
+      - feature/gate-e-standards-ai
+    paths:
+      - ".github/workflows/gate-e-ui-integration-patch.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/gate-e-standards-ai
+          fetch-depth: 0
+      - name: Integrate governed Gate E UI
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("frontend/src/main.tsx")
+          text = path.read_text()
+
+          def replace_once(old: str, new: str) -> None:
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"Expected exactly one anchor, found {count}: {old[:120]!r}")
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              'import React, { useEffect, useMemo, useState } from "react";\n'
+              'import ReactDOM from "react-dom/client";\n'
+              'import "./styles.css";\n'
+              'import { ScheduleExceptionPanel } from "./ScheduleExceptionPanel";\n',
+              'import React, { useCallback, useEffect, useMemo, useState } from "react";\n'
+              'import ReactDOM from "react-dom/client";\n'
+              'import { AiPlanningPanel, type PlanningFieldKey } from "./AiPlanningPanel";\n'
+              'import { AiReflectionPanel } from "./AiReflectionPanel";\n'
+              'import { ScheduleExceptionPanel } from "./ScheduleExceptionPanel";\n'
+              'import { StandardsAdministrationPanel } from "./StandardsAdministrationPanel";\n'
+              'import { StandardsCourseMappingPanel } from "./StandardsCourseMappingPanel";\n'
+              'import { StandardsPanel, type StandardEntry } from "./StandardsPanel";\n'
+              'import "./styles.css";\n',
+          )
+
+          replace_once(
+              '  const [validations, setValidations] = useState<Record<string, ValidationEntry>>({});\n'
+              '  const [busy, setBusy] = useState(false);\n',
+              '  const [validations, setValidations] = useState<Record<string, ValidationEntry>>({});\n'
+              '  const [validationFinalized, setValidationFinalized] = useState(false);\n'
+              '  const [standardsMappingVersion, setStandardsMappingVersion] = useState(0);\n'
+              '  const [busy, setBusy] = useState(false);\n',
+          )
+
+          replace_once(
+              '    setPlan([]);\n'
+              '    setValidations({});\n'
+              '    setDraftRevision(null);\n',
+              '    setPlan([]);\n'
+              '    setValidations({});\n'
+              '    setValidationFinalized(false);\n'
+              '    setDraftRevision(null);\n',
+          )
+
+          replace_once(
+              '  async function api<T>(path: string, init?: RequestInit): Promise<T> {\n',
+              '  const resolveSelectedStandards = useCallback((selected: StandardEntry[]) => {\n'
+              '    const exactText = selected\n'
+              '      .map((standard) => `${standard.code} — ${standard.text}`)\n'
+              '      .join("\\n");\n'
+              '    setDraft((current) => ({ ...current, standards: exactText }));\n'
+              '  }, []);\n\n'
+              '  const applyAiPlanningField = useCallback((field: PlanningFieldKey, value: string) => {\n'
+              '    const draftKey = field === "do_statement" ? "do" : field;\n'
+              '    setDraft((current) => ({ ...current, [draftKey]: value }));\n'
+              '  }, []);\n\n'
+              '  async function api<T>(path: string, init?: RequestInit): Promise<T> {\n',
+          )
+
+          replace_once(
+              '      setMessage(`Friday validation saved. ${addDays(weekStart, 7)} is ready to generate.`);\n'
+              '      setView("dashboard");\n',
+              '      setValidationFinalized(true);\n'
+              '      setMessage(`Friday validation saved. ${addDays(weekStart, 7)} is ready to generate.`);\n',
+          )
+
+          admin_anchor = '''            {isPlatformAdmin && (\n              <section>\n                <div className="section-heading compact"><div><p className="eyebrow">Platform Administrator</p><h2>AI cost reporting</h2><p className="supporting">Cost reporting is visible only to the Platform Administrator role.</p></div></div>'''
+          admin_new = '''            {isPlatformAdmin && (\n              <>\n                <StandardsAdministrationPanel accessToken={session.access_token} disabled={busy} />\n                <section>\n                  <div className="section-heading compact"><div><p className="eyebrow">Platform Administrator</p><h2>AI cost reporting</h2><p className="supporting">Cost reporting is visible only to the Platform Administrator role.</p></div></div>'''
+          replace_once(admin_anchor, admin_new)
+          replace_once(
+              '''                )}\n              </section>\n            )}\n          </section>\n        )}\n\n        {view === "curriculum"''',
+              '''                )}\n                </section>\n              </>\n            )}\n          </section>\n        )}\n\n        {view === "curriculum"''',
+          )
+
+          plan_anchor = '''            {plan.length > 0 && <div className="plan-list">{plan.map((lesson) => <article key={lesson.scheduled_lesson_id}><div><strong>{lesson.lesson_date}</strong><span>{lesson.planned_minutes} minutes</span></div><div><small>{lesson.unit_title}</small><h3>{lesson.lesson_title}</h3></div><span className="badge">Segment {lesson.segment_number}</span></article>)}</div>}\n            <div className="section-heading compact draft-heading">'''
+          plan_new = '''            {plan.length > 0 && <div className="plan-list">{plan.map((lesson) => <article key={lesson.scheduled_lesson_id}><div><strong>{lesson.lesson_date}</strong><span>{lesson.planned_minutes} minutes</span></div><div><small>{lesson.unit_title}</small><h3>{lesson.lesson_title}</h3></div><span className="badge">Segment {lesson.segment_number}</span></article>)}</div>}\n            <StandardsCourseMappingPanel\n              accessToken={session.access_token}\n              assignmentId={selectedAssignmentId || null}\n              disabled={busy}\n              onMappingSaved={() => setStandardsMappingVersion((current) => current + 1)}\n            />\n            <StandardsPanel\n              key={`${selectedAssignmentId}-${weekStart}-${standardsMappingVersion}`}\n              accessToken={session.access_token}\n              assignmentId={selectedAssignmentId || null}\n              weekStart={weekStart}\n              onSelectionResolved={resolveSelectedStandards}\n            />\n            <div className="section-heading compact draft-heading">'''
+          replace_once(plan_anchor, plan_new)
+
+          replace_once(
+              '              <label>Standards<input value={draft.standards} onChange={(event) => setDraft({ ...draft, standards: event.target.value })} /></label>\n',
+              '              <label className="full-width">Selected authoritative standards<textarea rows={4} value={draft.standards} readOnly aria-readonly="true" /></label>\n',
+          )
+
+          action_anchor = '''            </div>\n            <div className="action-bar">\n              <div><strong>{selectedAssignment?.course_name ?? "Select a course"}</strong>'''
+          action_new = '''            </div>\n            <AiPlanningPanel\n              accessToken={session.access_token}\n              assignmentId={selectedAssignmentId || null}\n              weekStart={weekStart}\n              currentFields={{\n                unit_topic: draft.unit_topic,\n                literacy_standards: draft.literacy_standards,\n                act_preparation: draft.act_preparation,\n                learning_targets: draft.learning_targets,\n                know: draft.know,\n                understand: draft.understand,\n                do_statement: draft.do,\n                activities: draft.activities,\n                assessments: draft.assessments,\n                resources: draft.resources,\n                monday: draft.monday,\n                tuesday: draft.tuesday,\n                wednesday: draft.wednesday,\n                thursday: draft.thursday,\n                friday: draft.friday,\n              }}\n              onApplyField={applyAiPlanningField}\n            />\n            <div className="action-bar">\n              <div><strong>{selectedAssignment?.course_name ?? "Select a course"}</strong>'''
+          replace_once(action_anchor, action_new)
+
+          validation_anchor = '''            <div className="action-bar"><div><strong>{plan.filter((lesson) => !validations[lesson.scheduled_lesson_id]?.status).length} lessons still pending</strong><span>Missed lessons automatically lead next week&apos;s queue.</span></div><button className="primary" disabled={!plan.length || plan.some((lesson) => !validations[lesson.scheduled_lesson_id]?.status) || busy} onClick={() => void saveValidation()}>Complete Friday validation</button></div>\n          </section>'''
+          validation_new = '''            <div className="action-bar"><div><strong>{plan.filter((lesson) => !validations[lesson.scheduled_lesson_id]?.status).length} lessons still pending</strong><span>Missed lessons automatically lead next week&apos;s queue.</span></div><button className="primary" disabled={!plan.length || plan.some((lesson) => !validations[lesson.scheduled_lesson_id]?.status) || busy} onClick={() => void saveValidation()}>Complete Friday validation</button></div>\n            <AiReflectionPanel\n              accessToken={session.access_token}\n              assignmentId={selectedAssignmentId || null}\n              weekStart={weekStart}\n              disabled={!validationFinalized || busy}\n              onApplyReflection={(value) =>\n                setDraft((current) => ({ ...current, reflection: value }))\n              }\n            />\n            {validationFinalized ? (\n              <p className="guidance-text">\n                Friday validation is finalized. Review the optional reflection draft above; accepted\n                text remains in the working form until you save the weekly draft.\n              </p>\n            ) : null}\n          </section>'''
+          replace_once(validation_anchor, validation_new)
+
+          path.write_text(text)
+          PY
+      - name: Verify frontend build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+      - name: Commit integration
+        run: |
+          if git diff --quiet; then
+            echo "No integration changes required"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/src/main.tsx
+          git commit -m "integrate Gate E standards and AI workflow UI"
+          git push origin HEAD:feature/gate-e-standards-ai
