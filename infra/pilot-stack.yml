@@ -56,6 +56,9 @@ Parameters:
   SupabaseAnonKeySecretArn:
     Type: String
     Default: ''
+  OpenAiApiKeySecretArn:
+    Type: String
+    Default: ''
 
 Conditions:
   CreateService: !Equals [!Ref DeployService, 'true']
@@ -176,7 +179,7 @@ Resources:
           Value: !Sub ${ResourceNamePrefix}-task-sg
 
   ApplicationLoadBalancer:
-    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Type: AWS::EC2::LoadBalancer
     Properties:
       Name: !Sub ${ResourceNamePrefix}-alb
       Scheme: internet-facing
@@ -313,6 +316,7 @@ Resources:
                 Resource:
                   - !Ref SupabaseUrlSecretArn
                   - !Ref SupabaseAnonKeySecretArn
+                  - !Ref OpenAiApiKeySecretArn
 
   TaskRole:
     Type: AWS::IAM::Role
@@ -365,6 +369,8 @@ Resources:
               ValueFrom: !Ref SupabaseUrlSecretArn
             - Name: TPP_SUPABASE_ANON_KEY
               ValueFrom: !Ref SupabaseAnonKeySecretArn
+            - Name: TPP_OPENAI_API_KEY
+              ValueFrom: !Ref OpenAiApiKeySecretArn
           MountPoints:
             - SourceVolume: temp
               ContainerPath: /tmp
