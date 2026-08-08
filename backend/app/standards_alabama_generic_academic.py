@@ -220,9 +220,12 @@ def _is_heading_noise(line: str) -> bool:
         return True
     if line.upper().endswith("CONTENT STANDARDS"):
         return True
-    if len(line) <= 90 and not re.search(r"[.!?;:]$", line):
-        if line.isupper() or line.istitle():
-            return True
+    if (
+        len(line) <= 90
+        and not re.search(r"[.!?;:]$", line)
+        and (line.isupper() or line.istitle())
+    ):
+        return True
     return False
 
 
