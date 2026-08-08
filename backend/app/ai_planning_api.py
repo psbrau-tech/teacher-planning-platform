@@ -14,6 +14,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from .act_reference import (
+    ActReferenceError,
+    load_act_candidate_entries,
+    load_approved_act_entries,
+)
 from .ai_openai import AiServiceError, AiUsage, request_structured_response
 from .auth import AuthenticatedTeacher, require_teacher
 from .settings import Settings, get_settings
@@ -45,6 +50,22 @@ class CurrentPlanningFields(BaseModel):
     wednesday: str = Field(default="", max_length=_AI_FIELD_MAX_LENGTH)
     thursday: str = Field(default="", max_length=_AI_FIELD_MAX_LENGTH)
     friday: str = Field(default="", max_length=_AI_FIELD_MAX_LENGTH)
+
+
+class ModelPlanningSuggestion(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    learning_targets: str = Field(max_length=_AI_FIELD_MAX_LENGTH)
+    know: str = Field(max_length=_AI_FIELD_MAX_LENGTH)
+    understand: str = Field(max_length=_AI_FIELD_MAX_LENGTH)
+    do_statement: str = Field(max_length=_AI_FIELD_MAX_LENGTH)
+    activities: str = Field(max_length=_AI_FIELD_MAX_LENGTH)
+    assessments: str = Field(max_length=_AI_FIELD_MAX_LENGTH)
+    resources: str = Field(max_length=_AI_FIELD_MAX_LENGTH)
+    literacy_standards: str = Field(max_length=_AI_FIELD_MAX_LENGTH)
+    recommended_act_reference_ids: list[str] = Field(default_factory=list, max_length=8)
+    act_instructional_application: str = Field(max_length=_AI_FIELD_MAX_LENGTH)
+    alignment_summary: str = Field(max_length=_AI_FIELD_MAX_LENGTH)
 
 
 class PlanningSuggestion(BaseModel):
@@ -90,7 +111,12 @@ PLANNING_SUGGESTION_SCHEMA: JsonRecord = {
         "assessments": {"type": "string", "maxLength": _AI_FIELD_MAX_LENGTH},
         "resources": {"type": "string", "maxLength": _AI_FIELD_MAX_LENGTH},
         "literacy_standards": {"type": "string", "maxLength": _AI_FIELD_MAX_LENGTH},
-        "act_preparation": {"type": "string", "maxLength": _AI_FIELD_MAX_LENGTH},
+        "recommended_act_reference_ids": {
+            "type": "array", "items": {"type": "string"}, "maxItems": 8
+        },
+        "act_instructional_application": {
+            "type": "string", "maxLength": _AI_FIELD_MAX_LENGTH
+        },
         "alignment_summary": {"type": "string", "maxLength": _AI_FIELD_MAX_LENGTH},
     },
     "required": [
@@ -102,7 +128,8 @@ PLANNING_SUGGESTION_SCHEMA: JsonRecord = {
         "assessments",
         "resources",
         "literacy_standards",
-        "act_preparation",
+        "recommended_act_reference_ids",
+        "act_instructional_application",
         "alignment_summary",
     ],
     "additionalProperties": False,
@@ -114,9 +141,11 @@ rewrite, renumber, fabricate, or attribute any standard that is not supplied. Bu
 teacher-reviewable suggestions aligned to the selected standards, scheduled lessons, and current
 planning fields. Suggestions are drafts only and will not be saved unless the teacher explicitly
 accepts or edits them. Do not infer or request student-specific information. Do not mention student
-names, grades, accommodations, IEPs, or individual performance. If an ACT or literacy connection is
-not genuinely useful for the selected standards, return a short neutral statement rather than
-inventing an alignment. Return only the requested structured fields."""
+names, grades, accommodations, IEPs, or individual performance. ACT references are a separate
+governed first-party ACT catalog. Recommend only reference IDs supplied in
+approved_act_reference_candidates; never invent an ACT ID or rewrite ACT reference wording. If no
+authentic ACT connection is useful, return an empty ID list and a short neutral instructional
+application. Return only the requested structured fields."""
 
 
 def _records(payload: object) -> list[JsonRecord]:
@@ -353,6 +382,22 @@ def suggest_planning(
     assignment, scheduled_rows = _assignment_context(client, assignment_id, week_start)
     lesson_titles = _lesson_titles(client, scheduled_rows)
     context = _build_context(assignment, scheduled_rows, lesson_titles, standards, current)
+    try:
+        act_candidates = load_act_candidate_entries(client, str(context))
+    except ActReferenceError as error:
+        raise HTTPException(
+            status_code=503, detail="Approved ACT reference catalog is unavailable"
+        ) from error
+    context["approved_act_reference_candidates"] = [
+        {
+            "reference_id": item.get("reference_code"),
+            "domain": item.get("domain"),
+            "category": item.get("category"),
+            "score_range": item.get("score_range"),
+            "authoritative_text": item.get("exact_text"),
+        }
+        for item in act_candidates
+    ]
 
     try:
         result = request_structured_response(
@@ -384,8 +429,36 @@ def suggest_planning(
         raise HTTPException(status_code=503, detail=str(error)) from error
 
     try:
-        suggestions = PlanningSuggestion.model_validate(result.data)
-    except ValidationError as error:
+        model_suggestions = ModelPlanningSuggestion.model_validate(result.data)
+        act_entries = load_approved_act_entries(
+            client, model_suggestions.recommended_act_reference_ids
+        )
+        if act_entries:
+            resolved_lines = [
+                f"{item.get('reference_code')} — {item.get('exact_text')}"
+                for item in act_entries
+            ]
+            act_preparation = (
+                "ACT College and Career Readiness connection:\n- "
+                + "\n- ".join(resolved_lines)
+                + "\nInstructional application: "
+                + model_suggestions.act_instructional_application
+            )
+        else:
+            act_preparation = model_suggestions.act_instructional_application
+        suggestions = PlanningSuggestion(
+            learning_targets=model_suggestions.learning_targets,
+            know=model_suggestions.know,
+            understand=model_suggestions.understand,
+            do_statement=model_suggestions.do_statement,
+            activities=model_suggestions.activities,
+            assessments=model_suggestions.assessments,
+            resources=model_suggestions.resources,
+            literacy_standards=model_suggestions.literacy_standards,
+            act_preparation=act_preparation,
+            alignment_summary=model_suggestions.alignment_summary,
+        )
+    except (ValidationError, ActReferenceError) as error:
         _record_usage(
             client,
             identity=identity,
@@ -396,7 +469,7 @@ def suggest_planning(
         )
         raise HTTPException(
             status_code=503,
-            detail="AI planning assistance returned invalid structured data",
+            detail="AI planning assistance returned invalid or unapproved reference data",
         ) from error
 
     usage_event_id = _record_usage(

@@ -61,6 +61,16 @@ class FakeClient:
             ]
         if resource == "lessons":
             return [{"id": str(LESSON_ID), "title": "Leadership styles and team roles"}]
+        if resource == "act_reference_entries":
+            return [{
+                "reference_code": "CLR 401",
+                "domain": "Reading",
+                "category": "CLR",
+                "score_range": "20-23",
+                "exact_text": "Locate important details in somewhat challenging passages",
+                "source_id": str(SOURCE_ID),
+                "snapshot_id": str(SNAPSHOT_ID),
+            }]
         if resource == "ai_usage_events":
             return [{"id": str(USAGE_ID)}]
         if resource == "rpc/record_ai_suggestion_decision" and isinstance(payload, dict):
@@ -132,7 +142,8 @@ def _suggestion_result() -> StructuredAiResult:
             "assessments": "Exit ticket.",
             "resources": "JROTC curriculum and scenario cards.",
             "literacy_standards": "Read and cite evidence from an informational scenario.",
-            "act_preparation": "Identify main ideas and supporting evidence.",
+            "recommended_act_reference_ids": ["CLR 401"],
+            "act_instructional_application": "Identify main ideas and supporting evidence.",
             "alignment_summary": "Suggestions align to the selected Army JROTC lesson.",
         },
         usage=AiUsage(
@@ -197,6 +208,8 @@ def test_ai_planning_context_is_server_grounded_and_excludes_identity_pii(
     body = response.json()
     assert body["usage_event_id"] == str(USAGE_ID)
     assert body["suggestions"]["learning_targets"] == "Compare leadership styles."
+    assert "CLR 401" in body["suggestions"]["act_preparation"]
+    assert "Locate important details" in body["suggestions"]["act_preparation"]
 
     context = captured[0]["context"]
     assert context["selected_authoritative_standards"] == [
@@ -210,6 +223,7 @@ def test_ai_planning_context_is_server_grounded_and_excludes_identity_pii(
         }
     ]
     assert context["current_teacher_plan"]["learning_targets"] == "Teacher current target"
+    assert context["approved_act_reference_candidates"][0]["reference_id"] == "CLR 401"
     serialized = str(context).lower()
     assert "teacher@example.test" not in serialized
     assert "synthetic teacher" not in serialized

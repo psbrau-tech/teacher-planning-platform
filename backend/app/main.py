@@ -7,6 +7,7 @@ from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from .administration_api import router as administration_router
+from .act_reference_admin_api import router as act_reference_admin_router
 from .ai_planning_api import router as ai_planning_router
 from .ai_reflection_api import router as ai_reflection_router
 from .curriculum_api import router as curriculum_router
@@ -52,6 +53,7 @@ app = FastAPI(
 app.include_router(identity_router)
 app.include_router(readiness_router)
 app.include_router(administration_router)
+app.include_router(act_reference_admin_router)
 app.include_router(curriculum_router)
 app.include_router(teaching_assignment_router)
 app.include_router(live_planning_router)
