@@ -13,17 +13,35 @@ def _standards(first: int, last: int, label: str) -> str:
     )
 
 
+def _interleaved_k2(first: int, last: int) -> list[str]:
+    lines: list[str] = []
+    for number in range(first, last + 1):
+        lines.append(
+            " ".join(
+                [
+                    f"{number}. Required Kindergarten content for this standard.",
+                    f"{number}. Required Grade 1 content for this standard.",
+                    f"{number}. Required Grade 2 content for this standard.",
+                ]
+            )
+        )
+    return lines
+
+
 def _document(*, omit_grade_8_standard: int | None = None) -> ExtractedDocument:
     lines: list[str] = ["Computational Thinking"]
 
-    # K-2 first table leaves Grade 1 poised at 12 so the developmental notice is
-    # required to assign Grade 2 standard 12 to the correct lane.
+    # The current Alabama PDF linearizes K-2 tables row-by-row across grade
+    # columns. The parser must therefore return to earlier grade lanes on later
+    # rows instead of assuming a monotonic left-to-right lane cursor.
     lines.extend(
         [
             "Kindergarten Grade 1 Grade 2",
-            _standards(1, 10, "Kindergarten"),
-            _standards(1, 11, "Grade 1"),
-            _standards(1, 11, "Grade 2"),
+            *_interleaved_k2(1, 10),
+            (
+                "11. Required Grade 1 content for this standard. "
+                "11. Required Grade 2 content for this standard."
+            ),
             "Impact of Computing",
             "Kindergarten Grade 1 Grade 2",
             (
@@ -52,9 +70,7 @@ def _document(*, omit_grade_8_standard: int | None = None) -> ExtractedDocument:
         ]
     )
     grade_8_numbers = [
-        number
-        for number in range(1, 37)
-        if number != omit_grade_8_standard
+        number for number in range(1, 37) if number != omit_grade_8_standard
     ]
     lines.append(
         " ".join(
