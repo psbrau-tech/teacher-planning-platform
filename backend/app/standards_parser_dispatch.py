@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from .standards_alabama_algebra_finance import parse_alabama_algebra_finance
+from .standards_alabama_career_mathematics import parse_alabama_career_mathematics
+from .standards_alabama_driver_traffic_safety import (
+    parse_alabama_driver_traffic_safety_2007,
+)
 from .standards_alabama_health import parse_alabama_health_2019
 from .standards_alabama_math import parse_alabama_math_2019
 from .standards_alabama_parsers import (
@@ -20,6 +25,12 @@ def parse_governed_standards_document(
     parser_key: str,
     extracted: ExtractedDocument,
 ) -> ParsedStandardsDocument:
+    if parser_key == "alabama_algebra_finance_revised":
+        return parse_alabama_algebra_finance(extracted)
+    if parser_key == "alabama_career_mathematics":
+        return parse_alabama_career_mathematics(extracted)
+    if parser_key == "alabama_driver_traffic_safety_2007":
+        return parse_alabama_driver_traffic_safety_2007(extracted)
     if parser_key == "alabama_ela_2021":
         return parse_alabama_ela_k12(extracted)
     if parser_key in {"alabama_bma_2021", "alabama_cte_cos_generic"}:
