@@ -50,7 +50,8 @@ def parse_alabama_math_2019(extracted: ExtractedDocument) -> ParsedStandardsDocu
         display_name: _unique_index(extracted.lines, f"{display_name} Content Standards")
         for _, display_name, _ in _COURSES
     }
-    if any(index is None for index in markers.values()):
+    marker_values = [markers[display_name] for _, display_name, _ in _COURSES]
+    if any(index is None for index in marker_values):
         raise StandardsIngestError(
             "Alabama Mathematics parser did not find exactly one content-standards section "
             "for every expected K-12 mathematics course"
@@ -63,9 +64,7 @@ def parse_alabama_math_2019(extracted: ExtractedDocument) -> ParsedStandardsDocu
             "Practices"
         )
 
-    ordered_markers = [
-        int(markers[display_name]) for _, display_name, _ in _COURSES
-    ]
+    ordered_markers = [index for index in marker_values if index is not None]
     courses: list[ParsedCourse] = []
     for index, (course_key, display_name, grade_band) in enumerate(_COURSES):
         start = ordered_markers[index] + 1
