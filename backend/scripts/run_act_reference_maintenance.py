@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.act_benchmarks import fetch_and_parse_act_benchmarks, stage_act_benchmarks
 from app.act_reference import (
     ACT_CCR_SOURCES,
     ActReferenceError,
@@ -23,6 +24,13 @@ def main() -> int:
                 f"{source_key}|domain={domain}|entries={len(parsed.entries)}|"
                 f"snapshot={snapshot_id}|status=pending_platform_admin_approval"
             )
+
+        benchmarks = fetch_and_parse_act_benchmarks()
+        benchmark_snapshot_id = stage_act_benchmarks(client, benchmarks)
+        print(
+            f"act_readiness_benchmarks|benchmarks={len(benchmarks.benchmarks)}|"
+            f"snapshot={benchmark_snapshot_id}|status=pending_platform_admin_approval"
+        )
     except ActReferenceError as error:
         print(f"ACT reference maintenance failed: {error}")
         return 1
