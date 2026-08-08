@@ -1,6 +1,8 @@
 from hashlib import sha256
 
-from app.standards_ingest import ExtractedDocument
+import pytest
+
+from app.standards_ingest import ExtractedDocument, StandardsIngestError
 from app.standards_parser_dispatch import parse_governed_standards_document
 
 
@@ -66,9 +68,7 @@ def test_ela_parser_fails_closed_if_any_grade_content_section_is_missing() -> No
             ]
         )
 
-    import pytest
-
-    with pytest.raises(Exception, match="every K-12 grade"):
+    with pytest.raises(StandardsIngestError, match="every K-12 grade"):
         parse_governed_standards_document("alabama_ela_2021", _extracted(lines))
 
 
