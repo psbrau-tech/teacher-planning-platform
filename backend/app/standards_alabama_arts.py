@@ -205,10 +205,14 @@ def _parse_section(lines: tuple[str, ...], section: _Section) -> list[ParsedCour
             raise StandardsIngestError(
                 f"Alabama Arts {section.discipline} {lane_name} produced no standards"
             )
-        display_name = _display_name(section.discipline, lane_name)
+        display_name = _display_name(section.discipline, section.section_name, lane_name)
         courses.append(
             ParsedCourse(
-                course_key=_course_key(section.discipline, lane_name),
+                course_key=_course_key(
+                    section.discipline,
+                    section.section_name,
+                    lane_name,
+                ),
                 display_name=display_name,
                 source_course_code=section.section_name,
                 grade_band=grade_band,
@@ -370,8 +374,16 @@ def _courses_from_section(
     ):
         courses.append(
             ParsedCourse(
-                course_key=_course_key(section.discipline, lane_name),
-                display_name=_display_name(section.discipline, lane_name),
+                course_key=_course_key(
+                    section.discipline,
+                    section.section_name,
+                    lane_name,
+                ),
+                display_name=_display_name(
+                    section.discipline,
+                    section.section_name,
+                    lane_name,
+                ),
                 source_course_code=section.section_name,
                 grade_band=grade_band,
                 standards=tuple(standards),
@@ -390,15 +402,15 @@ def _append_unique(target: list[ParsedStandard], entry: _Entry) -> None:
     target.append(ParsedStandard(code=code, text=entry.text, strand=entry.strand))
 
 
-def _display_name(discipline: str, lane_name: str) -> str:
-    discipline_name = discipline.title().replace("Media Arts", "Media Arts")
-    if lane_name.lower().startswith(discipline_name.lower()):
-        return lane_name
-    return f"{discipline_name} {lane_name}"
+def _display_name(discipline: str, section_name: str, lane_name: str) -> str:
+    discipline_name = discipline.title()
+    if lane_name == section_name:
+        return f"{discipline_name} {section_name}"
+    return f"{discipline_name} {section_name} — {lane_name}"
 
 
-def _course_key(discipline: str, lane_name: str) -> str:
-    value = f"{discipline}_{lane_name}".lower()
+def _course_key(discipline: str, section_name: str, lane_name: str) -> str:
+    value = f"{discipline}_{section_name}_{lane_name}".lower()
     value = re.sub(r"[^a-z0-9]+", "_", value).strip("_")
     return value
 
