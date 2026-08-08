@@ -11,7 +11,7 @@ from .standards_ingest import (
     StandardsIngestError,
 )
 
-SOCIAL_STUDIES_PARSER_VERSION = "gate-e-alabama-social-studies-2024-v4"
+SOCIAL_STUDIES_PARSER_VERSION = "gate-e-alabama-social-studies-2024-v5"
 
 _COURSES = (
     ("kindergarten", "Kindergarten", "K"),
@@ -83,6 +83,10 @@ _SUPPLEMENT_PREFIXES = (
     "Clarification:",
     "Suggested Activities:",
 )
+_DIRECTION_PREFIXES = (
+    "Please refer to Directions for Interpreting Standards",
+    "Each content standard completes the stem Students will",
+)
 _SOURCE_FOOTER = "2024 Alabama Course of Study: Social Studies"
 
 
@@ -101,12 +105,7 @@ def parse_alabama_social_studies_2024(
     for course_key, display_name, grade_band in _COURSES:
         marker_index = marker_by_course[course_key]
         next_marker = _next_marker_after(marker_index, markers, len(extracted.lines))
-        next_prelude = (
-            _detached_entries_before_marker(extracted.lines, next_marker)
-            if next_marker < len(extracted.lines)
-            else ()
-        )
-        end = next_prelude[0][0] if next_prelude else next_marker
+        end = _next_course_boundary(extracted.lines, marker_index, next_marker)
         detached_before = tuple(
             code
             for _, code in _detached_entries_before_marker(
@@ -164,6 +163,22 @@ def _next_marker_after(
         (candidate for candidate in markers if candidate > marker_index),
         document_length,
     )
+
+
+def _next_course_boundary(
+    lines: tuple[str, ...],
+    marker_index: int,
+    next_marker: int,
+) -> int:
+    if next_marker >= len(lines):
+        return next_marker
+
+    for index in range(marker_index + 1, next_marker):
+        if lines[index].strip().lower() == "course topics:":
+            return index
+
+    next_prelude = _detached_entries_before_marker(lines, next_marker)
+    return next_prelude[0][0] if next_prelude else next_marker
 
 
 def _detached_entries_before_marker(
@@ -230,7 +245,7 @@ def _parse_social_studies_standards(
         line = re.sub(r"\s+", " ", raw_line).strip()
         if not line:
             continue
-        if line.startswith(_SOURCE_FOOTER):
+        if line.startswith(_SOURCE_FOOTER) or line.startswith(_DIRECTION_PREFIXES):
             continue
 
         child = _CHILD_COMBINED.match(line)
@@ -276,9 +291,7 @@ def _parse_social_studies_standards(
         if any(line.startswith(prefix) for prefix in _SUPPLEMENT_PREFIXES):
             skipping_supplement = True
             continue
-        if skipping_supplement:
-            continue
-        if _is_heading_noise(line):
+        if skipping_supplement or _is_heading_noise(line):
             continue
 
         if begin_pending(line):
