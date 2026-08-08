@@ -5,6 +5,7 @@ MAPPING = FRONTEND / "StandardsCourseMappingPanel.tsx"
 STANDARDS = FRONTEND / "CanonicalStandardsPanel.tsx"
 PLANNING = FRONTEND / "AiPlanningPanel.tsx"
 REFLECTION = FRONTEND / "AiReflectionPanel.tsx"
+WEEKLY_CONTEXT = FRONTEND / "ScheduleExceptionPanel.tsx"
 
 
 def test_teacher_mapping_uses_two_step_catalog_and_explicit_correction_warning() -> None:
@@ -42,6 +43,17 @@ def test_weekly_standard_selector_shows_canonical_course_and_exact_source_proven
     assert "exact standard entry" in source
     assert "AI cannot rewrite authoritative wording" in source
     assert "Search by code, wording, strand, or source" in source
+
+
+def test_weekly_plan_reaches_course_mapping_and_canonical_standards_selector() -> None:
+    source = WEEKLY_CONTEXT.read_text(encoding="utf-8")
+
+    assert 'from "./StandardsCourseMappingPanel"' in source
+    assert 'from "./CanonicalStandardsPanel"' in source
+    assert "<StandardsCourseMappingPanel" in source
+    assert "<CanonicalStandardsPanel" in source
+    assert "mappingRevision" in source
+    assert "onMappingSaved" in source
 
 
 def test_ai_planning_and_reflection_remain_teacher_reviewed_drafts() -> None:
