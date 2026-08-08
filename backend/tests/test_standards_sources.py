@@ -19,7 +19,7 @@ def test_ela_resolver_prefers_latest_authoritative_pdf() -> None:
             _Anchor(
                 href=(
                     "/wp-content/uploads/2023/06/"
-                    "AS_202353_2021-Alabama-Course-of-Study-English-Language-Arts_V1.0.pdf"
+                    "CAS_202353_2021-Alabama-Course-of-Study-English-Language-Arts_V1.0.pdf"
                 ),
                 text="2021 Alabama Course of Study: English Language Arts",
             ),
@@ -30,14 +30,14 @@ def test_ela_resolver_prefers_latest_authoritative_pdf() -> None:
     assert resolved.observed_version == "2021"
 
 
-def test_bma_resolver_selects_business_management_course_of_study() -> None:
+def test_bma_resolver_selects_current_business_management_course_of_study() -> None:
     resolved = resolve_from_anchors(
         "alabama_bma_current",
         "https://www.alabamaachieves.org/cte/cte-course-of-study/",
         (
             _Anchor(
-                href="/wp-content/uploads/2021/08/2021-BMA-Course-of-StudyMARCH2021.pdf",
-                text="Business Management and Administration",
+                href="/wp-content/uploads/2024/04/CTE-2021-BMA-COS-2021.pdf",
+                text="2021 BMA Course of Study",
             ),
             _Anchor(
                 href="/wp-content/uploads/2024/01/2024-Marketing-Course-of-Study.pdf",
@@ -46,7 +46,7 @@ def test_bma_resolver_selects_business_management_course_of_study() -> None:
         ),
     )
 
-    assert resolved.document_url.endswith("2021-BMA-Course-of-StudyMARCH2021.pdf")
+    assert resolved.document_url.endswith("CTE-2021-BMA-COS-2021.pdf")
     assert resolved.observed_version == "2021"
 
 
