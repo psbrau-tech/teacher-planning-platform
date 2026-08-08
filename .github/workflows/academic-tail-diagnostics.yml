@@ -1,76 +1,119 @@
-name: Academic Tail Diagnostics
+name: Gate E UI Integration Patch
 
 on:
   pull_request:
     paths:
-      - "backend/app/standards_alabama_social_studies.py"
       - ".github/workflows/academic-tail-diagnostics.yml"
-  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  diagnose-academic-tails:
+  integrate-gate-e-ui:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: backend/pyproject.toml
-      - name: Install backend
-        working-directory: backend
-        run: python -m pip install -e '.[dev]'
-      - name: Inspect Social Studies government boundary read-only
-        working-directory: backend
+          ref: feature/gate-e-standards-ai
+          fetch-depth: 0
+      - name: Integrate governed Gate E UI
         run: |
           python - <<'PY'
-          from collections import Counter
+          from pathlib import Path
 
-          from app.standards_alabama_social_studies import (
-              _SOURCE_COURSE_ORDER,
-              _content_standard_markers,
-              _detached_entries_before_marker,
-              _next_course_boundary,
-              _next_marker_after,
-              _parse_social_studies_standards,
+          path = Path("frontend/src/main.tsx")
+          text = path.read_text()
+
+          def replace_once(old: str, new: str) -> None:
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"Expected exactly one anchor, found {count}: {old[:120]!r}")
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              'import React, { useEffect, useMemo, useState } from "react";\n'
+              'import ReactDOM from "react-dom/client";\n'
+              'import "./styles.css";\n'
+              'import { ScheduleExceptionPanel } from "./ScheduleExceptionPanel";\n',
+              'import React, { useCallback, useEffect, useMemo, useState } from "react";\n'
+              'import ReactDOM from "react-dom/client";\n'
+              'import { AiPlanningPanel, type PlanningFieldKey } from "./AiPlanningPanel";\n'
+              'import { AiReflectionPanel } from "./AiReflectionPanel";\n'
+              'import { ScheduleExceptionPanel } from "./ScheduleExceptionPanel";\n'
+              'import { StandardsAdministrationPanel } from "./StandardsAdministrationPanel";\n'
+              'import { StandardsCourseMappingPanel } from "./StandardsCourseMappingPanel";\n'
+              'import { StandardsPanel, type StandardEntry } from "./StandardsPanel";\n'
+              'import "./styles.css";\n',
           )
-          from app.standards_catalog_fetch import fetch_current_alabama_catalog
-          from app.standards_ingest import extract_document, fetch_source
-
-          source_map = {source.source_key: source for source in fetch_current_alabama_catalog()}
-          source = source_map["alabama_academic_social_studies"]
-          lines = extract_document(fetch_source(source.document_url, source.document_format)).lines
-          markers = _content_standard_markers(lines)
-          marker_by_course = dict(zip(_SOURCE_COURSE_ORDER, markers, strict=True))
-          marker = marker_by_course["grade_12_us_government"]
-          next_marker = _next_marker_after(marker, markers, len(lines))
-          end = _next_course_boundary(lines, marker, next_marker)
-          detached = _detached_entries_before_marker(lines, marker)
-
-          print("database_writes=0")
-          print(f"government_marker={marker}|next_marker={next_marker}|end={end}")
-          print(f"government_detached_before={detached}")
-          print("=== government_prelude ===")
-          for index in range(max(0, marker - 55), marker + 1):
-              print(f"social|{index}|{lines[index]}")
-          print("=== government_body ===")
-          for index in range(marker + 1, min(end, marker + 260)):
-              print(f"social|{index}|{lines[index]}")
-
-          parsed = _parse_social_studies_standards(
-              lines[marker + 1:end],
-              initial_detached=tuple(code for _, code in detached),
+          replace_once(
+              '  const [validations, setValidations] = useState<Record<string, ValidationEntry>>({});\n'
+              '  const [busy, setBusy] = useState(false);\n',
+              '  const [validations, setValidations] = useState<Record<string, ValidationEntry>>({});\n'
+              '  const [validationFinalized, setValidationFinalized] = useState(false);\n'
+              '  const [standardsMappingVersion, setStandardsMappingVersion] = useState(0);\n'
+              '  const [busy, setBusy] = useState(false);\n',
           )
-          codes = [standard.code for standard in parsed]
-          duplicates = sorted(code for code, count in Counter(codes).items() if count > 1)
-          print(f"parsed_codes={codes}")
-          print(f"duplicate_codes={duplicates}")
-          for code in duplicates:
-              print(f"=== duplicate={code} ===")
-              for standard in parsed:
-                  if standard.code == code:
-                      print(f"{standard.code}|parent={standard.parent_code}|{standard.text}")
+          replace_once(
+              '    setPlan([]);\n    setValidations({});\n    setDraftRevision(null);\n',
+              '    setPlan([]);\n    setValidations({});\n    setValidationFinalized(false);\n    setDraftRevision(null);\n',
+          )
+          replace_once(
+              '  async function api<T>(path: string, init?: RequestInit): Promise<T> {\n',
+              '  const resolveSelectedStandards = useCallback((selected: StandardEntry[]) => {\n'
+              '    const exactText = selected.map((standard) => `${standard.code} — ${standard.text}`).join("\\n");\n'
+              '    setDraft((current) => ({ ...current, standards: exactText }));\n'
+              '  }, []);\n\n'
+              '  const applyAiPlanningField = useCallback((field: PlanningFieldKey, value: string) => {\n'
+              '    const draftKey = field === "do_statement" ? "do" : field;\n'
+              '    setDraft((current) => ({ ...current, [draftKey]: value }));\n'
+              '  }, []);\n\n'
+              '  async function api<T>(path: string, init?: RequestInit): Promise<T> {\n',
+          )
+          replace_once(
+              '      setMessage(`Friday validation saved. ${addDays(weekStart, 7)} is ready to generate.`);\n      setView("dashboard");\n',
+              '      setValidationFinalized(true);\n      setMessage(`Friday validation saved. ${addDays(weekStart, 7)} is ready to generate.`);\n',
+          )
+          replace_once(
+              '            {isPlatformAdmin && (\n              <section>\n                <div className="section-heading compact"><div><p className="eyebrow">Platform Administrator</p><h2>AI cost reporting</h2><p className="supporting">Cost reporting is visible only to the Platform Administrator role.</p></div></div>',
+              '            {isPlatformAdmin && (\n              <>\n                <StandardsAdministrationPanel accessToken={session.access_token} disabled={busy} />\n                <section>\n                  <div className="section-heading compact"><div><p className="eyebrow">Platform Administrator</p><h2>AI cost reporting</h2><p className="supporting">Cost reporting is visible only to the Platform Administrator role.</p></div></div>',
+          )
+          replace_once(
+              '                )}\n              </section>\n            )}\n          </section>\n        )}\n\n        {view === "curriculum"',
+              '                )}\n                </section>\n              </>\n            )}\n          </section>\n        )}\n\n        {view === "curriculum"',
+          )
+          replace_once(
+              '            {plan.length > 0 && <div className="plan-list">{plan.map((lesson) => <article key={lesson.scheduled_lesson_id}><div><strong>{lesson.lesson_date}</strong><span>{lesson.planned_minutes} minutes</span></div><div><small>{lesson.unit_title}</small><h3>{lesson.lesson_title}</h3></div><span className="badge">Segment {lesson.segment_number}</span></article>)}</div>}\n            <div className="section-heading compact draft-heading">',
+              '            {plan.length > 0 && <div className="plan-list">{plan.map((lesson) => <article key={lesson.scheduled_lesson_id}><div><strong>{lesson.lesson_date}</strong><span>{lesson.planned_minutes} minutes</span></div><div><small>{lesson.unit_title}</small><h3>{lesson.lesson_title}</h3></div><span className="badge">Segment {lesson.segment_number}</span></article>)}</div>}\n            <StandardsCourseMappingPanel\n              accessToken={session.access_token}\n              assignmentId={selectedAssignmentId || null}\n              disabled={busy}\n              onMappingSaved={() => setStandardsMappingVersion((current) => current + 1)}\n            />\n            <StandardsPanel\n              key={`${selectedAssignmentId}-${weekStart}-${standardsMappingVersion}`}\n              accessToken={session.access_token}\n              assignmentId={selectedAssignmentId || null}\n              weekStart={weekStart}\n              onSelectionResolved={resolveSelectedStandards}\n            />\n            <div className="section-heading compact draft-heading">',
+          )
+          replace_once(
+              '              <label>Standards<input value={draft.standards} onChange={(event) => setDraft({ ...draft, standards: event.target.value })} /></label>\n',
+              '              <label className="full-width">Selected authoritative standards<textarea rows={4} value={draft.standards} readOnly aria-readonly="true" /></label>\n',
+          )
+          replace_once(
+              '            </div>\n            <div className="action-bar">\n              <div><strong>{selectedAssignment?.course_name ?? "Select a course"}</strong>',
+              '            </div>\n            <AiPlanningPanel\n              accessToken={session.access_token}\n              assignmentId={selectedAssignmentId || null}\n              weekStart={weekStart}\n              currentFields={{\n                unit_topic: draft.unit_topic, literacy_standards: draft.literacy_standards,\n                act_preparation: draft.act_preparation, learning_targets: draft.learning_targets,\n                know: draft.know, understand: draft.understand, do_statement: draft.do,\n                activities: draft.activities, assessments: draft.assessments, resources: draft.resources,\n                monday: draft.monday, tuesday: draft.tuesday, wednesday: draft.wednesday,\n                thursday: draft.thursday, friday: draft.friday,\n              }}\n              onApplyField={applyAiPlanningField}\n            />\n            <div className="action-bar">\n              <div><strong>{selectedAssignment?.course_name ?? "Select a course"}</strong>',
+          )
+          replace_once(
+              '            <div className="action-bar"><div><strong>{plan.filter((lesson) => !validations[lesson.scheduled_lesson_id]?.status).length} lessons still pending</strong><span>Missed lessons automatically lead next week&apos;s queue.</span></div><button className="primary" disabled={!plan.length || plan.some((lesson) => !validations[lesson.scheduled_lesson_id]?.status) || busy} onClick={() => void saveValidation()}>Complete Friday validation</button></div>\n          </section>',
+              '            <div className="action-bar"><div><strong>{plan.filter((lesson) => !validations[lesson.scheduled_lesson_id]?.status).length} lessons still pending</strong><span>Missed lessons automatically lead next week&apos;s queue.</span></div><button className="primary" disabled={!plan.length || plan.some((lesson) => !validations[lesson.scheduled_lesson_id]?.status) || busy} onClick={() => void saveValidation()}>Complete Friday validation</button></div>\n            <AiReflectionPanel\n              accessToken={session.access_token}\n              assignmentId={selectedAssignmentId || null}\n              weekStart={weekStart}\n              disabled={!validationFinalized || busy}\n              onApplyReflection={(value) => setDraft((current) => ({ ...current, reflection: value }))}\n            />\n            {validationFinalized ? <p className="guidance-text">Friday validation is finalized. Review the optional reflection draft above; accepted text remains in the working form until you save the weekly draft.</p> : null}\n          </section>',
+          )
+          path.write_text(text)
           PY
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Verify frontend build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+      - name: Commit integration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/src/main.tsx
+          git commit -m "integrate Gate E standards and AI workflow UI"
+          git push origin HEAD:feature/gate-e-standards-ai
