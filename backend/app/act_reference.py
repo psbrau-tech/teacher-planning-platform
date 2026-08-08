@@ -16,33 +16,15 @@ from .supabase_rest import SupabaseRestClient, SupabaseRestError
 JsonRecord = dict[str, Any]
 _PARSER_VERSION = "act-public-html-v1"
 _CODE = re.compile(r"\b([A-Z][A-Z&]{1,5})\s+([2-7]\d{2})\.\s*")
+_WORD = re.compile(r"[a-z][a-z0-9'-]{2,}")
+_STOP_WORDS = frozenset({"and", "the", "for", "with", "that", "from", "this", "into", "are", "but", "not", "use", "using", "when", "where", "which", "their", "they", "students", "student", "teacher", "week", "lesson", "standard", "standards"})
 
 ACT_CCR_SOURCES: tuple[tuple[str, str, str], ...] = (
-    (
-        "act_ccrs_english",
-        "English",
-        "https://www.act.org/content/act/en/college-and-career-readiness/standards/english-standards.html",
-    ),
-    (
-        "act_ccrs_mathematics",
-        "Mathematics",
-        "https://www.act.org/content/act/en/college-and-career-readiness/standards/mathematics-standards.html",
-    ),
-    (
-        "act_ccrs_reading",
-        "Reading",
-        "https://www.act.org/content/act/en/college-and-career-readiness/standards/reading-standards.html",
-    ),
-    (
-        "act_ccrs_science",
-        "Science",
-        "https://www.act.org/content/act/en/college-and-career-readiness/standards/science-standards.html",
-    ),
-    (
-        "act_ccrs_writing",
-        "Writing",
-        "https://www.act.org/content/act/en/college-and-career-readiness/standards/writing-standards.html",
-    ),
+    ("act_ccrs_english", "English", "https://www.act.org/content/act/en/college-and-career-readiness/standards/english-standards.html"),
+    ("act_ccrs_mathematics", "Mathematics", "https://www.act.org/content/act/en/college-and-career-readiness/standards/mathematics-standards.html"),
+    ("act_ccrs_reading", "Reading", "https://www.act.org/content/act/en/college-and-career-readiness/standards/reading-standards.html"),
+    ("act_ccrs_science", "Science", "https://www.act.org/content/act/en/college-and-career-readiness/standards/science-standards.html"),
+    ("act_ccrs_writing", "Writing", "https://www.act.org/content/act/en/college-and-career-readiness/standards/writing-standards.html"),
 )
 
 _SCORE_RANGES = {
@@ -52,7 +34,7 @@ _SCORE_RANGES = {
 
 
 class ActReferenceError(RuntimeError):
-    """Bounded ACT reference ingestion failure."""
+    """Bounded ACT reference ingestion or lookup failure."""
 
 
 class _VisibleTextParser(HTMLParser):
@@ -113,7 +95,6 @@ def parse_act_ccr_html(*, source_key: str, domain: str, raw_html: str) -> Parsed
     matches = list(_CODE.finditer(normalized))
     if not matches:
         raise ActReferenceError(f"No ACT CCR standards were found for {domain}")
-
     entries: list[ActReferenceEntry] = []
     seen_codes: set[str] = set()
     ranges = _SCORE_RANGES.get(domain, _SCORE_RANGES["default"])
@@ -123,7 +104,6 @@ def parse_act_ccr_html(*, source_key: str, domain: str, raw_html: str) -> Parsed
         start = match.end()
         end = matches[index + 1].start() if index + 1 < len(matches) else len(normalized)
         exact_text = normalized[start:end].strip(" \n|\u00a0")
-        # Stop before page navigation / Ideas for Progress material after the final standard.
         exact_text = re.split(r"\n(?:Ideas for Progress|Welcome to ACT)\b", exact_text, maxsplit=1)[0].strip()
         if not exact_text:
             raise ActReferenceError(f"ACT reference {code} has no authoritative wording")
@@ -134,27 +114,14 @@ def parse_act_ccr_html(*, source_key: str, domain: str, raw_html: str) -> Parsed
         score_range = ranges.get(level)
         if score_range is None:
             raise ActReferenceError(f"Unsupported ACT score-range level for {code}")
-        entries.append(
-            ActReferenceEntry(
-                reference_code=code,
-                domain=domain,
-                category=prefix,
-                score_range=score_range,
-                exact_text=exact_text,
-                sequence=len(entries) + 1,
-                source_locator=f"{domain} CCR Standards / {code}",
-            )
-        )
-
+        entries.append(ActReferenceEntry(code, domain, prefix, score_range, exact_text, len(entries) + 1, f"{domain} CCR Standards / {code}"))
     if len(entries) < 10:
         raise ActReferenceError(f"ACT {domain} parser produced implausibly few entries")
-    raw_bytes = raw_html.encode("utf-8")
-    normalized_bytes = normalized.encode("utf-8")
     return ParsedActReference(
         source_key=source_key,
         domain=domain,
-        source_sha256=hashlib.sha256(raw_bytes).hexdigest(),
-        normalized_sha256=hashlib.sha256(normalized_bytes).hexdigest(),
+        source_sha256=hashlib.sha256(raw_html.encode("utf-8")).hexdigest(),
+        normalized_sha256=hashlib.sha256(normalized.encode("utf-8")).hexdigest(),
         parser_version=_PARSER_VERSION,
         entries=tuple(entries),
     )
@@ -173,84 +140,50 @@ def fetch_and_parse_act_ccr(source_key: str, domain: str, url: str) -> ParsedAct
 def service_role_client(settings: Settings) -> SupabaseRestClient:
     if settings.supabase_url is None or not settings.supabase_service_role_key:
         raise ActReferenceError("ACT maintenance requires the Supabase service-role maintenance path")
-    return SupabaseRestClient(
-        base_url=str(settings.supabase_url).rstrip("/"),
-        api_key=settings.supabase_service_role_key,
-        access_token=settings.supabase_service_role_key,
-        timeout_seconds=30.0,
-    )
+    return SupabaseRestClient(base_url=str(settings.supabase_url).rstrip("/"), api_key=settings.supabase_service_role_key, access_token=settings.supabase_service_role_key, timeout_seconds=30.0)
 
 
 def stage_act_reference(client: SupabaseRestClient, parsed: ParsedActReference) -> UUID:
     try:
-        sources = cast(
-            list[JsonRecord],
-            client.request(
-                "GET",
-                "act_reference_sources",
-                params={"source_key": f"eq.{parsed.source_key}", "select": "id", "limit": "2"},
-            ),
-        )
+        sources = cast(list[JsonRecord], client.request("GET", "act_reference_sources", params={"source_key": f"eq.{parsed.source_key}", "select": "id", "limit": "2"}))
     except (SupabaseRestError, TypeError) as error:
         raise ActReferenceError("ACT source registry lookup failed") from error
     if len(sources) != 1:
         raise ActReferenceError(f"ACT source registry is missing or ambiguous: {parsed.source_key}")
     source_id = UUID(str(sources[0]["id"]))
-
     try:
-        existing = cast(
-            list[JsonRecord],
-            client.request(
-                "GET",
-                "act_reference_snapshots",
-                params={
-                    "source_id": f"eq.{source_id}",
-                    "source_sha256": f"eq.{parsed.source_sha256}",
-                    "select": "id",
-                    "limit": "2",
-                },
-            ),
-        )
+        existing = cast(list[JsonRecord], client.request("GET", "act_reference_snapshots", params={"source_id": f"eq.{source_id}", "source_sha256": f"eq.{parsed.source_sha256}", "select": "id", "limit": "2"}))
         if existing:
             return UUID(str(existing[0]["id"]))
-        snapshots = cast(
-            list[JsonRecord],
-            client.request(
-                "POST",
-                "act_reference_snapshots",
-                payload={
-                    "source_id": str(source_id),
-                    "source_sha256": parsed.source_sha256,
-                    "normalized_sha256": parsed.normalized_sha256,
-                    "parser_version": parsed.parser_version,
-                    "status": "pending",
-                    "provenance": {"publisher": "ACT", "public_first_party": True},
-                },
-                prefer="return=representation",
-            ),
-        )
+        snapshots = cast(list[JsonRecord], client.request("POST", "act_reference_snapshots", payload={"source_id": str(source_id), "source_sha256": parsed.source_sha256, "normalized_sha256": parsed.normalized_sha256, "parser_version": parsed.parser_version, "status": "pending", "provenance": {"publisher": "ACT", "public_first_party": True}}, prefer="return=representation"))
         if len(snapshots) != 1:
             raise ActReferenceError("ACT candidate snapshot save returned invalid data")
         snapshot_id = UUID(str(snapshots[0]["id"]))
-        payload = [
-            {
-                "snapshot_id": str(snapshot_id),
-                "source_id": str(source_id),
-                "reference_code": entry.reference_code,
-                "domain": entry.domain,
-                "category": entry.category,
-                "score_range": entry.score_range,
-                "exact_text": entry.exact_text,
-                "sequence": entry.sequence,
-                "source_locator": entry.source_locator,
-                "metadata": {"public_first_party": True},
-            }
-            for entry in parsed.entries
-        ]
+        payload = [{"snapshot_id": str(snapshot_id), "source_id": str(source_id), "reference_code": entry.reference_code, "domain": entry.domain, "category": entry.category, "score_range": entry.score_range, "exact_text": entry.exact_text, "sequence": entry.sequence, "source_locator": entry.source_locator, "metadata": {"public_first_party": True}} for entry in parsed.entries]
         client.request("POST", "act_reference_entries", payload=payload, prefer="return=minimal")
         return snapshot_id
     except SupabaseRestError as error:
         raise ActReferenceError("ACT candidate reference material could not be staged") from error
+
+
+def _terms(text: str) -> set[str]:
+    return {term for term in _WORD.findall(text.lower()) if term not in _STOP_WORDS and not term.isdigit()}
+
+
+def load_act_candidate_entries(client: SupabaseRestClient, context_text: str, *, limit: int = 40) -> list[JsonRecord]:
+    """Return a bounded deterministic lexical candidate set for AI alignment."""
+    try:
+        rows = cast(list[JsonRecord], client.request("GET", "act_reference_entries", params={"select": "reference_code,domain,category,score_range,exact_text", "limit": "1000"}))
+    except SupabaseRestError as error:
+        raise ActReferenceError("Approved ACT reference candidate lookup failed") from error
+    context_terms = _terms(context_text)
+    scored: list[tuple[int, str, JsonRecord]] = []
+    for row in rows:
+        code = str(row.get("reference_code") or "")
+        overlap = len(context_terms & _terms(f"{row.get('domain') or ''} {row.get('exact_text') or ''}"))
+        scored.append((overlap, code, row))
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return [row for score, _, row in scored if score > 0][:limit]
 
 
 def load_approved_act_entries(client: SupabaseRestClient, reference_codes: list[str]) -> list[JsonRecord]:
@@ -261,18 +194,7 @@ def load_approved_act_entries(client: SupabaseRestClient, reference_codes: list[
         raise ActReferenceError("No more than 8 ACT references may be recommended at once")
     quoted = ",".join(f'"{code}"' for code in unique)
     try:
-        rows = cast(
-            list[JsonRecord],
-            client.request(
-                "GET",
-                "act_reference_entries",
-                params={
-                    "reference_code": f"in.({quoted})",
-                    "select": "reference_code,domain,category,score_range,exact_text,source_id,snapshot_id",
-                    "order": "domain.asc,reference_code.asc",
-                },
-            ),
-        )
+        rows = cast(list[JsonRecord], client.request("GET", "act_reference_entries", params={"reference_code": f"in.({quoted})", "select": "reference_code,domain,category,score_range,exact_text,source_id,snapshot_id", "order": "domain.asc,reference_code.asc"}))
     except SupabaseRestError as error:
         raise ActReferenceError("Approved ACT reference lookup failed") from error
     found = {str(row.get("reference_code")) for row in rows}
