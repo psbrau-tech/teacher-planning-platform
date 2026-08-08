@@ -138,21 +138,21 @@ def _maintenance(source_key: str, status: str = "unchanged") -> MaintenanceResul
     )
 
 
-def test_monthly_run_uses_dynamic_governed_sources(monkeypatch) -> None:
-    checked: list[str] = []
-    monkeypatch.setattr(
-        standards_monthly_run,
-        "fetch_current_alabama_catalog",
-        lambda: (),
+def _catalog_result() -> CatalogReconcileResult:
+    return CatalogReconcileResult(
+        run_id=uuid4(),
+        catalog_sha256="c" * 64,
+        items=(),
     )
+
+
+def test_annual_full_run_validates_dynamic_governed_sources(monkeypatch) -> None:
+    checked: list[str] = []
+    monkeypatch.setattr(standards_monthly_run, "fetch_current_alabama_catalog", lambda: ())
     monkeypatch.setattr(
         standards_monthly_run,
         "reconcile_and_record_catalog",
-        lambda client, discovered, check_month, trigger_kind: CatalogReconcileResult(
-            run_id=uuid4(),
-            catalog_sha256="c" * 64,
-            items=(),
-        ),
+        lambda client, discovered, check_month, trigger_kind: _catalog_result(),
     )
     monkeypatch.setattr(
         standards_monthly_run,
@@ -160,24 +160,90 @@ def test_monthly_run_uses_dynamic_governed_sources(monkeypatch) -> None:
         lambda client: ("source_one", "source_two"),
     )
 
-    def stage(client, source_key, *, check_month):
+    def validate(client, source_key, *, check_month):
         checked.append(source_key)
         return _maintenance(source_key)
 
-    monkeypatch.setattr(standards_monthly_run, "stage_authoritative_source", stage)
+    monkeypatch.setattr(standards_monthly_run, "validate_governed_source", validate)
 
-    result = standards_monthly_run.run_monthly_standards_validation(
+    result = standards_monthly_run.run_standards_reconciliation(
         object(),
-        check_date=date(2026, 8, 3),
+        check_date=date(2027, 7, 1),
+        reconciliation_kind="annual_full",
     )
 
     assert checked == ["source_one", "source_two"]
+    assert result.reconciliation_kind == "annual_full"
     assert not result.requires_review
     assert not result.has_unavailable_error
 
 
-def test_catalog_outage_is_recorded_but_existing_sources_are_still_checked(monkeypatch) -> None:
+def test_quarterly_monitor_reconciles_catalog_without_refetching_sources(monkeypatch) -> None:
+    monkeypatch.setattr(standards_monthly_run, "fetch_current_alabama_catalog", lambda: ())
+    monkeypatch.setattr(
+        standards_monthly_run,
+        "reconcile_and_record_catalog",
+        lambda client, discovered, check_month, trigger_kind: _catalog_result(),
+    )
+
+    def unexpected_source_load(client):
+        raise AssertionError("quarterly monitor must not enumerate full source content")
+
+    monkeypatch.setattr(
+        standards_monthly_run,
+        "list_governed_source_keys",
+        unexpected_source_load,
+    )
+
+    result = standards_monthly_run.run_standards_reconciliation(
+        object(),
+        check_date=date(2027, 10, 1),
+        reconciliation_kind="quarterly_monitor",
+    )
+
+    assert result.reconciliation_kind == "quarterly_monitor"
+    assert result.source_results == ()
+
+
+def test_event_driven_run_requires_explicit_affected_sources() -> None:
+    with pytest.raises(
+        standards_monthly_run.StandardsReconciliationRunError,
+        match="requires at least one affected source",
+    ):
+        standards_monthly_run.run_standards_reconciliation(
+            object(),
+            check_date=date(2027, 2, 12),
+            reconciliation_kind="event_driven",
+        )
+
+
+def test_event_driven_run_validates_only_named_sources(monkeypatch) -> None:
     checked: list[str] = []
+    monkeypatch.setattr(standards_monthly_run, "fetch_current_alabama_catalog", lambda: ())
+    monkeypatch.setattr(
+        standards_monthly_run,
+        "reconcile_and_record_catalog",
+        lambda client, discovered, check_month, trigger_kind: _catalog_result(),
+    )
+
+    def validate(client, source_key, *, check_month):
+        checked.append(source_key)
+        return _maintenance(source_key, status="changed")
+
+    monkeypatch.setattr(standards_monthly_run, "validate_governed_source", validate)
+
+    result = standards_monthly_run.run_standards_reconciliation(
+        object(),
+        check_date=date(2027, 2, 12),
+        reconciliation_kind="event_driven",
+        source_keys=("alabama_academic_science",),
+    )
+
+    assert checked == ["alabama_academic_science"]
+    assert result.requires_review
+
+
+def test_catalog_outage_is_recorded_and_quarterly_run_does_not_touch_sources(monkeypatch) -> None:
     error_run_id = uuid4()
 
     def fail_fetch():
@@ -189,24 +255,14 @@ def test_catalog_outage_is_recorded_but_existing_sources_are_still_checked(monke
         "record_catalog_discovery_error",
         lambda client, **kwargs: error_run_id,
     )
-    monkeypatch.setattr(
-        standards_monthly_run,
-        "list_governed_source_keys",
-        lambda client: ("existing_source",),
-    )
 
-    def stage(client, source_key, *, check_month):
-        checked.append(source_key)
-        return _maintenance(source_key)
-
-    monkeypatch.setattr(standards_monthly_run, "stage_authoritative_source", stage)
-
-    result = standards_monthly_run.run_monthly_standards_validation(
+    result = standards_monthly_run.run_standards_reconciliation(
         object(),
-        check_date=date(2026, 8, 3),
+        check_date=date(2027, 4, 1),
+        reconciliation_kind="quarterly_monitor",
     )
 
-    assert checked == ["existing_source"]
+    assert result.source_results == ()
     assert result.catalog_error_run_id == error_run_id
     assert result.catalog_error == "Synthetic catalog outage"
     assert result.has_unavailable_error
