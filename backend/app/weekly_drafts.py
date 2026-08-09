@@ -44,7 +44,9 @@ class WeeklyDraftStore:
         week_start: date,
         content: dict[str, str],
         expected_revision: int | None = None,
+        require_planning_fields: bool = True,
     ) -> WeeklyDraft:
+        del require_planning_fields  # Production persistence enforces the planning-only requirements.
         key = (teacher_id, assignment_id, week_start)
         with self._lock:
             current = self._drafts.get(key)
