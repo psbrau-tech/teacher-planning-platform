@@ -139,10 +139,33 @@ class _FakeReportingClient:
                     "assignment_id": "assignment-1",
                     "course_name": "Pilot English 10",
                     "week_start": "2026-08-10",
-                    "revision": 3,
-                    "submission_status": "submitted",
+                    "revision": 4,
+                    "submitted_revision": 3,
+                    "submission_status": "revised_after_submission",
                     "submitted_at": "2026-08-08T23:00:00+00:00",
-                    "generated_document_count": 1,
+                }
+            ]
+        if resource == "rpc/admin_weekly_submission_document":
+            assert payload == {
+                "target_assignment_id": "assignment-1",
+                "target_week_start": "2026-08-10",
+            }
+            return [
+                {
+                    "school_id": "school-1",
+                    "school_name": "Anniston High School",
+                    "teacher_id": "teacher-1",
+                    "teacher_name": "Teacher One",
+                    "assignment_id": "assignment-1",
+                    "course_name": "Pilot English 10",
+                    "week_start": "2026-08-10",
+                    "submitted_revision": 3,
+                    "submitted_at": "2026-08-08T23:00:00+00:00",
+                    "source_data": {
+                        "unit_topic": "Synthetic unit",
+                        "literacy_standards": "Synthetic literacy standard",
+                        "act_preparation": "Synthetic ACT preparation",
+                    },
                 }
             ]
         raise AssertionError(f"Unexpected resource: {resource}")
@@ -167,13 +190,21 @@ def test_governed_reporting_views_are_normalized(monkeypatch: pytest.MonkeyPatch
         Settings(),
         None,
     )
+    submitted_plan = administration_api.submitted_plan(
+        "assignment-1",
+        date(2026, 8, 10),
+        _identity("school_admin"),
+        Settings(),
+    )
     costs = administration_api.platform_costs(_identity("platform_admin"), Settings())
 
     assert usage.assignments_configured == 7
     assert usage.data_boundary == "teacher-and-curriculum-only"
     assert len(submissions) == 1
     assert submissions[0].teacher_name == "Teacher One"
-    assert submissions[0].submission_status == "submitted"
-    assert submissions[0].generated_document_count == 1
+    assert submissions[0].submission_status == "revised_after_submission"
+    assert submissions[0].submitted_revision == 3
+    assert submitted_plan.submitted_revision == 3
+    assert submitted_plan.source_data["unit_topic"] == "Synthetic unit"
     assert len(costs) == 1
     assert str(costs[0].estimated_cost_usd) == "0.25"
