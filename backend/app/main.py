@@ -31,6 +31,7 @@ from .identity_api import router as identity_router
 from .live_planning_api import router as live_planning_router
 from .models import PlannedLesson
 from .pdf_fields import ALL_HQI_FIELDS
+from .planned_lesson_api import router as planned_lesson_router
 from .planner import build_weekly_plan
 from .readiness_api import router as readiness_router
 from .reporting import (
@@ -64,6 +65,7 @@ app.include_router(act_reference_admin_router)
 app.include_router(curriculum_router)
 app.include_router(teaching_assignment_router)
 app.include_router(live_planning_router)
+app.include_router(planned_lesson_router)
 app.include_router(schedule_exception_router)
 app.include_router(standards_router)
 app.include_router(standards_catalog_router)
