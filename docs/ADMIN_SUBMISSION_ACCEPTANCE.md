@@ -26,9 +26,9 @@ The locked TPP data boundary remains unchanged: educator/admin account informati
 | State | Expected result |
 |---|---|
 | Saved but never submitted | `Not submitted` / draft |
-| Explicit teacher submission | `Submitted` with submission timestamp |
-| Edit after submission | `Revised after submission`; official exports disabled until resubmission |
-| Explicit resubmission | `Submitted` again with refreshed submission timestamp |
+| Explicit teacher submission | `Submitted` with submission timestamp and immutable submitted revision |
+| Edit after submission | `Revised after submission`; prior submitted revision remains inspectable and official exports are disabled until resubmission |
+| Explicit resubmission | `Submitted` again with a new immutable submitted revision |
 | Stale-revision submission | Rejected; newer work is not overwritten |
 
 ## Teacher acceptance
@@ -48,16 +48,17 @@ The locked TPP data boundary remains unchanged: educator/admin account informati
 2. Confirm teacher planning tabs are absent unless that identity separately holds `teacher`.
 3. Open Administration and select a target week.
 4. Confirm each active teacher/course in the school has a status: submitted, revised after submission, draft/not started, or no active course.
-5. Confirm submission timestamp and generated-document count are visible when applicable.
-6. Confirm records from another school are not returned.
-7. Confirm Platform Administrator-only standards governance and AI cost controls are absent.
+5. Open a submitted plan and confirm the exact immutable submitted revision, submission timestamp, teacher, course, and professional plan fields are visible.
+6. Edit the teacher working draft after submission and confirm the administrator still sees the prior immutable submitted revision until resubmission.
+7. Confirm records from another school are not returned.
+8. Confirm Platform Administrator-only standards governance and AI cost controls are absent.
 
 ## District Administrator acceptance
 
 1. Sign in with a governed `district_admin` identity.
 2. Confirm Administration is available without teacher workflow controls unless separately authorized.
 3. Select a week and confirm professional submission status is visible across schools in the same district.
-4. Confirm the school name is visible for each teacher/course record.
+4. Confirm the school name is visible for each teacher/course record and submitted plans can be inspected on demand.
 5. Confirm a school outside the governed district cannot be queried or returned.
 6. Confirm district reporting is read-only and does not grant school calendar/curriculum management writes.
 7. Confirm Platform Administrator-only standards governance and AI cost controls are absent.
@@ -78,4 +79,4 @@ The locked TPP data boundary remains unchanged: educator/admin account informati
 
 ## Release decision
 
-This enhancement may be accepted only when role-isolation tests pass at both API and browser layers, district reporting cannot cross the governed district, a stale revision cannot overwrite or submit newer work, official exports require the current submitted revision, and no student-data capability is introduced.
+This enhancement may be accepted only when role-isolation tests pass at both API and browser layers, district reporting cannot cross the governed district, a stale revision cannot overwrite or submit newer work, immutable submitted revisions remain inspectable after later draft edits, official exports require the current submitted revision, and no student-data capability is introduced.
