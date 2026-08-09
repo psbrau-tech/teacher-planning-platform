@@ -1,11 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
 
-import {
-  CanonicalStandardsPanel,
-  type CanonicalStandardEntry,
-} from "./CanonicalStandardsPanel";
-import { StandardsCourseMappingPanel } from "./StandardsCourseMappingPanel";
-
 type ScheduleException = {
   id: string;
   teaching_assignment_id: string;
@@ -21,7 +15,6 @@ type Props = {
   weekStart: string;
   disabled?: boolean;
   onChanged: () => void;
-  onStandardsSelectionSaved?: (selected: CanonicalStandardEntry[]) => void;
 };
 
 function addDays(isoDate: string, days: number): string {
@@ -45,7 +38,6 @@ export function ScheduleExceptionPanel({
   weekStart,
   disabled = false,
   onChanged,
-  onStandardsSelectionSaved,
 }: Props) {
   const [exceptions, setExceptions] = useState<ScheduleException[]>([]);
   const [exceptionDate, setExceptionDate] = useState(weekStart);
@@ -55,7 +47,6 @@ export function ScheduleExceptionPanel({
   const [working, setWorking] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
-  const [mappingRevision, setMappingRevision] = useState(0);
 
   async function loadExceptions() {
     if (!assignmentId) {
@@ -76,7 +67,6 @@ export function ScheduleExceptionPanel({
     setExceptionDate(weekStart);
     setNotice("");
     setError("");
-    setMappingRevision(0);
     void loadExceptions().catch((caught) => {
       setError(caught instanceof Error ? caught.message : "Schedule exceptions could not be loaded.");
     });
@@ -152,97 +142,81 @@ export function ScheduleExceptionPanel({
   }
 
   return (
-    <>
-      <StandardsCourseMappingPanel
-        accessToken={accessToken}
-        assignmentId={assignmentId || null}
-        disabled={disabled || working}
-        onMappingSaved={() => setMappingRevision((current) => current + 1)}
-      />
-      <CanonicalStandardsPanel
-        key={`${assignmentId}-${weekStart}-${mappingRevision}`}
-        accessToken={accessToken}
-        assignmentId={assignmentId || null}
-        weekStart={weekStart}
-        disabled={disabled || working}
-        onSelectionSaved={onStandardsSelectionSaved}
-      />
-      <div className="card">
-        <div className="section-heading compact">
-          <div>
-            <p className="eyebrow">Schedule adjustment</p>
-            <h3>One-time exception</h3>
-            <p className="supporting">Use only for this course and week. Regenerate the week after a change.</p>
-          </div>
+    <div className="card">
+      <div className="section-heading compact">
+        <div>
+          <p className="eyebrow">Schedule adjustment</p>
+          <h3>One-time exception</h3>
+          <p className="supporting">Use only for this course and week. Regenerate the week after a change.</p>
         </div>
-        <form className="form-grid" onSubmit={(event) => void saveException(event)}>
-          <label>
-            Date
-            <input
-              type="date"
-              value={exceptionDate}
-              min={weekStart}
-              max={addDays(weekStart, 4)}
-              required
-              onChange={(event) => setExceptionDate(event.target.value)}
-            />
-          </label>
-          <label>
-            Adjustment
-            <select value={mode} onChange={(event) => setMode(event.target.value as "unavailable" | "reduced")}>
-              <option value="unavailable">Day unavailable</option>
-              <option value="reduced">Reduced instructional minutes</option>
-            </select>
-          </label>
-          {mode === "reduced" && (
-            <label>
-              Instructional minutes
-              <input
-                type="number"
-                min="1"
-                max="1440"
-                value={minutes}
-                required
-                onChange={(event) => setMinutes(event.target.value)}
-              />
-            </label>
-          )}
-          <label className="full-width">
-            Reason
-            <input
-              value={reason}
-              maxLength={240}
-              required
-              placeholder="Testing, rally, shortened schedule, or other instructional change"
-              onChange={(event) => setReason(event.target.value)}
-            />
-          </label>
-          <div className="form-actions full-width">
-            <button className="secondary" disabled={disabled || working || !assignmentId}>Save exception</button>
-          </div>
-        </form>
-        {notice && <p className="status">{notice}</p>}
-        {error && <p className="error-message">{error}</p>}
-        {exceptions.length > 0 && (
-          <div className="grid">
-            {exceptions.map((exception) => (
-              <article className="card" key={exception.id}>
-                <strong>{exception.exception_date}</strong>
-                <p>{exception.is_available ? `${exception.instructional_minutes ?? 0} instructional minutes` : "Unavailable"}</p>
-                <small>{exception.reason}</small>
-                <button
-                  type="button"
-                  className="link-button"
-                  disabled={disabled || working}
-                  onClick={() => void removeException(exception)}
-                >
-                  Remove exception
-                </button>
-              </article>
-            ))}
-          </div>
-        )}
       </div>
-    </>
+      <form className="form-grid" onSubmit={(event) => void saveException(event)}>
+        <label>
+          Date
+          <input
+            type="date"
+            value={exceptionDate}
+            min={weekStart}
+            max={addDays(weekStart, 4)}
+            required
+            onChange={(event) => setExceptionDate(event.target.value)}
+          />
+        </label>
+        <label>
+          Adjustment
+          <select value={mode} onChange={(event) => setMode(event.target.value as "unavailable" | "reduced")}>
+            <option value="unavailable">Day unavailable</option>
+            <option value="reduced">Reduced instructional minutes</option>
+          </select>
+        </label>
+        {mode === "reduced" && (
+          <label>
+            Instructional minutes
+            <input
+              type="number"
+              min="1"
+              max="1440"
+              value={minutes}
+              required
+              onChange={(event) => setMinutes(event.target.value)}
+            />
+          </label>
+        )}
+        <label className="full-width">
+          Reason
+          <input
+            value={reason}
+            maxLength={240}
+            required
+            placeholder="Testing, rally, shortened schedule, or other instructional change"
+            onChange={(event) => setReason(event.target.value)}
+          />
+        </label>
+        <div className="form-actions full-width">
+          <button className="secondary" disabled={disabled || working || !assignmentId}>Save exception</button>
+        </div>
+      </form>
+      {notice && <p className="status">{notice}</p>}
+      {error && <p className="error-message">{error}</p>}
+      {exceptions.length > 0 && (
+        <div className="grid">
+          {exceptions.map((exception) => (
+            <article className="card" key={exception.id}>
+              <strong>{exception.exception_date}</strong>
+              <p>{exception.is_available ? `${exception.instructional_minutes ?? 0} instructional minutes` : "Unavailable"}</p>
+              <small>{exception.reason}</small>
+              <button
+                type="button"
+                className="link-button"
+                disabled={disabled || working}
+                onClick={() => void removeException(exception)}
+              >
+                Remove exception
+              </button>
+            </article>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

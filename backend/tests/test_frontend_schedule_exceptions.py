@@ -19,3 +19,8 @@ def test_weekly_plan_mounts_schedule_exception_controls() -> None:
     assert "Save exception" in panel_source
     assert "Remove exception" in panel_source
     assert "Regenerate the week" in panel_source
+
+    # Schedule adjustment must remain schedule-only. Standards are rendered once by
+    # the weekly planning flow after the schedule has been established/reconciled.
+    assert "CanonicalStandardsPanel" not in panel_source
+    assert "StandardsCourseMappingPanel" not in panel_source
