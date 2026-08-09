@@ -33,33 +33,33 @@ router = APIRouter(prefix="/api/v1/ai", tags=["ai-planning"])
 
 def _resolve_valid_literacy(candidates: list[dict[str, object]], requested: list[str]) -> str:
     by_id = {
-        _required_text(item, "standard_entry_id"): item
-        for item in candidates
+        _required_text(candidate, "standard_entry_id"): candidate
+        for candidate in candidates
     }
     valid_ids: list[str] = []
-    for item in requested:
-        if item in by_id and item not in valid_ids:
-            valid_ids.append(item)
+    for requested_id in requested:
+        if requested_id in by_id and requested_id not in valid_ids:
+            valid_ids.append(requested_id)
     if not valid_ids:
         return ""
     lines: list[str] = []
     for standard_id in valid_ids:
-        item = by_id[standard_id]
-        grade = item.get("grade_band") or "Applicable grade"
-        lines.append(f"{grade} {item.get('code')} — {item.get('authoritative_text')}")
+        entry = by_id[standard_id]
+        grade = entry.get("grade_band") or "Applicable grade"
+        lines.append(f"{grade} {entry.get('code')} — {entry.get('authoritative_text')}")
     return "Alabama ELA recurring literacy standard(s):\n- " + "\n- ".join(lines)
 
 
 def _valid_act_ids(candidates: list[dict[str, object]], requested: list[str]) -> list[str]:
     allowed = {
-        str(item.get("reference_code"))
-        for item in candidates
-        if isinstance(item.get("reference_code"), str)
+        str(candidate.get("reference_code"))
+        for candidate in candidates
+        if isinstance(candidate.get("reference_code"), str)
     }
     valid: list[str] = []
-    for item in requested:
-        if item in allowed and item not in valid:
-            valid.append(item)
+    for requested_id in requested:
+        if requested_id in allowed and requested_id not in valid:
+            valid.append(requested_id)
     return valid
 
 
