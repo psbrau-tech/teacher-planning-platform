@@ -10,7 +10,9 @@ def test_frontend_clears_stale_planning_context_on_course_and_week_changes() -> 
     assert "clearPlanningContext(created, weekStart);" in source
     assert source.count("selectPlanningAssignment(event.target.value)") == 2
     assert source.count("selectPlanningWeek(event.target.value)") == 2
-    assert "selectPlanningAssignment(assignment.id); setView(\"plan\");" in source
+    assert 'selectPlanningAssignment(assignment.id); setView("validation");' in source
+    assert "Plan next week early" in source
+    assert "Friday validation → required teacher reflection" in source
 
     assert 'onChange={(event) => setSelectedAssignmentId(event.target.value)}' not in source
     assert 'onChange={(event) => setWeekStart(event.target.value)}' not in source
