@@ -233,8 +233,18 @@ export function StandardsPanel({
   const suggestedStandards = useMemo(() => {
     if (!catalog) return [];
     const byId = new Map<string, StandardEntry>();
-    for (const standard of selectedEntries) byId.set(standard.id, standard);
-    for (const item of ranked.slice(0, 8)) byId.set(item.standard.id, item.standard);
+    const representedCodes = new Set<string>();
+    for (const standard of selectedEntries) {
+      byId.set(standard.id, standard);
+      representedCodes.add(standard.code.toLowerCase());
+    }
+    for (const item of ranked) {
+      if (byId.size >= selectedEntries.length + 8) break;
+      const code = item.standard.code.toLowerCase();
+      if (representedCodes.has(code)) continue;
+      byId.set(item.standard.id, item.standard);
+      representedCodes.add(code);
+    }
     return Array.from(byId.values());
   }, [catalog, ranked, selectedEntries]);
 
@@ -291,15 +301,18 @@ export function StandardsPanel({
       }
       const body = (await response.json()) as { selected_count: number };
       setMessage(
-        `${body.selected_count} authoritative standard${body.selected_count === 1 ? "" : "s"} saved. ` +
-          "A planning draft will be prepared below for teacher review.",
+        body.selected_count > 0
+          ? `${body.selected_count} authoritative standard${body.selected_count === 1 ? "" : "s"} saved. A planning draft will be prepared below for teacher review.`
+          : "Weekly standards selection cleared.",
       );
       onSelectionResolved?.(selectedEntries);
-      window.dispatchEvent(
-        new CustomEvent("tpp:standards-saved", {
-          detail: { assignmentId, weekStart },
-        }),
-      );
+      if (body.selected_count > 0) {
+        window.dispatchEvent(
+          new CustomEvent("tpp:standards-saved", {
+            detail: { assignmentId, weekStart },
+          }),
+        );
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Standards selection could not be saved.");
     } finally {
