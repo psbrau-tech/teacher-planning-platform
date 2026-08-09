@@ -155,14 +155,19 @@ def save_friday_validation(
     }
     try:
         store = _store_for(teacher, settings)
-        expected_revision = payload.expected_revision
-        if expected_revision is None:
-            current = store.get(
-                teacher.subject,
-                payload.assignment_id,
-                payload.week_start,
+        current = store.get(
+            teacher.subject,
+            payload.assignment_id,
+            payload.week_start,
+        )
+        if current is not None and payload.expected_revision is None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Friday validation revision conflict: reload the saved validation "
+                    "before updating it"
+                ),
             )
-            expected_revision = current.revision if current is not None else None
 
         result = apply_friday_validation(scheduled, updates)
         record = store.save(
@@ -170,7 +175,7 @@ def save_friday_validation(
             assignment_id=payload.assignment_id,
             week_start=payload.week_start,
             result=result,
-            expected_revision=expected_revision,
+            expected_revision=payload.expected_revision,
         )
     except PersistenceError as error:
         raise HTTPException(status_code=error.status_code, detail=str(error)) from error
