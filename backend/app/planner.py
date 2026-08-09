@@ -47,11 +47,18 @@ def build_weekly_plan(
     lessons: list[CurriculumLesson],
     exceptions: list[ScheduleException] | None = None,
 ) -> list[PlannedLesson]:
-    """Assign curriculum minutes to valid instructional dates without reordering lessons."""
+    """Assign curriculum lessons to instructional dates without reordering them.
+
+    A curriculum lesson with no explicit estimated duration consumes the instructional
+    time available from the teaching assignment's schedule for that date. Explicit
+    duration overrides retain the existing split/continuation behavior.
+    """
     exceptions = exceptions or []
     ordered_lessons = sorted(lessons, key=lambda lesson: lesson.sequence)
     lesson_index = 0
-    remaining_minutes = ordered_lessons[0].estimated_minutes if ordered_lessons else 0
+    remaining_minutes = (
+        ordered_lessons[0].estimated_minutes if ordered_lessons else None
+    )
     segment_number = 1
     planned: list[PlannedLesson] = []
 
@@ -59,6 +66,24 @@ def build_weekly_plan(
         available = available_minutes_for_date(day, patterns, exceptions)
         while available > 0 and lesson_index < len(ordered_lessons):
             lesson = ordered_lessons[lesson_index]
+
+            if remaining_minutes is None:
+                planned.append(
+                    PlannedLesson(
+                        assignment_id=assignment_id,
+                        curriculum_lesson_id=lesson.id,
+                        date=day,
+                        planned_minutes=available,
+                        segment_number=1,
+                    )
+                )
+                available = 0
+                lesson_index += 1
+                segment_number = 1
+                if lesson_index < len(ordered_lessons):
+                    remaining_minutes = ordered_lessons[lesson_index].estimated_minutes
+                continue
+
             if not lesson.can_split and available < remaining_minutes:
                 break
 
