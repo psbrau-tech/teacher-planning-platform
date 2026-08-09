@@ -62,6 +62,15 @@ def _int(record: JsonRecord, key: str) -> int:
     return value
 
 
+def _optional_int(record: JsonRecord, key: str) -> int | None:
+    value = record.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+        raise HTTPException(status_code=503, detail=f"Pilot data response has invalid {key}")
+    return value
+
+
 def _string_list(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -131,7 +140,7 @@ def _load_curriculum_lessons(
                         sequence=global_sequence,
                         unit_title=unit_title,
                         lesson_title=_text(row, "title"),
-                        estimated_minutes=_int(row, "estimated_minutes"),
+                        estimated_minutes=_optional_int(row, "estimated_minutes"),
                         standards=_string_list(row.get("standards")),
                         learning_target="; ".join(learning_targets),
                         know=[value] if isinstance((value := row.get("know")), str) else [],
