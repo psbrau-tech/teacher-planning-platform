@@ -11,7 +11,7 @@ import psycopg
 from psycopg import Connection
 
 ALLOWED_DOMAIN = "anniston.k12.al.us"
-ALLOWED_ROLES = frozenset({"teacher", "school_admin", "platform_admin"})
+ALLOWED_ROLES = frozenset({"teacher", "school_admin", "district_admin", "platform_admin"})
 ALLOWED_ACCESS_KEYS = frozenset({"email", "display_name", "roles", "is_active"})
 
 

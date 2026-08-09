@@ -1,6 +1,7 @@
 import { createClient, type Session } from "@supabase/supabase-js";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
+import { AdminSubmissionPanel } from "./AdminSubmissionPanel";
 import { AiPlanningPanel, type PlanningFieldKey } from "./AiPlanningPanel";
 import { AiReflectionPanel } from "./AiReflectionPanel";
 import { ScheduleExceptionPanel } from "./ScheduleExceptionPanel";
@@ -21,6 +22,7 @@ type DocumentKind =
   | "instructional-framework"
   | "week-at-a-glance"
   | "weekly-reflection";
+type SubmissionStatus = "not_submitted" | "submitted" | "revised_after_submission";
 
 type Identity = {
   id: string;
@@ -83,6 +85,9 @@ type WeeklyDraft = {
   content: Record<string, string>;
   revision: number;
   updated_at: string;
+  is_draft: boolean;
+  submission_status: SubmissionStatus;
+  submitted_at: string | null;
 };
 
 type ValidationEntry = {
@@ -171,6 +176,12 @@ function addDays(isoDate: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
+function submissionLabel(status: SubmissionStatus): string {
+  if (status === "submitted") return "Submitted";
+  if (status === "revised_after_submission") return "Revised after submission";
+  return "Not submitted";
+}
+
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -202,8 +213,11 @@ function App() {
   const [selectedAssignmentId, setSelectedAssignmentId] = useState("");
   const [weekStart, setWeekStart] = useState(mondayFor());
   const [plan, setPlan] = useState<PlannedLesson[]>([]);
-  const [draft, setDraft] = useState<Record<string, string>>(emptyDraft);
+  const [draft, setDraftState] = useState<Record<string, string>>(emptyDraft);
   const [draftRevision, setDraftRevision] = useState<number | null>(null);
+  const [draftDirty, setDraftDirty] = useState(false);
+  const [draftSubmissionStatus, setDraftSubmissionStatus] = useState<SubmissionStatus>("not_submitted");
+  const [draftSubmittedAt, setDraftSubmittedAt] = useState<string | null>(null);
   const [validations, setValidations] = useState<Record<string, ValidationEntry>>({});
   const [validationFinalized, setValidationFinalized] = useState(false);
   const [standardsMappingVersion, setStandardsMappingVersion] = useState(0);
@@ -213,8 +227,14 @@ function App() {
 
   const isTeacher = identity?.roles.includes("teacher") ?? false;
   const isSchoolAdmin = identity?.roles.includes("school_admin") ?? false;
+  const isDistrictAdmin = identity?.roles.includes("district_admin") ?? false;
   const isPlatformAdmin = identity?.roles.includes("platform_admin") ?? false;
-  const canViewAdministration = isSchoolAdmin || isPlatformAdmin;
+  const canViewAdministration = isSchoolAdmin || isDistrictAdmin || isPlatformAdmin;
+
+  function setDraft(next: React.SetStateAction<Record<string, string>>) {
+    setDraftDirty(true);
+    setDraftState(next);
+  }
 
   const selectedAssignment = useMemo(
     () => assignments.find((assignment) => assignment.id === selectedAssignmentId) ?? null,
@@ -230,6 +250,8 @@ function App() {
     setValidations({});
     setValidationFinalized(false);
     setDraftRevision(null);
+    setDraftSubmissionStatus("not_submitted");
+    setDraftSubmittedAt(null);
     setDraft({
       ...emptyDraft,
       teacher: identity?.display_name ?? "",
@@ -237,6 +259,7 @@ function App() {
       grade: assignment?.grade_band ?? "",
       week_of: nextWeekStart,
     });
+    setDraftDirty(false);
   }
 
   function selectPlanningAssignment(assignmentId: string) {
@@ -343,7 +366,7 @@ function App() {
         setSelectedAssignmentId("");
       }
 
-      if (nextIdentity.roles.some((role) => role === "school_admin" || role === "platform_admin")) {
+      if (nextIdentity.roles.some((role) => ["school_admin", "district_admin", "platform_admin"].includes(role))) {
         const usageResponse = await fetch("/api/v1/administration/usage", { headers });
         if (!usageResponse.ok) {
           throw new Error(await responseDetail(usageResponse, "School reporting could not be loaded."));
@@ -529,11 +552,16 @@ function App() {
       );
       setDraft({ ...emptyDraft, ...loaded.content });
       setDraftRevision(loaded.revision);
-      setMessage(`Draft revision ${loaded.revision} reopened.`);
+      setDraftSubmissionStatus(loaded.submission_status);
+      setDraftSubmittedAt(loaded.submitted_at);
+      setDraftDirty(false);
+      setMessage(`Draft revision ${loaded.revision} reopened · ${submissionLabel(loaded.submission_status)}.`);
     } catch (caught) {
       const text = caught instanceof Error ? caught.message : "Weekly draft could not be loaded.";
       if (text.toLowerCase().includes("not found")) {
         setDraftRevision(null);
+        setDraftSubmissionStatus("not_submitted");
+        setDraftSubmittedAt(null);
         setDraft({
           ...emptyDraft,
           teacher: identity?.display_name ?? "",
@@ -541,6 +569,7 @@ function App() {
           grade: selectedAssignment?.grade_band ?? "",
           week_of: weekStart,
         });
+        setDraftDirty(false);
         if (showNotFound) setMessage("No saved draft exists for this week yet.");
       } else {
         throw caught;
@@ -564,9 +593,38 @@ function App() {
       });
       setDraftRevision(saved.revision);
       setDraft(saved.content);
-      setMessage(`Draft revision ${saved.revision} saved.`);
+      setDraftSubmissionStatus(saved.submission_status);
+      setDraftSubmittedAt(saved.submitted_at);
+      setDraftDirty(false);
+      setMessage(`Draft revision ${saved.revision} saved · ${submissionLabel(saved.submission_status)}.`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Weekly draft save failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitDraft() {
+    if (!selectedAssignmentId || !draftRevision || draftDirty) return;
+    setBusy(true);
+    setError("");
+    try {
+      const submitted = await api<WeeklyDraft>("/api/v1/weekly-drafts/submit", {
+        method: "POST",
+        body: JSON.stringify({
+          assignment_id: selectedAssignmentId,
+          week_start: weekStart,
+          expected_revision: draftRevision,
+        }),
+      });
+      setDraftRevision(submitted.revision);
+      setDraft(submitted.content);
+      setDraftSubmissionStatus(submitted.submission_status);
+      setDraftSubmittedAt(submitted.submitted_at);
+      setDraftDirty(false);
+      setMessage(`Weekly plan revision ${submitted.revision} submitted. Official exports are now available.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Weekly plan submission failed.");
     } finally {
       setBusy(false);
     }
@@ -577,6 +635,9 @@ function App() {
     setError("");
     try {
       if (!session?.access_token) throw new Error("Your authenticated session is unavailable.");
+      if (draftDirty || draftSubmissionStatus !== "submitted") {
+        throw new Error("Save and submit the current weekly-plan revision before generating an official export.");
+      }
       const path = document === "packet"
         ? "/api/v1/documents/anniston-hqi-packet"
         : `/api/v1/documents/anniston-hqi/${document}`;
@@ -762,21 +823,21 @@ function App() {
               <div><strong>{assignments.length}</strong><span>courses configured</span></div>
               <div><strong>{curricula.length}</strong><span>curricula available</span></div>
               <div><strong>{identity?.roles.length ?? 0}</strong><span>concurrent roles</span></div>
-              <div><strong>0</strong><span>student records</span></div>
+              <div><strong>Professional</strong><span>planning data only</span></div>
             </section>
           </>
         )}
 
         {view === "dashboard" && !isTeacher && canViewAdministration && (
           <section className="hero">
-            <div><p className="eyebrow">Governed administration</p><h2>School planning operations</h2><p>Review aggregate teacher-planning adoption without accessing student data.</p></div>
+            <div><p className="eyebrow">Governed administration</p><h2>School and district planning operations</h2><p>Review professional teacher-planning adoption and weekly submission status.</p></div>
             <div className="hero-actions"><button className="primary" onClick={() => setView("administration")}>Open administration</button></div>
           </section>
         )}
 
         {view === "administration" && canViewAdministration && (
           <section className="panel">
-            <div className="section-heading compact"><div><p className="eyebrow">Governed reporting</p><h2>Administration</h2><p className="supporting">Aggregate teacher and curriculum operations only. No student records are collected.</p></div></div>
+            <div className="section-heading compact"><div><p className="eyebrow">Governed reporting</p><h2>Administration</h2><p className="supporting">Teacher and curriculum operations only. Reporting stays within the governed professional-data boundary.</p></div></div>
             {adminUsage ? (
               <>
                 <section className="summary" aria-label="School planning usage">
@@ -786,12 +847,18 @@ function App() {
                   <div><strong>{adminUsage.weekly_plans_created}</strong><span>weekly plans created</span></div>
                 </section>
                 <div className="grid">
-                  <article className="card"><h3>Weekly validation</h3><p>{adminUsage.weekly_plans_approved} approved plans</p><p>{adminUsage.instruction_records_validated} instruction records validated</p><p>{adminUsage.lessons_carried_forward} lessons carried forward</p></article>
+                  <article className="card"><h3>Weekly validation</h3><p>{adminUsage.weekly_plans_approved} submitted plans</p><p>{adminUsage.instruction_records_validated} instruction records validated</p><p>{adminUsage.lessons_carried_forward} lessons carried forward</p></article>
                   <article className="card"><h3>Document generation</h3><p>{adminUsage.documents_requested} requested</p><p>{adminUsage.documents_generated} generated</p><p>{adminUsage.document_generation_failures} failures</p></article>
-                  <article className="card"><h3>Access boundary</h3><p>{identity?.roles.join(" · ")}</p><p>{adminUsage.data_boundary}</p><p>0 student records</p></article>
+                  <article className="card"><h3>Access boundary</h3><p>{identity?.roles.join(" · ")}</p><p>{adminUsage.data_boundary}</p><p>Professional educator operations only</p></article>
                 </div>
               </>
             ) : <div className="empty-state"><p>Administration reporting is loading or unavailable.</p></div>}
+
+            <AdminSubmissionPanel
+              accessToken={session.access_token}
+              roles={identity?.roles ?? []}
+              disabled={busy}
+            />
 
             {isPlatformAdmin && (
               <>
@@ -855,7 +922,7 @@ function App() {
 
         {view === "plan" && isTeacher && (
           <section className="panel">
-            <div className="section-heading compact"><div><p className="eyebrow">Next-week preparation</p><h2>Weekly plan</h2><p className="supporting">Generate the schedule, then complete the required planning fields.</p></div></div>
+            <div className="section-heading compact"><div><p className="eyebrow">Next-week preparation</p><h2>Weekly plan</h2><p className="supporting">Generate the schedule, complete required planning fields, then explicitly submit the saved weekly plan.</p></div></div>
             <div className="toolbar">
               <label>Course<select value={selectedAssignmentId} onChange={(event) => selectPlanningAssignment(event.target.value)}><option value="">Select a course</option>{assignments.map((assignment) => <option value={assignment.id} key={assignment.id}>{assignment.course_name}</option>)}</select></label>
               <label>Week of<input type="date" value={weekStart} onChange={(event) => selectPlanningWeek(event.target.value)} /></label>
@@ -887,7 +954,8 @@ function App() {
               weekStart={weekStart}
               onSelectionResolved={resolveSelectedStandards}
             />
-            <div className="section-heading compact draft-heading"><div><p className="eyebrow">Anniston HQI fields</p><h2>Planning narrative</h2><p className="supporting">Literacy Standards and ACT Preparation are required.</p></div><span className="badge">Draft revision {draftRevision ?? 0}</span></div>
+            <div className="section-heading compact draft-heading"><div><p className="eyebrow">Anniston HQI fields</p><h2>Planning narrative</h2><p className="supporting">Literacy Standards and ACT Preparation are required.</p></div><span className="badge">Revision {draftRevision ?? 0} · {draftDirty ? "Unsaved changes" : submissionLabel(draftSubmissionStatus)}</span></div>
+            {draftSubmittedAt && <p className="guidance-text">Last submitted {new Date(draftSubmittedAt).toLocaleString()}.</p>}
             <div className="form-grid">
               <label>Unit / topic<input value={draft.unit_topic} onChange={(event) => setDraft({ ...draft, unit_topic: event.target.value })} /></label>
               <label className="full-width">Selected authoritative standards<textarea rows={4} value={draft.standards} readOnly aria-readonly="true" /></label>
@@ -921,10 +989,11 @@ function App() {
               <div className="button-group">
                 <button className="secondary" disabled={!selectedAssignmentId || busy} onClick={() => void loadDraft()}>Reopen draft</button>
                 <button className="primary" disabled={!selectedAssignmentId || !draft.literacy_standards.trim() || !draft.act_preparation.trim() || busy} onClick={() => void saveDraft()}>Save draft</button>
-                <button className="secondary" disabled={!draftRevision || busy} onClick={() => void exportDocument("instructional-framework")}>Instructional Framework</button>
-                <button className="secondary" disabled={!draftRevision || busy} onClick={() => void exportDocument("week-at-a-glance")}>Week at a Glance</button>
-                <button className="secondary" disabled={!draftRevision || busy} onClick={() => void exportDocument("weekly-reflection")}>Weekly Reflection</button>
-                <button className="secondary" disabled={!draftRevision || busy} onClick={() => void exportDocument("packet")}>Combined packet</button>
+                <button className="primary" disabled={!draftRevision || draftDirty || draftSubmissionStatus === "submitted" || busy} onClick={() => void submitDraft()}>{draftSubmissionStatus === "revised_after_submission" ? "Resubmit weekly plan" : "Submit weekly plan"}</button>
+                <button className="secondary" disabled={!draftRevision || draftDirty || draftSubmissionStatus !== "submitted" || busy} onClick={() => void exportDocument("instructional-framework")}>Instructional Framework</button>
+                <button className="secondary" disabled={!draftRevision || draftDirty || draftSubmissionStatus !== "submitted" || busy} onClick={() => void exportDocument("week-at-a-glance")}>Week at a Glance</button>
+                <button className="secondary" disabled={!draftRevision || draftDirty || draftSubmissionStatus !== "submitted" || busy} onClick={() => void exportDocument("weekly-reflection")}>Weekly Reflection</button>
+                <button className="secondary" disabled={!draftRevision || draftDirty || draftSubmissionStatus !== "submitted" || busy} onClick={() => void exportDocument("packet")}>Combined packet</button>
               </div>
             </div>
           </section>

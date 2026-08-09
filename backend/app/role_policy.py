@@ -11,7 +11,7 @@ def required_legacy_roles(path: str) -> frozenset[str]:
     if path.startswith("/api/v1/admin/costs"):
         return frozenset({"platform_admin"})
     if path.startswith("/api/v1/admin"):
-        return frozenset({"school_admin", "platform_admin"})
+        return frozenset({"school_admin", "district_admin", "platform_admin"})
     return frozenset({"teacher"})
 
 
