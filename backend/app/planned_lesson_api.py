@@ -39,7 +39,7 @@ def move_planned_lesson(
     identity: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> PlannedLessonMoveRead:
-    """Move one scheduled lesson to another valid meeting day in the same week."""
+    """Move one scheduled lesson to another available meeting day in the same week."""
     if identity.access_token is None:
         raise HTTPException(status_code=503, detail="Supabase session token is unavailable")
     client = SupabaseRestClient.from_settings(settings, access_token=identity.access_token)
@@ -88,6 +88,27 @@ def move_planned_lesson(
     )
     if not allowed:
         raise HTTPException(status_code=422, detail="Select a day when this class normally meets")
+
+    try:
+        exception_rows = _records(
+            client.request(
+                "GET",
+                "schedule_exceptions",
+                params={
+                    "teaching_assignment_id": f"eq.{assignment_id}",
+                    "exception_date": f"eq.{payload.lesson_date.isoformat()}",
+                    "select": "is_available",
+                    "limit": "1",
+                },
+            )
+        )
+    except SupabaseRestError as error:
+        raise HTTPException(status_code=503, detail="Schedule availability could not be verified") from error
+    if exception_rows and exception_rows[0].get("is_available") is False:
+        raise HTTPException(
+            status_code=422,
+            detail="That date is unavailable for this class because of the saved schedule exception",
+        )
 
     try:
         updated = _records(
