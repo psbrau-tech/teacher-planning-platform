@@ -172,7 +172,8 @@ def suggest_planning_resilient(
     alignment_note = model_suggestions.alignment_summary
     if not literacy_standards:
         alignment_note += (
-            " This Literacy Standards field needs teacher selection from the approved Alabama candidates."
+            " This Literacy Standards field needs teacher selection from the approved "
+            "Alabama candidates."
         )
     if model_suggestions.recommended_act_reference_ids and not valid_act_ids:
         alignment_note += " ACT Preparation needs teacher selection from approved ACT references."
