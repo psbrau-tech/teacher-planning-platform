@@ -2,7 +2,7 @@ from datetime import date, timedelta
 from typing import Annotated, Any, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from .auth import AuthenticatedTeacher, require_teacher
@@ -17,6 +17,11 @@ class PlannedLessonMove(BaseModel):
     lesson_date: date
 
 
+class PlannedLessonMoveRead(BaseModel):
+    scheduled_lesson_id: UUID
+    lesson_date: date
+
+
 def _records(payload: object) -> list[dict[str, Any]]:
     if not isinstance(payload, list):
         raise HTTPException(status_code=503, detail="Pilot planning data is unavailable")
@@ -27,13 +32,13 @@ def _monday(day: date) -> date:
     return day - timedelta(days=day.weekday())
 
 
-@router.patch("/{scheduled_lesson_id}", status_code=204)
+@router.patch("/{scheduled_lesson_id}", response_model=PlannedLessonMoveRead)
 def move_planned_lesson(
     scheduled_lesson_id: UUID,
     payload: PlannedLessonMove,
     identity: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
     settings: Annotated[Settings, Depends(get_settings)],
-) -> Response:
+) -> PlannedLessonMoveRead:
     """Move one scheduled lesson to another valid meeting day in the same week."""
     if identity.access_token is None:
         raise HTTPException(status_code=503, detail="Supabase session token is unavailable")
@@ -103,4 +108,7 @@ def move_planned_lesson(
         raise HTTPException(status_code=409, detail="Planned lesson day could not be changed") from error
     if not updated:
         raise HTTPException(status_code=409, detail="Planned lesson day could not be changed")
-    return Response(status_code=204)
+    return PlannedLessonMoveRead(
+        scheduled_lesson_id=scheduled_lesson_id,
+        lesson_date=payload.lesson_date,
+    )
