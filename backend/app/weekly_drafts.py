@@ -52,6 +52,8 @@ class WeeklyDraftStore:
                 raise ValueError("weekly draft revision conflict")
             if current is None and expected_revision not in (None, 0):
                 raise ValueError("weekly draft does not exist")
+            if current is not None and current.content == content:
+                return current
 
             draft = WeeklyDraft(
                 id=current.id if current else str(uuid4()),
@@ -82,6 +84,9 @@ class WeeklyDraftStore:
                 raise ValueError("weekly draft does not exist")
             if expected_revision != current.revision:
                 raise ValueError("weekly draft revision conflict")
+            if not current.is_draft and current.submitted_at is not None:
+                return current
+            submitted_at = datetime.now(UTC)
             submitted = WeeklyDraft(
                 id=current.id,
                 teacher_id=current.teacher_id,
@@ -89,9 +94,9 @@ class WeeklyDraftStore:
                 week_start=current.week_start,
                 content=dict(current.content),
                 revision=current.revision,
-                updated_at=datetime.now(UTC),
+                updated_at=submitted_at,
                 is_draft=False,
-                submitted_at=datetime.now(UTC),
+                submitted_at=submitted_at,
             )
             self._drafts[key] = submitted
             return submitted
