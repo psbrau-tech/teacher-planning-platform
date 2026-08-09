@@ -1,6 +1,8 @@
 from pathlib import Path
 
 FRONTEND = Path(__file__).resolve().parents[2] / "frontend" / "src"
+MAIN = FRONTEND / "main.tsx"
+CURRICULUM_ROWS = FRONTEND / "curriculumRows.ts"
 MAPPING = FRONTEND / "StandardsCourseMappingPanel.tsx"
 CANONICAL_STANDARDS = FRONTEND / "CanonicalStandardsPanel.tsx"
 LIVE_STANDARDS = FRONTEND / "StandardsPanel.tsx"
@@ -56,13 +58,29 @@ def test_live_weekly_selector_prioritizes_scheduled_lesson_relevance(
     source = LIVE_STANDARDS.read_text(encoding="utf-8")
 
     assert "Suggested for this week" in source
-    assert "/api/v1/plans?assignment_id=" in source
+    assert "weeklyLessons?: PlannedLessonContext[]" in source
+    assert "weeklyLessons = []" in source
     assert "relevanceScore" in source
     assert "deterministic relevance aid, not AI rewriting" in source
     assert "Browse all approved standards" in source
     assert "Search by code, wording, strand, or source" in source
     assert "Unit ${match[1]} · Chapter ${match[2]}" in source
     assert 'new CustomEvent("tpp:standards-saved"' in source
+
+
+def test_teacher_setup_uses_schedule_minutes_and_passes_live_week_to_standards() -> None:
+    main = MAIN.read_text(encoding="utf-8")
+    parser = CURRICULUM_ROWS.read_text(encoding="utf-8")
+
+    assert 'from "./curriculumRows"' in main
+    assert "parseCurriculumRows" in main
+    assert "Leave minutes blank for normal lessons" in main
+    assert "Minutes come from the course schedule." in main
+    assert "weeklyLessons={plan}" in main
+    assert "Optional minutes override" in main
+    assert "estimated_minutes: number | null" in parser
+    assert "if (!value.trim()) return null" in parser
+    assert "previous pilot format" in parser
 
 
 def test_weekly_plan_reaches_course_mapping_and_canonical_standards_selector() -> None:
