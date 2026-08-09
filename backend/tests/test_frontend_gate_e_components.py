@@ -53,18 +53,18 @@ def test_weekly_standard_selector_shows_canonical_course_and_exact_source_proven
     assert "Search by code, wording, strand, or source" in source
 
 
-def test_live_weekly_selector_prioritizes_scheduled_lesson_relevance(
-) -> None:
+def test_live_weekly_selector_prioritizes_scheduled_lesson_relevance() -> None:
     source = LIVE_STANDARDS.read_text(encoding="utf-8")
 
     assert "Suggested for this week" in source
     assert "weeklyLessons?: PlannedLessonContext[]" in source
     assert "weeklyLessons = []" in source
     assert "relevanceScore" in source
-    assert "deterministic relevance aid, not AI rewriting" in source
+    assert "deterministic relevance matching, not AI-generated standards" in source
     assert "Browse all approved standards" in source
     assert "Search by code, wording, strand, or source" in source
     assert "Unit ${match[1]} · Chapter ${match[2]}" in source
+    assert '<details className="standard-group"' in source
     assert 'new CustomEvent("tpp:standards-saved"' in source
 
 
@@ -94,20 +94,33 @@ def test_weekly_plan_reaches_course_mapping_and_canonical_standards_selector() -
     assert "onMappingSaved" in source
 
 
-def test_ai_planning_and_reflection_remain_teacher_reviewed_drafts() -> None:
+def test_ai_planning_remains_teacher_reviewed_and_recoverable() -> None:
     planning = PLANNING.read_text(encoding="utf-8")
+
+    assert "Suggested text — not saved" in planning
+    assert "Use suggestion" in planning
+    assert "Use edited text" in planning
+    assert "Skip suggestion" in planning
+    assert "Generate another suggestion" in planning
+    assert "Use all remaining suggestions" in planning
+    assert 'Authorization: `Bearer ${accessToken}`' in planning
+    assert "Nothing is saved until you save your weekly plan" in planning
+    assert "estimated_cost_usd" in planning
+    assert "Estimated request cost" not in planning
+
+
+def test_weekly_reflection_is_required_and_entirely_teacher_authored() -> None:
     reflection = REFLECTION.read_text(encoding="utf-8")
 
-    for source in (planning, reflection):
-        assert "AI draft suggestion — not saved" in source
-        assert "Accept as written" in source
-        assert "Apply edited version" in source
-        assert "Reject" in source
-        assert 'Authorization: `Bearer ${accessToken}`' in source
-
-    assert "Nothing has been added to your plan" in planning
-    assert "Nothing has been added to your saved plan" in reflection
-    assert "saved weekly plan, finalized Friday validation" in reflection
+    assert "Required teacher reflection" in reflection
+    assert "Weekly Reflection / PLC Discussion" in reflection
+    assert "TPP does not generate or rewrite these responses" in reflection
+    assert "What knowledge has been building this week?" in reflection
+    assert "What are next week's instructional priorities?" in reflection
+    assert "Respond at the class or group level" in reflection
+    assert "student names" in reflection
+    assert "/api/v1/ai/reflection" not in reflection
+    assert "Suggest Weekly Reflection" not in reflection
 
 
 def test_integrated_planning_draft_covers_full_hqi_workflow_and_bulk_teacher_acceptance() -> None:
@@ -131,21 +144,27 @@ def test_integrated_planning_draft_covers_full_hqi_workflow_and_bulk_teacher_acc
         "friday",
     ):
         assert f'"{field}"' in source
-    assert "Apply full planning draft" in source
+    assert "Use all remaining suggestions" in source
     assert "tpp:standards-saved" in source
     assert "approved Alabama literacy standards" in source
-    assert "governed ACT reference catalog" in source
+    assert "governed ACT references" in source
 
 
-def test_ai_surfaces_show_no_student_data_notice_and_accessible_status() -> None:
-    for path in (PLANNING, REFLECTION):
-        source = path.read_text(encoding="utf-8")
-        assert "Do not include student data." in source
-        assert 'role="note"' in source
-        assert 'aria-label="Student data restriction"' in source
-        assert 'role="alert"' in source
-        assert 'role="status"' in source
-        assert 'aria-live="polite"' in source
+def test_teacher_assistance_surfaces_preserve_no_student_data_boundary() -> None:
+    planning = PLANNING.read_text(encoding="utf-8")
+    reflection = REFLECTION.read_text(encoding="utf-8")
+
+    assert "Do not enter student names" in planning
+    assert 'role="note"' in planning
+    assert 'aria-label="Student data restriction"' in planning
+    assert 'role="alert"' in planning
+    assert 'role="status"' in planning
+    assert 'aria-live="polite"' in planning
+
+    assert "Do not enter student names" in reflection
+    assert 'role="note"' in reflection
+    assert 'aria-label="Reflection data boundary"' in reflection
+    assert 'role="status"' in reflection
 
 
 def test_platform_admin_act_reference_review_is_human_controlled() -> None:
@@ -180,9 +199,6 @@ def test_gate_e_teacher_components_do_not_collect_student_specific_fields() -> N
         )
     ).lower()
 
-    # Warning copy is required to name prohibited student-data categories. This
-    # guard therefore targets actual form/API field identifiers rather than
-    # treating the mandated notice itself as evidence that TPP collects them.
     forbidden_form_terms = (
         'name="student',
         "student_id",
