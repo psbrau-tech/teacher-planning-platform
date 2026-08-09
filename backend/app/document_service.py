@@ -6,7 +6,6 @@ from pathlib import Path
 from .document_sections import HqiDocument
 from .hqi_document_renderer import RenderedHqiDocument, render_hqi_document, render_hqi_packet
 from .pdf_fields import ALL_HQI_FIELDS
-from .pdf_generator import fill_hqi_pdf
 
 DEFAULT_TEMPLATE_PATH = (
     Path(__file__).resolve().parent.parent / "assets" / "anniston_hqi_lesson_plan.fillable.pdf"
@@ -93,8 +92,13 @@ def generate_anniston_hqi(
     flatten: bool = False,
     template_path: Path = DEFAULT_TEMPLATE_PATH,
 ) -> bytes:
-    """Legacy packet path retained for compatibility during the pilot."""
-    return fill_hqi_pdf(template_path, normalize_planning_payload(payload), flatten=flatten)
+    """Legacy compatibility route using the current clean combined planning packet."""
+    packet, _documents = render_hqi_packet(
+        template_path,
+        normalize_planning_payload(payload),
+        flatten=flatten,
+    )
+    return packet
 
 
 def generate_anniston_hqi_document(
