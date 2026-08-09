@@ -7,33 +7,17 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import ValidationError
 
+from . import ai_planning_api as core
 from .act_reference import ActReferenceError, load_act_candidate_entries, load_approved_act_entries
-from .ai_openai import AiServiceError, request_structured_response
-from .ai_planning_api import (
-    PLANNING_INSTRUCTIONS,
-    PLANNING_SUGGESTION_SCHEMA,
-    CurrentPlanningFields,
-    ModelPlanningSuggestion,
-    PlanningSuggestion,
-    PlanningSuggestionRead,
-    _assignment_context,
-    _build_context,
-    _client,
-    _lesson_context,
-    _literacy_candidates,
-    _record_usage,
-    _required_text,
-)
 from .auth import AuthenticatedTeacher, require_teacher
 from .settings import Settings, get_settings
-from .standards_api import get_assignment_standards
 
 router = APIRouter(prefix="/api/v1/ai", tags=["ai-planning"])
 
 
 def _resolve_valid_literacy(candidates: list[dict[str, object]], requested: list[str]) -> str:
     by_id = {
-        _required_text(candidate, "standard_entry_id"): candidate
+        core._required_text(candidate, "standard_entry_id"): candidate
         for candidate in candidates
     }
     valid_ids: list[str] = []
@@ -65,42 +49,36 @@ def _valid_act_ids(candidates: list[dict[str, object]], requested: list[str]) ->
 
 @router.post(
     "/planning/{assignment_id}/week/{week_start}",
-    response_model=PlanningSuggestionRead,
+    response_model=core.PlanningSuggestionRead,
 )
 def suggest_planning_resilient(
     assignment_id: UUID,
     week_start: date,
-    current: CurrentPlanningFields,
+    current: core.CurrentPlanningFields,
     identity: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
     settings: Annotated[Settings, Depends(get_settings)],
-) -> PlanningSuggestionRead:
-    """Return the grounded draft while failing closed on bad governed reference IDs.
-
-    The model can recommend only bounded IDs. If it nevertheless emits an unknown
-    literacy or ACT ID, that governed field is left blank rather than accepting,
-    rewriting, or fabricating authoritative text. Other non-authoritative planning
-    suggestions remain available for teacher review.
-    """
-    client = _client(identity, settings)
-    standards = get_assignment_standards(assignment_id, week_start, identity, settings)
+) -> core.PlanningSuggestionRead:
+    """Return grounded planning while rejecting unknown governed reference IDs."""
+    client = core._client(identity, settings)
+    standards = core.get_assignment_standards(assignment_id, week_start, identity, settings)
     if not standards.mapped:
         raise HTTPException(status_code=409, detail="Approved standards mapping is required")
 
-    assignment, scheduled_rows = _assignment_context(client, assignment_id, week_start)
+    assignment, scheduled_rows = core._assignment_context(client, assignment_id, week_start)
     if not scheduled_rows:
         raise HTTPException(
             status_code=409,
             detail="Build this week's curriculum schedule before requesting AI planning assistance",
         )
-    lesson_context = _lesson_context(client, scheduled_rows)
-    context = _build_context(
+    lesson_context = core._lesson_context(client, scheduled_rows)
+    context = core._build_context(
         assignment,
         scheduled_rows,
         lesson_context,
         standards,
         current,
     )
-    literacy_candidates = _literacy_candidates(client, assignment)
+    literacy_candidates = core._literacy_candidates(client, assignment)
     context["approved_literacy_standard_candidates"] = literacy_candidates
     try:
         act_candidates = load_act_candidate_entries(client, str(context))
@@ -121,16 +99,16 @@ def suggest_planning_resilient(
     ]
 
     try:
-        result = request_structured_response(
+        result = core.request_structured_response(
             settings=settings,
             teacher_subject=identity.subject,
-            instructions=PLANNING_INSTRUCTIONS,
+            instructions=core.PLANNING_INSTRUCTIONS,
             context=context,
             schema_name="tpp_weekly_planning_suggestion",
-            schema=PLANNING_SUGGESTION_SCHEMA,
+            schema=core.PLANNING_SUGGESTION_SCHEMA,
         )
-    except AiServiceError as error:
-        _record_usage(
+    except core.AiServiceError as error:
+        core._record_usage(
             client,
             identity=identity,
             assignment_id=assignment_id,
@@ -141,9 +119,9 @@ def suggest_planning_resilient(
         raise HTTPException(status_code=503, detail=str(error)) from error
 
     try:
-        model_suggestions = ModelPlanningSuggestion.model_validate(result.data)
+        model_suggestions = core.ModelPlanningSuggestion.model_validate(result.data)
     except ValidationError as error:
-        _record_usage(
+        core._record_usage(
             client,
             identity=identity,
             assignment_id=assignment_id,
@@ -184,8 +162,6 @@ def suggest_planning_resilient(
             + model_suggestions.act_instructional_application
         )
     elif model_suggestions.recommended_act_reference_ids:
-        # The model recommended only unapproved IDs. Do not preserve its application
-        # as if it had a governed ACT basis; require teacher completion instead.
         act_preparation = ""
     else:
         act_preparation = model_suggestions.act_instructional_application
@@ -198,7 +174,7 @@ def suggest_planning_resilient(
     if model_suggestions.recommended_act_reference_ids and not valid_act_ids:
         alignment_note += " ACT Preparation needs teacher selection from approved ACT references."
 
-    suggestions = PlanningSuggestion(
+    suggestions = core.PlanningSuggestion(
         unit_topic=model_suggestions.unit_topic,
         literacy_standards=literacy_standards,
         act_preparation=act_preparation,
@@ -216,7 +192,7 @@ def suggest_planning_resilient(
         friday=model_suggestions.friday,
         alignment_summary=alignment_note,
     )
-    usage_event_id = _record_usage(
+    usage_event_id = core._record_usage(
         client,
         identity=identity,
         assignment_id=assignment_id,
@@ -224,7 +200,7 @@ def suggest_planning_resilient(
         succeeded=True,
         usage=result.usage,
     )
-    return PlanningSuggestionRead(
+    return core.PlanningSuggestionRead(
         usage_event_id=usage_event_id,
         model=result.usage.model,
         estimated_cost_usd=result.usage.estimated_cost_usd,
