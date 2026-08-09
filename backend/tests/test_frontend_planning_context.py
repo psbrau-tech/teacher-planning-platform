@@ -35,7 +35,7 @@ def test_frontend_clears_stale_planning_context_on_course_and_week_changes() -> 
     closeout = source.split("async function saveCloseoutDraft()", 1)[1].split(
         "async function submitDraft", 1
     )[0]
-    assert "/api/v1/weekly-drafts/friday-closeout" in closeout
+    assert "/api/v1/weekly-drafts/closeout" in closeout
     assert "literacy_standards" not in closeout
     assert "act_preparation" not in closeout
 
