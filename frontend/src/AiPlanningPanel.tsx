@@ -102,8 +102,11 @@ export function AiPlanningPanel({
     [decisions],
   );
 
-  const requestDraft = useCallback(async (): Promise<SuggestionResponse> => {
+  const requestDraft = useCallback(async (fieldToRegenerate?: PlanningFieldKey): Promise<SuggestionResponse> => {
     if (!accessToken || !assignmentId) throw new Error("Select a course before generating a planning draft.");
+    const requestFields: CurrentPlanningFields = fieldToRegenerate
+      ? { ...currentFields, [fieldToRegenerate]: "" }
+      : currentFields;
     const response = await fetch(
       `/api/v1/ai/planning/${encodeURIComponent(assignmentId)}` +
         `/week/${encodeURIComponent(weekStart)}`,
@@ -113,7 +116,7 @@ export function AiPlanningPanel({
           Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(currentFields),
+        body: JSON.stringify(requestFields),
       },
     );
     if (!response.ok) {
@@ -224,7 +227,7 @@ export function AiPlanningPanel({
     setRefreshingField(field);
     setError(null);
     try {
-      const body = await requestDraft();
+      const body = await requestDraft(field);
       setResult((current) => current ? {
         ...current,
         suggestions: { ...current.suggestions, [field]: body.suggestions[field] },
