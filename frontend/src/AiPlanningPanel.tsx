@@ -19,9 +19,7 @@ export type PlanningFieldKey =
 
 export type CurrentPlanningFields = Record<PlanningFieldKey, string>;
 
-type SuggestionSet = Record<PlanningFieldKey, string> & {
-  alignment_summary: string;
-};
+type SuggestionSet = Record<PlanningFieldKey, string> & { alignment_summary: string };
 
 type SuggestionResponse = {
   usage_event_id: string;
@@ -62,23 +60,12 @@ const FIELD_GROUPS: Array<{ label: string; fields: PlanningFieldKey[] }> = [
   {
     label: "Standards alignment",
     fields: [
-      "unit_topic",
-      "literacy_standards",
-      "act_preparation",
-      "learning_targets",
-      "know",
-      "understand",
-      "do_statement",
+      "unit_topic", "literacy_standards", "act_preparation", "learning_targets",
+      "know", "understand", "do_statement",
     ],
   },
-  {
-    label: "Instructional design",
-    fields: ["activities", "assessments", "resources"],
-  },
-  {
-    label: "Daily plan",
-    fields: ["monday", "tuesday", "wednesday", "thursday", "friday"],
-  },
+  { label: "Instructional design", fields: ["activities", "assessments", "resources"] },
+  { label: "Daily plan", fields: ["monday", "tuesday", "wednesday", "thursday", "friday"] },
 ];
 
 const FIELD_ORDER = FIELD_GROUPS.flatMap((group) => group.fields);
@@ -103,8 +90,10 @@ export function AiPlanningPanel({
   const [result, setResult] = useState<SuggestionResponse | null>(null);
   const [working, setWorking] = useState(false);
   const [decisionWorking, setDecisionWorking] = useState<PlanningFieldKey | "all" | null>(null);
+  const [refreshingField, setRefreshingField] = useState<PlanningFieldKey | null>(null);
   const [decisions, setDecisions] = useState<Partial<Record<PlanningFieldKey, FieldDecision>>>({});
   const [edits, setEdits] = useState<Partial<Record<PlanningFieldKey, string>>>({});
+  const [usageEventByField, setUsageEventByField] = useState<Partial<Record<PlanningFieldKey, string>>>({});
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -113,45 +102,45 @@ export function AiPlanningPanel({
     [decisions],
   );
 
+  const requestDraft = useCallback(async (): Promise<SuggestionResponse> => {
+    if (!accessToken || !assignmentId) throw new Error("Select a course before generating a planning draft.");
+    const response = await fetch(
+      `/api/v1/ai/planning/${encodeURIComponent(assignmentId)}` +
+        `/week/${encodeURIComponent(weekStart)}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(currentFields),
+      },
+    );
+    if (!response.ok) {
+      throw new Error(await readError(response, "AI planning suggestions are unavailable."));
+    }
+    return await response.json() as SuggestionResponse;
+  }, [accessToken, assignmentId, currentFields, weekStart]);
+
   const suggest = useCallback(async (automatic = false) => {
     if (!accessToken || !assignmentId || working) return;
     setWorking(true);
     setError(null);
-    setMessage(
-      automatic
-        ? "Standards saved. Preparing a grounded weekly planning draft…"
-        : null,
-    );
+    setMessage(automatic ? "Standards saved. Preparing your planning draft…" : null);
     try {
-      const response = await fetch(
-        `/api/v1/ai/planning/${encodeURIComponent(assignmentId)}` +
-          `/week/${encodeURIComponent(weekStart)}`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(currentFields),
-        },
-      );
-      if (!response.ok) {
-        throw new Error(await readError(response, "AI planning suggestions are unavailable."));
-      }
-      const body = (await response.json()) as SuggestionResponse;
+      const body = await requestDraft();
       setResult(body);
       setDecisions({});
       setEdits({});
-      setMessage(
-        "Planning draft ready. Review it below, then apply the full draft or handle fields individually. Nothing has been added to your plan.",
-      );
+      setUsageEventByField(Object.fromEntries(FIELD_ORDER.map((field) => [field, body.usage_event_id])));
+      setMessage("Planning draft ready. Use the whole draft or review each field. Nothing is saved until you save your weekly plan.");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "AI planning suggestions are unavailable.");
       setMessage(null);
     } finally {
       setWorking(false);
     }
-  }, [accessToken, assignmentId, currentFields, weekStart, working]);
+  }, [accessToken, assignmentId, requestDraft, working]);
 
   useEffect(() => {
     const handleStandardsSaved = (event: Event) => {
@@ -163,13 +152,11 @@ export function AiPlanningPanel({
     return () => window.removeEventListener("tpp:standards-saved", handleStandardsSaved);
   }, [assignmentId, suggest, weekStart]);
 
-  const recordDecision = async (
-    field: PlanningFieldKey,
-    decision: FieldDecision,
-  ): Promise<void> => {
+  const recordDecision = async (field: PlanningFieldKey, decision: FieldDecision): Promise<void> => {
     if (!accessToken || !result) return;
+    const usageEventId = usageEventByField[field] ?? result.usage_event_id;
     const response = await fetch(
-      `/api/v1/ai/usage/${encodeURIComponent(result.usage_event_id)}` +
+      `/api/v1/ai/usage/${encodeURIComponent(usageEventId)}` +
         `/decision/${encodeURIComponent(field)}`,
       {
         method: "PUT",
@@ -193,6 +180,7 @@ export function AiPlanningPanel({
       await recordDecision(field, "accepted");
       onApplyField(field, result.suggestions[field]);
       setDecisions((current) => ({ ...current, [field]: "accepted" }));
+      setMessage(`${FIELD_LABELS[field]} added to your working plan.`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "AI review decision could not be recorded.");
     } finally {
@@ -209,6 +197,7 @@ export function AiPlanningPanel({
       await recordDecision(field, "edited");
       onApplyField(field, value);
       setDecisions((current) => ({ ...current, [field]: "edited" }));
+      setMessage(`${FIELD_LABELS[field]} edited text added to your working plan.`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "AI review decision could not be recorded.");
     } finally {
@@ -222,10 +211,40 @@ export function AiPlanningPanel({
     try {
       await recordDecision(field, "rejected");
       setDecisions((current) => ({ ...current, [field]: "rejected" }));
+      setMessage(`${FIELD_LABELS[field]} suggestion skipped. You can request another suggestion if needed.`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "AI review decision could not be recorded.");
     } finally {
       setDecisionWorking(null);
+    }
+  };
+
+  const refreshField = async (field: PlanningFieldKey) => {
+    if (!result || refreshingField || working) return;
+    setRefreshingField(field);
+    setError(null);
+    try {
+      const body = await requestDraft();
+      setResult((current) => current ? {
+        ...current,
+        suggestions: { ...current.suggestions, [field]: body.suggestions[field] },
+      } : body);
+      setUsageEventByField((current) => ({ ...current, [field]: body.usage_event_id }));
+      setDecisions((current) => {
+        const next = { ...current };
+        delete next[field];
+        return next;
+      });
+      setEdits((current) => {
+        const next = { ...current };
+        delete next[field];
+        return next;
+      });
+      setMessage(`A new ${FIELD_LABELS[field]} suggestion is ready for review.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "A new suggestion could not be generated.");
+    } finally {
+      setRefreshingField(null);
     }
   };
 
@@ -240,21 +259,17 @@ export function AiPlanningPanel({
     setError(null);
     try {
       const nextDecisions: Partial<Record<PlanningFieldKey, FieldDecision>> = {};
-      await Promise.all(
-        fieldsToApply.map(async (field) => {
-          const edited = Object.prototype.hasOwnProperty.call(edits, field);
-          const decision: FieldDecision = edited ? "edited" : "accepted";
-          await recordDecision(field, decision);
-          nextDecisions[field] = decision;
-        }),
-      );
+      await Promise.all(fieldsToApply.map(async (field) => {
+        const edited = Object.prototype.hasOwnProperty.call(edits, field);
+        const decision: FieldDecision = edited ? "edited" : "accepted";
+        await recordDecision(field, decision);
+        nextDecisions[field] = decision;
+      }));
       for (const field of fieldsToApply) {
         onApplyField(field, edits[field] ?? result.suggestions[field]);
       }
       setDecisions((current) => ({ ...current, ...nextDecisions }));
-      setMessage(
-        `${fieldsToApply.length} planning fields applied to the working form. Review or edit them before saving the weekly draft.`,
-      );
+      setMessage(`${fieldsToApply.length} planning fields added to your working plan. Review them before saving.`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "AI review decisions could not be recorded.");
     } finally {
@@ -266,73 +281,42 @@ export function AiPlanningPanel({
     <section className="panel ai-planning-panel" aria-labelledby="ai-planning-heading">
       <div className="section-heading-row">
         <div>
-          <p className="eyebrow">Integrated planning assistance</p>
+          <p className="eyebrow">Planning assistance</p>
           <h2 id="ai-planning-heading">Weekly planning draft</h2>
-          <p className="supporting">
-            Saving weekly standards prepares a draft automatically. You remain in control of every
-            field before anything becomes part of the saved plan.
-          </p>
+          <p className="supporting">TPP prepares a grounded starting point. You decide what becomes part of your plan.</p>
         </div>
-        <button
-          type="button"
-          onClick={() => void suggest(false)}
-          disabled={!accessToken || !assignmentId || working}
-        >
-          {working ? "Generating planning draft…" : result ? "Regenerate draft" : "Generate planning draft"}
+        <button type="button" className="secondary" onClick={() => void suggest(false)} disabled={!accessToken || !assignmentId || working}>
+          {working ? "Generating draft…" : result ? "Generate a new draft" : "Generate planning draft"}
         </button>
       </div>
 
       <div className="guidance-card ai-guidance">
-        <strong>AI suggestions are drafts.</strong>
-        <p>
-          TPP grounds the draft in the imported lessons scheduled for this week, the exact
-          authoritative standards you selected, approved Alabama literacy standards, and the
-          governed ACT reference catalog. AI does not rewrite authoritative wording.
-        </p>
+        <strong>Planning suggestions are drafts.</strong>
+        <p>Suggestions use this week&apos;s scheduled lessons, selected authoritative standards, approved Alabama literacy standards, and governed ACT references. Authoritative wording is never rewritten.</p>
       </div>
 
       <div className="guidance-card" role="note" aria-label="Student data restriction">
-        <strong>Do not include student data.</strong>
-        <p>
-          TPP AI assistance is for professional planning context only. Do not enter student names,
-          identifiers, grades, identifiable student work, IEP or 504 information, health or
-          discipline information, or other information that can reasonably be linked to a student.
-        </p>
+        <strong>Professional planning only.</strong>
+        <p>Do not enter student names, identifiers, grades, identifiable student work, IEP/504, health, discipline, or other student-specific information.</p>
       </div>
 
-      {error ? (
-        <p className="error-message" role="alert">
-          {error}
-        </p>
-      ) : null}
-      {message ? (
-        <p className="success-message" role="status" aria-live="polite">
-          {message}
-        </p>
-      ) : null}
+      {error ? <p className="error-message" role="alert">{error}</p> : null}
+      {message ? <p className="success-message" role="status" aria-live="polite">{message}</p> : null}
 
       {result ? (
         <>
           <div className="ai-alignment-summary">
-            <p className="example-label">AI alignment note — reference only</p>
+            <p className="example-label">Planning alignment note</p>
             <p>{result.suggestions.alignment_summary}</p>
           </div>
 
           <div className="ai-full-draft-action">
             <div>
-              <strong>Use the draft as your starting point</strong>
-              <p>
-                You can edit any suggestion below first, then apply the full draft in one action.
-                Empty unscheduled weekdays are left unchanged.
-              </p>
+              <strong>Use this draft as your starting point</strong>
+              <p>Edit any suggestion first if needed, then add all remaining nonblank fields in one action.</p>
             </div>
-            <button
-              type="button"
-              className="primary"
-              onClick={() => void applyFullDraft()}
-              disabled={decisionWorking !== null || pendingFields.length === 0}
-            >
-              {decisionWorking === "all" ? "Applying draft…" : "Apply full planning draft"}
+            <button type="button" className="primary" onClick={() => void applyFullDraft()} disabled={decisionWorking !== null || refreshingField !== null || pendingFields.length === 0}>
+              {decisionWorking === "all" ? "Adding draft…" : "Use all remaining suggestions"}
             </button>
           </div>
 
@@ -347,52 +331,32 @@ export function AiPlanningPanel({
                     <article className="ai-suggestion-card" key={field}>
                       <div className="ai-suggestion-heading">
                         <div>
-                          <p className="example-label">AI draft suggestion — not saved</p>
+                          <p className="example-label">Suggested text — not saved</p>
                           <h4>{FIELD_LABELS[field]}</h4>
                         </div>
-                        {decision ? <span className="decision-badge">{decision}</span> : null}
+                        {decision ? <span className="decision-badge">{decision === "accepted" ? "Used" : decision === "edited" ? "Used with edits" : "Skipped"}</span> : null}
                       </div>
 
                       {decision ? (
-                        <p>
-                          {decision === "rejected"
-                            ? "Suggestion rejected."
-                            : "Applied to the working form. Save the weekly draft when ready."}
-                        </p>
+                        <>
+                          <p>{decision === "rejected" ? "This suggestion was skipped." : "This text was added to the working plan."}</p>
+                          <button type="button" className="secondary" onClick={() => void refreshField(field)} disabled={decisionWorking !== null || refreshingField !== null}>
+                            {refreshingField === field ? "Generating another…" : "Generate another suggestion"}
+                          </button>
+                        </>
                       ) : (
                         <>
                           <textarea
-                            aria-label={`AI draft for ${FIELD_LABELS[field]}`}
+                            aria-label={`Suggested text for ${FIELD_LABELS[field]}`}
                             value={editingValue}
-                            onChange={(event) =>
-                              setEdits((current) => ({ ...current, [field]: event.target.value }))
-                            }
+                            onChange={(event) => setEdits((current) => ({ ...current, [field]: event.target.value }))}
                             rows={field === "literacy_standards" || field === "act_preparation" ? 6 : 4}
                           />
                           <div className="button-row">
-                            <button
-                              type="button"
-                              onClick={() => void accept(field)}
-                              disabled={decisionWorking !== null}
-                            >
-                              Accept as written
-                            </button>
-                            <button
-                              type="button"
-                              className="secondary-button"
-                              onClick={() => void applyEdit(field)}
-                              disabled={decisionWorking !== null}
-                            >
-                              Apply edited version
-                            </button>
-                            <button
-                              type="button"
-                              className="text-button"
-                              onClick={() => void reject(field)}
-                              disabled={decisionWorking !== null}
-                            >
-                              Reject
-                            </button>
+                            <button type="button" className="primary" onClick={() => void accept(field)} disabled={decisionWorking !== null || refreshingField !== null}>Use suggestion</button>
+                            <button type="button" className="secondary" onClick={() => void applyEdit(field)} disabled={decisionWorking !== null || refreshingField !== null}>Use edited text</button>
+                            <button type="button" className="secondary" onClick={() => void refreshField(field)} disabled={decisionWorking !== null || refreshingField !== null}>{refreshingField === field ? "Generating another…" : "Generate another"}</button>
+                            <button type="button" className="link-button" onClick={() => void reject(field)} disabled={decisionWorking !== null || refreshingField !== null}>Skip suggestion</button>
                           </div>
                         </>
                       )}
@@ -403,10 +367,7 @@ export function AiPlanningPanel({
             </section>
           ))}
 
-          <p className="muted-text">
-            {pendingFields.length} suggestion{pendingFields.length === 1 ? "" : "s"} still awaiting
-            review. Estimated request cost: ${result.estimated_cost_usd}.
-          </p>
+          <p className="muted-text">{pendingFields.length} suggestion{pendingFields.length === 1 ? "" : "s"} still awaiting review.</p>
         </>
       ) : null}
     </section>
