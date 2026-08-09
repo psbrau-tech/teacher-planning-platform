@@ -1,0 +1,150 @@
+.course-management-grid {
+  margin-bottom: 1.25rem;
+}
+
+.setup-section {
+  display: block;
+  margin-top: 1.25rem;
+  border: 1px solid var(--border-color, #d7dfeb);
+  border-radius: 14px;
+  padding: 1rem;
+  background: #fff;
+}
+
+.setup-section > summary {
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 1rem;
+  margin-bottom: .75rem;
+}
+
+.pacing-setup,
+.standards-setup,
+.week-curriculum-section {
+  margin-top: 1.5rem;
+}
+
+.compact-guidance {
+  padding: .7rem .85rem;
+  min-width: 220px;
+}
+
+.compact-guidance p {
+  margin: .25rem 0 0;
+}
+
+.danger-link {
+  color: #8b1e1e !important;
+}
+
+.weekly-curriculum-list {
+  display: grid;
+  gap: .8rem;
+}
+
+.weekly-curriculum-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 240px);
+  gap: 1rem;
+  align-items: center;
+  padding: 1rem;
+  border: 1px solid #d7dfeb;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.weekly-curriculum-item.carried-forward {
+  border-width: 2px;
+  border-color: #d69d2e;
+  background: #fffaf0;
+}
+
+.weekly-curriculum-item h3 {
+  margin: .3rem 0 0;
+}
+
+.carry-badge {
+  background: #fff0c7 !important;
+  color: #6a4500 !important;
+}
+
+.working-status {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-wrap: wrap;
+  padding: .75rem 1rem;
+  border: 1px solid #cdd9ea;
+  border-radius: 10px;
+  background: #f7faff;
+}
+
+.button-spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: tpp-spin .75s linear infinite;
+  vertical-align: -.15em;
+}
+
+@keyframes tpp-spin {
+  to { transform: rotate(360deg); }
+}
+
+.report-period-control {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: .75rem;
+  margin: .75rem 0 1.25rem;
+}
+
+.governance-list {
+  display: grid;
+  gap: .55rem;
+}
+
+.governance-source {
+  border: 1px solid #d7dfeb;
+  border-radius: 10px;
+  background: #fff;
+  padding: .2rem .8rem;
+}
+
+.governance-source > summary {
+  cursor: pointer;
+  padding: .75rem 0;
+}
+
+.governance-source > summary span {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: baseline;
+}
+
+.governance-source > summary small {
+  color: #5f6f86;
+}
+
+.pdf-review-grid:focus {
+  outline: 3px solid rgba(24, 77, 132, .28);
+  outline-offset: 5px;
+}
+
+.muted-text {
+  color: #66758b;
+  font-size: .9rem;
+}
+
+@media (max-width: 760px) {
+  .weekly-curriculum-item {
+    grid-template-columns: 1fr;
+  }
+  .governance-source > summary span {
+    display: block;
+  }
+}

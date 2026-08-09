@@ -88,5 +88,13 @@ class TeachingAssignmentStore:
             self._assignments[record.id] = record
             return record
 
+    def archive(self, teacher_id: str, assignment_id: str) -> None:
+        """Remove an assignment from active in-memory pilot planning."""
+        with self._lock:
+            current = self._assignments.get(assignment_id)
+            if current is None or current.teacher_id != teacher_id:
+                raise ValueError("teaching assignment not found")
+            del self._assignments[assignment_id]
+
 
 teaching_assignment_store = TeachingAssignmentStore()

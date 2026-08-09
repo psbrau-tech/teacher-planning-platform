@@ -343,13 +343,14 @@ def test_ai_planning_requires_at_least_one_selected_approved_standard(
     assert "Select at least one approved standard" in response.json()["detail"]
 
 
-def test_unapproved_literacy_recommendation_fails_closed(monkeypatch) -> None:
+def test_unapproved_literacy_recommendation_is_rejected_without_losing_draft(monkeypatch) -> None:
     fake = FakeClient()
     _install(monkeypatch, fake)
+    unknown_id = str(uuid4())
     monkeypatch.setattr(
         ai_planning_api,
         "request_structured_response",
-        lambda **kwargs: _suggestion_result(literacy_id=str(uuid4())),
+        lambda **kwargs: _suggestion_result(literacy_id=unknown_id),
     )
     try:
         response = client.post(
@@ -359,10 +360,15 @@ def test_unapproved_literacy_recommendation_fails_closed(monkeypatch) -> None:
     finally:
         app.dependency_overrides.pop(require_teacher, None)
 
-    assert response.status_code == 503
-    assert "invalid or unapproved reference data" in response.json()["detail"]
+    assert response.status_code == 200
+    body = response.json()
+    assert body["suggestions"]["literacy_standards"] == ""
+    assert unknown_id not in str(body)
+    assert body["suggestions"]["unit_topic"] == "Leadership: Styles and Team Roles"
+    assert body["suggestions"]["learning_targets"].startswith("Compare leadership styles")
+    assert "needs teacher selection" in body["suggestions"]["alignment_summary"]
     usage_calls = [call for call in fake.calls if call[1] == "ai_usage_events"]
-    assert usage_calls[-1][3]["succeeded"] is False
+    assert usage_calls[-1][3]["succeeded"] is True
 
 
 def test_ai_failure_is_logged_and_existing_plan_is_not_mutated(monkeypatch) -> None:

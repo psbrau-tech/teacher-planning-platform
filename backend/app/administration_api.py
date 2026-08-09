@@ -96,24 +96,42 @@ def _reporting_error(error: SupabaseRestError) -> HTTPException:
 def school_usage(
     identity: Annotated[AuthenticatedTeacher, Depends(require_school_reporting_admin)],
     settings: Annotated[Settings, Depends(get_settings)],
+    period_start: Annotated[date | None, Query()] = None,
+    period_end: Annotated[date | None, Query()] = None,
 ) -> SchoolUsageRead:
     if identity.school_id is None:
         raise HTTPException(status_code=503, detail="Governed school context is unavailable")
+    if (period_start is None) != (period_end is None):
+        raise HTTPException(status_code=422, detail="Both reporting period dates are required")
+    if period_start is not None and period_end is not None and period_end < period_start:
+        raise HTTPException(status_code=422, detail="Reporting period end must be on or after start")
     try:
-        payload = _client(identity, settings).request(
-            "GET",
-            "school_admin_usage_summary",
-            params={
-                "school_id": f"eq.{identity.school_id}",
-                "select": (
-                    "school_id,teachers_configured,teachers_with_assignments,"
-                    "assignments_configured,weekly_plans_created,weekly_plans_approved,"
-                    "instruction_records_validated,lessons_carried_forward,"
-                    "documents_requested,documents_generated,document_generation_failures"
-                ),
-                "limit": "1",
-            },
-        )
+        client = _client(identity, settings)
+        if period_start is not None and period_end is not None:
+            payload = client.request(
+                "POST",
+                "rpc/admin_usage_for_period",
+                payload={
+                    "target_start": period_start.isoformat(),
+                    "target_end": period_end.isoformat(),
+                    "target_school_id": identity.school_id,
+                },
+            )
+        else:
+            payload = client.request(
+                "GET",
+                "school_admin_usage_summary",
+                params={
+                    "school_id": f"eq.{identity.school_id}",
+                    "select": (
+                        "school_id,teachers_configured,teachers_with_assignments,"
+                        "assignments_configured,weekly_plans_created,weekly_plans_approved,"
+                        "instruction_records_validated,lessons_carried_forward,"
+                        "documents_requested,documents_generated,document_generation_failures"
+                    ),
+                    "limit": "1",
+                },
+            )
     except (RuntimeError, SupabaseRestError) as error:
         if isinstance(error, SupabaseRestError):
             raise _reporting_error(error) from error

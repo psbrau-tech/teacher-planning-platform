@@ -30,7 +30,7 @@ class CurriculumWrite(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     version: str = Field(min_length=1, max_length=80)
     standards_family: str | None = Field(default=None, max_length=120)
-    lessons: list[CurriculumLessonWrite] = Field(min_length=1)
+    lessons: list[CurriculumLessonWrite] = Field(default_factory=list)
 
 
 class CurriculumRead(BaseModel):
@@ -138,7 +138,7 @@ def create_curriculum(
             )
             for lesson in payload.lessons
         ]
-    )
+    ) if payload.lessons else ()
     client = _client(identity, settings)
     curriculum_id: str | None = None
     try:
