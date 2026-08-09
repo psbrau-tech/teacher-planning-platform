@@ -61,20 +61,41 @@ function fieldLabel(key: string): string {
 
 export function AdminSubmissionPanel({ accessToken, roles, disabled = false }: Props) {
   const [weekStart, setWeekStart] = useState(mondayFor());
+  const [schoolFilter, setSchoolFilter] = useState("");
+  const [teacherFilter, setTeacherFilter] = useState("");
   const [rows, setRows] = useState<WeeklySubmission[]>([]);
   const [selectedPlan, setSelectedPlan] = useState<SubmittedPlan | null>(null);
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const isPlatformAdmin = roles.includes("platform_admin");
   const isDistrictAdmin = roles.includes("district_admin");
-  const scopeLabel = isDistrictAdmin ? "District" : "School";
+  const scopeLabel = isPlatformAdmin ? "Platform" : isDistrictAdmin ? "District" : "School";
+  const canFilterSchools = isPlatformAdmin || isDistrictAdmin;
+
+  const schools = useMemo(
+    () => Array.from(
+      new Map(rows.map((row) => [row.school_id, row.school_name])).entries(),
+    ).sort((left, right) => left[1].localeCompare(right[1])),
+    [rows],
+  );
+
+  const filteredRows = useMemo(() => {
+    const search = teacherFilter.trim().toLowerCase();
+    return rows.filter((row) => {
+      if (schoolFilter && row.school_id !== schoolFilter) return false;
+      if (!search) return true;
+      return row.teacher_name.toLowerCase().includes(search)
+        || (row.course_name ?? "").toLowerCase().includes(search);
+    });
+  }, [rows, schoolFilter, teacherFilter]);
 
   const summary = useMemo(() => ({
-    submitted: rows.filter((row) => row.submission_status === "submitted").length,
-    revised: rows.filter((row) => row.submission_status === "revised_after_submission").length,
-    pending: rows.filter((row) => ["draft", "not_started"].includes(row.submission_status)).length,
-  }), [rows]);
+    submitted: filteredRows.filter((row) => row.submission_status === "submitted").length,
+    revised: filteredRows.filter((row) => row.submission_status === "revised_after_submission").length,
+    pending: filteredRows.filter((row) => ["draft", "not_started"].includes(row.submission_status)).length,
+  }), [filteredRows]);
 
   async function responseMessage(response: Response, fallback: string): Promise<string> {
     try {
@@ -151,6 +172,26 @@ export function AdminSubmissionPanel({ accessToken, roles, disabled = false }: P
             onChange={(event) => setWeekStart(event.target.value)}
           />
         </label>
+        {canFilterSchools && (
+          <label>
+            School
+            <select value={schoolFilter} onChange={(event) => setSchoolFilter(event.target.value)}>
+              <option value="">All governed schools</option>
+              {schools.map(([schoolId, schoolName]) => (
+                <option value={schoolId} key={schoolId}>{schoolName}</option>
+              ))}
+            </select>
+          </label>
+        )}
+        <label>
+          Teacher or course
+          <input
+            type="search"
+            value={teacherFilter}
+            placeholder="Filter results"
+            onChange={(event) => setTeacherFilter(event.target.value)}
+          />
+        </label>
         <button className="secondary" disabled={disabled || loading} onClick={() => void load()}>
           Refresh submissions
         </button>
@@ -160,10 +201,10 @@ export function AdminSubmissionPanel({ accessToken, roles, disabled = false }: P
         <div><strong>{summary.submitted}</strong><span>submitted</span></div>
         <div><strong>{summary.revised}</strong><span>revised after submission</span></div>
         <div><strong>{summary.pending}</strong><span>not submitted</span></div>
-        <div><strong>{rows.length}</strong><span>teacher-course records</span></div>
+        <div><strong>{filteredRows.length}</strong><span>teacher-course records</span></div>
       </section>
-      {rows.length === 0 && !loading ? (
-        <div className="empty-state"><p>No governed teacher-course records were found for this week.</p></div>
+      {filteredRows.length === 0 && !loading ? (
+        <div className="empty-state"><p>No governed teacher-course records match the selected week and filters.</p></div>
       ) : (
         <div className="submission-table" role="region" aria-label="Weekly plan submission status" tabIndex={0}>
           <table>
@@ -179,7 +220,7 @@ export function AdminSubmissionPanel({ accessToken, roles, disabled = false }: P
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
+              {filteredRows.map((row) => (
                 <tr key={`${row.school_id}-${row.teacher_id}-${row.assignment_id ?? "none"}`}>
                   <td>{row.school_name}</td>
                   <td>{row.teacher_name}</td>
