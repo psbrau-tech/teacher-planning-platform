@@ -1,7 +1,8 @@
 from pathlib import Path
 
 FRONTEND = Path(__file__).resolve().parents[2] / "frontend" / "src"
-MAIN = FRONTEND / "main.tsx"
+SHELL = FRONTEND / "TeacherPlanningShell.tsx"
+COURSE_SETUP = FRONTEND / "CourseSetupPanel.tsx"
 CURRICULUM_ROWS = FRONTEND / "curriculumRows.ts"
 MAPPING = FRONTEND / "StandardsCourseMappingPanel.tsx"
 CANONICAL_STANDARDS = FRONTEND / "CanonicalStandardsPanel.tsx"
@@ -68,34 +69,38 @@ def test_live_weekly_selector_prioritizes_scheduled_lesson_relevance() -> None:
     assert 'new CustomEvent("tpp:standards-saved"' in source
 
 
-def test_teacher_setup_uses_schedule_minutes_and_passes_live_week_to_standards() -> None:
-    main = MAIN.read_text(encoding="utf-8")
+def test_course_setup_owns_schedule_pacing_and_primary_standards_mapping() -> None:
+    shell = SHELL.read_text(encoding="utf-8")
+    setup = COURSE_SETUP.read_text(encoding="utf-8")
     parser = CURRICULUM_ROWS.read_text(encoding="utf-8")
 
-    assert 'from "./curriculumRows"' in main
-    assert "parseCurriculumRows" in main
-    assert "Leave minutes blank for normal lessons" in main
-    assert "Minutes come from the course schedule." in main
-    assert "weeklyLessons={plan}" in main
-    assert "Optional minutes override" in main
+    assert 'from "./CourseSetupPanel"' in shell
+    assert "<CourseSetupPanel" in shell
+    assert 'from "./curriculumRows"' in setup
+    assert "parseCurriculumRows" in setup
+    assert 'from "./StandardsCourseMappingPanel"' in setup
+    assert "<StandardsCourseMappingPanel" in setup
+    assert "Curriculum & Pacing" in setup
+    assert "Grade(s)" in setup
+    assert "Edit class" in setup
+    assert "Remove" in setup
+    assert "Existing planning and submission history will be preserved" in setup
     assert "estimated_minutes: number | null" in parser
     assert "if (!value.trim()) return null" in parser
     assert "previous pilot format" in parser
 
 
-def test_weekly_plan_reaches_mapping_and_live_standards_once() -> None:
-    main = MAIN.read_text(encoding="utf-8")
+def test_weekly_plan_uses_live_standards_without_repeating_primary_mapping() -> None:
+    shell = SHELL.read_text(encoding="utf-8")
     schedule = WEEKLY_CONTEXT.read_text(encoding="utf-8")
 
-    assert 'from "./StandardsCourseMappingPanel"' in main
-    assert 'from "./StandardsPanel"' in main
-    assert "<StandardsCourseMappingPanel" in main
-    assert "<StandardsPanel" in main
-    assert "standardsMappingVersion" in main
-    assert "onMappingSaved" in main
+    assert 'from "./StandardsPanel"' in shell
+    assert "<StandardsPanel" in shell
+    assert "weeklyLessons={plan}" in shell
+    assert "standardsMappingVersion" in shell
+    assert "StandardsCourseMappingPanel" not in shell
 
-    # Schedule adjustment is intentionally schedule-only. Standards are rendered
-    # once by the weekly-plan flow after schedule reconciliation.
+    # Schedule adjustment is intentionally schedule-only.
     assert "StandardsCourseMappingPanel" not in schedule
     assert "CanonicalStandardsPanel" not in schedule
 
@@ -114,8 +119,8 @@ def test_ai_planning_remains_teacher_reviewed_and_recoverable() -> None:
     assert "requestDraft(field)" in planning
     assert 'Authorization: `Bearer ${accessToken}`' in planning
     assert "Nothing is saved until you save your weekly plan" in planning
-    assert "estimated_cost_usd" in planning
-    assert "Estimated request cost" not in planning
+    assert "hasScheduledLessons" in planning
+    assert "AI will not invent a weekly lesson sequence from standards alone" in planning
 
 
 def test_weekly_reflection_is_required_and_entirely_teacher_authored() -> None:
@@ -199,6 +204,7 @@ def test_gate_e_teacher_components_do_not_collect_student_specific_fields() -> N
     combined = "\n".join(
         path.read_text(encoding="utf-8")
         for path in (
+            COURSE_SETUP,
             MAPPING,
             CANONICAL_STANDARDS,
             LIVE_STANDARDS,
