@@ -103,6 +103,9 @@ def test_ai_planning_remains_teacher_reviewed_and_recoverable() -> None:
     assert "Skip suggestion" in planning
     assert "Generate another suggestion" in planning
     assert "Use all remaining suggestions" in planning
+    assert "fieldToRegenerate?: PlanningFieldKey" in planning
+    assert '{ ...currentFields, [fieldToRegenerate]: "" }' in planning
+    assert "requestDraft(field)" in planning
     assert 'Authorization: `Bearer ${accessToken}`' in planning
     assert "Nothing is saved until you save your weekly plan" in planning
     assert "estimated_cost_usd" in planning
@@ -123,7 +126,7 @@ def test_weekly_reflection_is_required_and_entirely_teacher_authored() -> None:
     assert "Suggest Weekly Reflection" not in reflection
 
 
-def test_integrated_planning_draft_covers_full_hqi_workflow_and_bulk_teacher_acceptance() -> None:
+def test_integrated_planning_draft_covers_full_planning_workflow_and_bulk_teacher_acceptance() -> None:
     source = PLANNING.read_text(encoding="utf-8")
 
     for field in (
