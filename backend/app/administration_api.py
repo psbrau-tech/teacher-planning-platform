@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 from typing import Annotated, Any, cast
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from .auth import (
@@ -44,6 +45,20 @@ class SchoolCostRead(BaseModel):
     estimated_cost_usd: Decimal = Decimal("0")
     accepted_outputs: int = 0
     discarded_outputs: int = 0
+
+
+class WeeklySubmissionRead(BaseModel):
+    school_id: str
+    school_name: str
+    teacher_id: str
+    teacher_name: str
+    assignment_id: str | None = None
+    course_name: str | None = None
+    week_start: date
+    revision: int | None = None
+    submission_status: str
+    submitted_at: str | None = None
+    generated_document_count: int = 0
 
 
 def _records(payload: object) -> list[dict[str, Any]]:
@@ -97,6 +112,30 @@ def school_usage(
     return SchoolUsageRead.model_validate(
         {**rows[0], "data_boundary": "teacher-and-curriculum-only"}
     )
+
+
+@router.get("/submissions", response_model=list[WeeklySubmissionRead])
+def weekly_submissions(
+    week_start: date,
+    identity: Annotated[AuthenticatedTeacher, Depends(require_school_reporting_admin)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    school_id: Annotated[str | None, Query()] = None,
+) -> list[WeeklySubmissionRead]:
+    try:
+        payload = _client(identity, settings).request(
+            "POST",
+            "rpc/admin_weekly_submission_status",
+            payload={
+                "target_week_start": week_start.isoformat(),
+                "target_school_id": school_id,
+            },
+        )
+    except (RuntimeError, SupabaseRestError) as error:
+        if isinstance(error, SupabaseRestError):
+            raise _reporting_error(error) from error
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+    return [WeeklySubmissionRead.model_validate(row) for row in _records(payload)]
 
 
 @router.get("/costs", response_model=list[SchoolCostRead])
