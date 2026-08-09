@@ -1,3 +1,7 @@
+import base64
+import io
+import re
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -18,24 +22,38 @@ def test_final_weekly_plan_controls_match_browser_acceptance() -> None:
     assert "toast-alert" in shell
 
 
-def test_standards_selection_filters_stale_catalog_ids() -> None:
+def test_standards_selection_stays_stable_and_filters_stale_catalog_ids() -> None:
     source = (FRONTEND / "StandardsPanel.tsx").read_text(encoding="utf-8")
 
     assert "const validIds = new Set(body.standards.map" in source
     assert "body.selected_entry_ids.filter((id) => validIds.has(id))" in source
     assert "Array.from(selected).filter((id) => validIds.has(id))" in source
     assert "selectedEntries.length} selected" in source
-    assert "onSelectionSaved?.(savedEntries)" in source
+    assert "resolvedCallback = useRef(onSelectionResolved)" in source
+    assert "savedCallback = useRef(onSelectionSaved)" in source
+    assert "resolvedCallback.current?.(savedEntries)" in source
+    assert "savedCallback.current?.(savedEntries)" in source
+    assert "}, [accessToken, assignmentId, weekStart]);" in source
 
 
-def test_pacing_template_is_a_real_excel_workbook_download() -> None:
+def test_pacing_template_is_a_valid_excel_package_and_redundant_family_is_hidden() -> None:
     course_setup = (FRONTEND / "CourseSetupPanel.tsx").read_text(encoding="utf-8")
     template = (FRONTEND / "pacingTemplate.ts").read_text(encoding="utf-8")
+    styles = (FRONTEND / "workflow-overrides.css").read_text(encoding="utf-8")
 
     assert "Download Excel pacing template" in course_setup
-    assert "Select a governed standards family" in course_setup
     assert "tpp-curriculum-pacing-template.xlsx" in template
     assert "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" in template
+    encoded = re.search(r'PACING_TEMPLATE_BASE64 = "([A-Za-z0-9+/=]+)"', template)
+    assert encoded is not None
+    workbook_bytes = base64.b64decode(encoded.group(1), validate=True)
+    with zipfile.ZipFile(io.BytesIO(workbook_bytes)) as workbook:
+        names = set(workbook.namelist())
+    assert "[Content_Types].xml" in names
+    assert "xl/workbook.xml" in names
+    assert "xl/worksheets/sheet1.xml" in names
+    assert 'label:has(select[name="standards_family"])' in styles
+    assert "Pacing sequence — Unit | Lesson | Standards | Learning targets" in styles
 
 
 def test_platform_governance_shows_snapshot_date_not_uuid() -> None:

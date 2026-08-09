@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type StandardSource = {
   id: string;
@@ -153,6 +153,13 @@ export function StandardsPanel({
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const resolvedCallback = useRef(onSelectionResolved);
+  const savedCallback = useRef(onSelectionSaved);
+
+  useEffect(() => {
+    resolvedCallback.current = onSelectionResolved;
+    savedCallback.current = onSelectionSaved;
+  }, [onSelectionResolved, onSelectionSaved]);
 
   useEffect(() => {
     let active = true;
@@ -179,8 +186,8 @@ export function StandardsPanel({
         const savedEntries = body.standards.filter((standard) => savedIds.includes(standard.id));
         setCatalog(body);
         setSelected(new Set(savedIds));
-        onSelectionResolved?.(savedEntries);
-        onSelectionSaved?.(savedEntries);
+        resolvedCallback.current?.(savedEntries);
+        savedCallback.current?.(savedEntries);
       } catch (caught) {
         if (active) setError(caught instanceof Error ? caught.message : "Standards could not be loaded.");
       } finally {
@@ -189,7 +196,7 @@ export function StandardsPanel({
     };
     void load();
     return () => { active = false; };
-  }, [accessToken, assignmentId, onSelectionResolved, onSelectionSaved, weekStart]);
+  }, [accessToken, assignmentId, weekStart]);
 
   const selectedEntries = useMemo(() => {
     if (!catalog) return [];
@@ -238,7 +245,7 @@ export function StandardsPanel({
     setSelected((current) => {
       const next = new Set(current);
       if (next.has(standardId)) next.delete(standardId); else next.add(standardId);
-      if (catalog) onSelectionResolved?.(catalog.standards.filter((standard) => next.has(standard.id)));
+      if (catalog) resolvedCallback.current?.(catalog.standards.filter((standard) => next.has(standard.id)));
       return next;
     });
     setMessage(null);
@@ -262,8 +269,8 @@ export function StandardsPanel({
       if (!response.ok) throw new Error(await readError(response, "Standards selection could not be saved."));
       const body = await response.json() as { selected_count: number };
       setSelected(new Set(selectedIds));
-      onSelectionResolved?.(savedEntries);
-      onSelectionSaved?.(savedEntries);
+      resolvedCallback.current?.(savedEntries);
+      savedCallback.current?.(savedEntries);
       setMessage(body.selected_count > 0
         ? `${body.selected_count} authoritative standard${body.selected_count === 1 ? "" : "s"} saved. Your planning draft will be prepared below.`
         : "Weekly standards selection cleared.");
@@ -293,7 +300,7 @@ export function StandardsPanel({
     <section className="panel standards-panel" aria-labelledby="standards-panel-heading">
       <div className="section-heading-row"><div><p className="eyebrow">Authoritative standards</p><h2 id="standards-panel-heading">Standards for this week</h2>{catalog?.catalog_category && catalog.catalog_course ? <p className="supporting">{catalog.catalog_category.display_name} → {catalog.catalog_course.display_name}</p> : null}</div></div>
       {!assignmentId ? <p>Select a course before choosing standards.</p> : null}
-      {loading ? <p>Loading approved standards…</p> : null}
+      {loading ? <p role="status" aria-live="polite">Loading approved standards…</p> : null}
       {error ? <p className="error-message" role="alert">{error}</p> : null}
       {catalog && !catalog.mapped ? <div className="guidance-card"><strong>Standards mapping required.</strong><p>Set the authoritative standards mapping in Course Setup.</p></div> : null}
       {catalog?.mapped ? <>

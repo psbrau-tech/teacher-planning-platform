@@ -6,6 +6,26 @@
 .compact-guidance p { margin: .25rem 0 0; }
 .danger-link { color: #8b1e1e !important; }
 
+/* Curriculum & Pacing inherits standards context from the authoritative course mapping below. */
+.pacing-setup label:has(select[name="standards_family"]),
+.pacing-setup label:has(select[name="standards_family"]) + .guidance-card {
+  display: none !important;
+}
+.pacing-setup label.full-width:has(textarea[name="lesson_rows"]) {
+  font-size: 0;
+}
+.pacing-setup label.full-width:has(textarea[name="lesson_rows"])::before {
+  content: "Pacing sequence — Unit | Lesson | Standards | Learning targets | Assessment | Optional minutes override";
+  display: block;
+  margin-bottom: .45rem;
+  font-size: .82rem;
+  font-weight: 750;
+  color: #3c4b62;
+}
+.pacing-setup label.full-width:has(textarea[name="lesson_rows"]) textarea {
+  font-size: .95rem;
+}
+
 .boundary-strip {
   background: #fdecec !important;
   border-top: 1px solid #c94a55 !important;

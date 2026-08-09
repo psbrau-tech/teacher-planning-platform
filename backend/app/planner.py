@@ -49,9 +49,10 @@ def build_weekly_plan(
 ) -> list[PlannedLesson]:
     """Assign curriculum lessons to instructional dates without reordering them.
 
-    A curriculum lesson with no explicit estimated duration consumes the instructional
-    time available from the teaching assignment's schedule for that date. Explicit
-    duration overrides retain the existing split/continuation behavior.
+    Normal lessons are atomic: a few unused minutes at the end of a class period do
+    not start the next lesson and create an artificial one-minute segment. A lesson
+    with an explicit duration may still span multiple meetings when its duration is
+    longer than a full available meeting and ``can_split`` permits continuation.
     """
     exceptions = exceptions or []
     ordered_lessons = sorted(lessons, key=lambda lesson: lesson.sequence)
@@ -64,6 +65,7 @@ def build_weekly_plan(
 
     for day in iter_week_dates(week_start):
         available = available_minutes_for_date(day, patterns, exceptions)
+        day_capacity = available
         while available > 0 and lesson_index < len(ordered_lessons):
             lesson = ordered_lessons[lesson_index]
 
@@ -83,6 +85,12 @@ def build_weekly_plan(
                 if lesson_index < len(ordered_lessons):
                     remaining_minutes = ordered_lessons[lesson_index].estimated_minutes
                 continue
+
+            # Do not use a small remainder from a previous lesson to begin the next
+            # lesson. This prevents accidental 1-minute/49-minute segmentation when
+            # a 50-minute lesson is placed in a 51-minute class period.
+            if available < remaining_minutes and available < day_capacity:
+                break
 
             if not lesson.can_split and available < remaining_minutes:
                 break
