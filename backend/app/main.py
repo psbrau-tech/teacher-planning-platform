@@ -26,6 +26,7 @@ from .fixtures import (
     synthetic_jrotc_lessons,
 )
 from .friday_validation_api import router as friday_validation_router
+from .hqi_document_renderer import DOCUMENT_TITLES
 from .identity_api import router as identity_router
 from .live_planning_api import router as live_planning_router
 from .models import PlannedLesson
@@ -45,6 +46,11 @@ from .standards_api import router as standards_router
 from .standards_catalog_api import router as standards_catalog_router
 from .teaching_assignment_api import router as teaching_assignment_router
 from .weekly_draft_api import router as weekly_draft_router
+
+# HQI was an early source of inspiration for the pilot, but it is not TPP's product identity.
+# Keep legacy internal route/type names stable during the pilot while removing the legacy
+# framework name from every teacher-visible generated document and download filename.
+DOCUMENT_TITLES[HqiDocument.INSTRUCTIONAL_FRAMEWORK] = "Instructional Planning Framework"
 
 app = FastAPI(
     title="Teacher Planning Platform API",
@@ -109,7 +115,7 @@ def weekly_plan(
 @app.get("/api/v1/templates/anniston-hqi/fields", tags=["documents"])
 def anniston_hqi_fields() -> dict[str, object]:
     return {
-        "template": "Anniston City Schools HQI Lesson Plan Framework",
+        "template": "Anniston City Schools Planning Document Set",
         "field_count": len(ALL_HQI_FIELDS),
         "fields": ALL_HQI_FIELDS,
         "template_installed": DEFAULT_TEMPLATE_PATH.exists(),
@@ -121,7 +127,7 @@ def _require_template() -> None:
     if not DEFAULT_TEMPLATE_PATH.exists():
         raise HTTPException(
             status_code=503,
-            detail="The approved Anniston HQI PDF template is not installed.",
+            detail="The approved Anniston planning PDF template is not installed.",
         )
 
 
@@ -137,7 +143,11 @@ def generate_hqi_document_legacy(
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
 
-    filename = "anniston-hqi-lesson-plan-flat.pdf" if flatten else "anniston-hqi-lesson-plan.pdf"
+    filename = (
+        "anniston-planning-document-set-flat.pdf"
+        if flatten
+        else "anniston-planning-document-set.pdf"
+    )
     return StreamingResponse(
         BytesIO(document),
         media_type="application/pdf",
@@ -158,7 +168,7 @@ def generate_hqi_section_document(
         raise HTTPException(status_code=422, detail=str(error)) from error
 
     suffix = "-flat" if flatten else ""
-    filename = f"anniston-hqi-{document.value}{suffix}.pdf"
+    filename = f"anniston-planning-{document.value}{suffix}.pdf"
     return StreamingResponse(
         BytesIO(rendered.pdf_bytes),
         media_type="application/pdf",
@@ -188,7 +198,7 @@ def generate_hqi_packet(
         media_type="application/pdf",
         headers={
             "Content-Disposition": (
-                f'attachment; filename="anniston-hqi-combined-packet{suffix}.pdf"'
+                f'attachment; filename="anniston-planning-combined-packet{suffix}.pdf"'
             ),
             "X-TPP-Document-Count": str(len(documents)),
             "X-TPP-Continuation-Pages": str(continuation_pages),
