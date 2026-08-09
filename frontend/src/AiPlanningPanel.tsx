@@ -1,6 +1,9 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 export type PlanningFieldKey =
+  | "unit_topic"
+  | "literacy_standards"
+  | "act_preparation"
   | "learning_targets"
   | "know"
   | "understand"
@@ -8,26 +11,13 @@ export type PlanningFieldKey =
   | "activities"
   | "assessments"
   | "resources"
-  | "literacy_standards"
-  | "act_preparation";
+  | "monday"
+  | "tuesday"
+  | "wednesday"
+  | "thursday"
+  | "friday";
 
-export type CurrentPlanningFields = {
-  unit_topic: string;
-  literacy_standards: string;
-  act_preparation: string;
-  learning_targets: string;
-  know: string;
-  understand: string;
-  do_statement: string;
-  activities: string;
-  assessments: string;
-  resources: string;
-  monday: string;
-  tuesday: string;
-  wednesday: string;
-  thursday: string;
-  friday: string;
-};
+export type CurrentPlanningFields = Record<PlanningFieldKey, string>;
 
 type SuggestionSet = Record<PlanningFieldKey, string> & {
   alignment_summary: string;
@@ -51,6 +41,9 @@ type AiPlanningPanelProps = {
 };
 
 const FIELD_LABELS: Record<PlanningFieldKey, string> = {
+  unit_topic: "Unit / topic",
+  literacy_standards: "Literacy Standards",
+  act_preparation: "ACT Preparation",
   learning_targets: "Learning targets",
   know: "Know",
   understand: "Understand",
@@ -58,11 +51,37 @@ const FIELD_LABELS: Record<PlanningFieldKey, string> = {
   activities: "Activities",
   assessments: "Assessments",
   resources: "Resources",
-  literacy_standards: "Literacy Standards",
-  act_preparation: "ACT Preparation",
+  monday: "Monday",
+  tuesday: "Tuesday",
+  wednesday: "Wednesday",
+  thursday: "Thursday",
+  friday: "Friday",
 };
 
-const FIELD_ORDER = Object.keys(FIELD_LABELS) as PlanningFieldKey[];
+const FIELD_GROUPS: Array<{ label: string; fields: PlanningFieldKey[] }> = [
+  {
+    label: "Standards alignment",
+    fields: [
+      "unit_topic",
+      "literacy_standards",
+      "act_preparation",
+      "learning_targets",
+      "know",
+      "understand",
+      "do_statement",
+    ],
+  },
+  {
+    label: "Instructional design",
+    fields: ["activities", "assessments", "resources"],
+  },
+  {
+    label: "Daily plan",
+    fields: ["monday", "tuesday", "wednesday", "thursday", "friday"],
+  },
+];
+
+const FIELD_ORDER = FIELD_GROUPS.flatMap((group) => group.fields);
 
 async function readError(response: Response, fallback: string): Promise<string> {
   try {
@@ -83,7 +102,7 @@ export function AiPlanningPanel({
 }: AiPlanningPanelProps) {
   const [result, setResult] = useState<SuggestionResponse | null>(null);
   const [working, setWorking] = useState(false);
-  const [decisionWorking, setDecisionWorking] = useState<PlanningFieldKey | null>(null);
+  const [decisionWorking, setDecisionWorking] = useState<PlanningFieldKey | "all" | null>(null);
   const [decisions, setDecisions] = useState<Partial<Record<PlanningFieldKey, FieldDecision>>>({});
   const [edits, setEdits] = useState<Partial<Record<PlanningFieldKey, string>>>({});
   const [error, setError] = useState<string | null>(null);
@@ -94,11 +113,15 @@ export function AiPlanningPanel({
     [decisions],
   );
 
-  const suggest = async () => {
-    if (!accessToken || !assignmentId) return;
+  const suggest = useCallback(async (automatic = false) => {
+    if (!accessToken || !assignmentId || working) return;
     setWorking(true);
     setError(null);
-    setMessage(null);
+    setMessage(
+      automatic
+        ? "Standards saved. Preparing a grounded weekly planning draft…"
+        : null,
+    );
     try {
       const response = await fetch(
         `/api/v1/ai/planning/${encodeURIComponent(assignmentId)}` +
@@ -120,14 +143,25 @@ export function AiPlanningPanel({
       setDecisions({});
       setEdits({});
       setMessage(
-        "AI draft suggestions are ready for review. Nothing has been added to your plan.",
+        "Planning draft ready. Review it below, then apply the full draft or handle fields individually. Nothing has been added to your plan.",
       );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "AI planning suggestions are unavailable.");
+      setMessage(null);
     } finally {
       setWorking(false);
     }
-  };
+  }, [accessToken, assignmentId, currentFields, weekStart, working]);
+
+  useEffect(() => {
+    const handleStandardsSaved = (event: Event) => {
+      const detail = (event as CustomEvent<{ assignmentId?: string; weekStart?: string }>).detail;
+      if (detail?.assignmentId !== assignmentId || detail?.weekStart !== weekStart) return;
+      void suggest(true);
+    };
+    window.addEventListener("tpp:standards-saved", handleStandardsSaved);
+    return () => window.removeEventListener("tpp:standards-saved", handleStandardsSaved);
+  }, [assignmentId, suggest, weekStart]);
 
   const recordDecision = async (
     field: PlanningFieldKey,
@@ -195,27 +229,65 @@ export function AiPlanningPanel({
     }
   };
 
+  const applyFullDraft = async () => {
+    if (!result) return;
+    const fieldsToApply = pendingFields.filter((field) => {
+      const value = edits[field] ?? result.suggestions[field];
+      return value.trim().length > 0;
+    });
+    if (fieldsToApply.length === 0) return;
+    setDecisionWorking("all");
+    setError(null);
+    try {
+      const nextDecisions: Partial<Record<PlanningFieldKey, FieldDecision>> = {};
+      await Promise.all(
+        fieldsToApply.map(async (field) => {
+          const edited = Object.prototype.hasOwnProperty.call(edits, field);
+          const decision: FieldDecision = edited ? "edited" : "accepted";
+          await recordDecision(field, decision);
+          nextDecisions[field] = decision;
+        }),
+      );
+      for (const field of fieldsToApply) {
+        onApplyField(field, edits[field] ?? result.suggestions[field]);
+      }
+      setDecisions((current) => ({ ...current, ...nextDecisions }));
+      setMessage(
+        `${fieldsToApply.length} planning fields applied to the working form. Review or edit them before saving the weekly draft.`,
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "AI review decisions could not be recorded.");
+    } finally {
+      setDecisionWorking(null);
+    }
+  };
+
   return (
     <section className="panel ai-planning-panel" aria-labelledby="ai-planning-heading">
       <div className="section-heading-row">
         <div>
-          <p className="eyebrow">Optional planning assistance</p>
-          <h2 id="ai-planning-heading">AI planning suggestions</h2>
+          <p className="eyebrow">Integrated planning assistance</p>
+          <h2 id="ai-planning-heading">Weekly planning draft</h2>
+          <p className="supporting">
+            Saving weekly standards prepares a draft automatically. You remain in control of every
+            field before anything becomes part of the saved plan.
+          </p>
         </div>
         <button
           type="button"
-          onClick={() => void suggest()}
+          onClick={() => void suggest(false)}
           disabled={!accessToken || !assignmentId || working}
         >
-          {working ? "Generating suggestions…" : "Suggest planning"}
+          {working ? "Generating planning draft…" : result ? "Regenerate draft" : "Generate planning draft"}
         </button>
       </div>
 
       <div className="guidance-card ai-guidance">
         <strong>AI suggestions are drafts.</strong>
         <p>
-          Suggestions use the standards you selected and your current teacher-planning context.
-          They do not change or save your plan until you review and apply them.
+          TPP grounds the draft in the imported lessons scheduled for this week, the exact
+          authoritative standards you selected, approved Alabama literacy standards, and the
+          governed ACT reference catalog. AI does not rewrite authoritative wording.
         </p>
       </div>
 
@@ -246,67 +318,90 @@ export function AiPlanningPanel({
             <p>{result.suggestions.alignment_summary}</p>
           </div>
 
-          <div className="ai-suggestion-list">
-            {FIELD_ORDER.map((field) => {
-              const decision = decisions[field];
-              const editingValue = edits[field] ?? result.suggestions[field];
-              return (
-                <article className="ai-suggestion-card" key={field}>
-                  <div className="ai-suggestion-heading">
-                    <div>
-                      <p className="example-label">AI draft suggestion — not saved</p>
-                      <h3>{FIELD_LABELS[field]}</h3>
-                    </div>
-                    {decision ? <span className="decision-badge">{decision}</span> : null}
-                  </div>
-
-                  {decision ? (
-                    <p>
-                      {decision === "rejected"
-                        ? "Suggestion rejected."
-                        : "Applied to the working form. Save the weekly draft when ready."}
-                    </p>
-                  ) : (
-                    <>
-                      <textarea
-                        aria-label={`AI draft for ${FIELD_LABELS[field]}`}
-                        value={editingValue}
-                        onChange={(event) =>
-                          setEdits((current) => ({ ...current, [field]: event.target.value }))
-                        }
-                        rows={4}
-                      />
-                      <div className="button-row">
-                        <button
-                          type="button"
-                          onClick={() => void accept(field)}
-                          disabled={decisionWorking !== null}
-                        >
-                          Accept as written
-                        </button>
-                        <button
-                          type="button"
-                          className="secondary-button"
-                          onClick={() => void applyEdit(field)}
-                          disabled={decisionWorking !== null}
-                        >
-                          Apply edited version
-                        </button>
-                        <button
-                          type="button"
-                          className="text-button"
-                          onClick={() => void reject(field)}
-                          disabled={decisionWorking !== null}
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </article>
-              );
-            })}
+          <div className="ai-full-draft-action">
+            <div>
+              <strong>Use the draft as your starting point</strong>
+              <p>
+                You can edit any suggestion below first, then apply the full draft in one action.
+                Empty unscheduled weekdays are left unchanged.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="primary"
+              onClick={() => void applyFullDraft()}
+              disabled={decisionWorking !== null || pendingFields.length === 0}
+            >
+              {decisionWorking === "all" ? "Applying draft…" : "Apply full planning draft"}
+            </button>
           </div>
+
+          {FIELD_GROUPS.map((group) => (
+            <section className="ai-suggestion-group" key={group.label} aria-label={group.label}>
+              <h3>{group.label}</h3>
+              <div className="ai-suggestion-list">
+                {group.fields.map((field) => {
+                  const decision = decisions[field];
+                  const editingValue = edits[field] ?? result.suggestions[field];
+                  return (
+                    <article className="ai-suggestion-card" key={field}>
+                      <div className="ai-suggestion-heading">
+                        <div>
+                          <p className="example-label">AI draft suggestion — not saved</p>
+                          <h4>{FIELD_LABELS[field]}</h4>
+                        </div>
+                        {decision ? <span className="decision-badge">{decision}</span> : null}
+                      </div>
+
+                      {decision ? (
+                        <p>
+                          {decision === "rejected"
+                            ? "Suggestion rejected."
+                            : "Applied to the working form. Save the weekly draft when ready."}
+                        </p>
+                      ) : (
+                        <>
+                          <textarea
+                            aria-label={`AI draft for ${FIELD_LABELS[field]}`}
+                            value={editingValue}
+                            onChange={(event) =>
+                              setEdits((current) => ({ ...current, [field]: event.target.value }))
+                            }
+                            rows={field === "literacy_standards" || field === "act_preparation" ? 6 : 4}
+                          />
+                          <div className="button-row">
+                            <button
+                              type="button"
+                              onClick={() => void accept(field)}
+                              disabled={decisionWorking !== null}
+                            >
+                              Accept as written
+                            </button>
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              onClick={() => void applyEdit(field)}
+                              disabled={decisionWorking !== null}
+                            >
+                              Apply edited version
+                            </button>
+                            <button
+                              type="button"
+                              className="text-button"
+                              onClick={() => void reject(field)}
+                              disabled={decisionWorking !== null}
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
 
           <p className="muted-text">
             {pendingFields.length} suggestion{pendingFields.length === 1 ? "" : "s"} still awaiting

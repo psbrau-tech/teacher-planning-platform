@@ -19,7 +19,7 @@ class CurriculumLessonWrite(BaseModel):
     sequence: int = Field(ge=1)
     unit_title: str = Field(min_length=1, max_length=160)
     lesson_title: str = Field(min_length=1, max_length=200)
-    estimated_minutes: int = Field(gt=0)
+    estimated_minutes: int | None = Field(default=None, gt=0)
     standards: list[str] = []
     learning_targets: list[str] = []
     assessment: str = ""

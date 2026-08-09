@@ -6,6 +6,7 @@ CATALOG = MIGRATIONS / "20260807200100_standard_catalog_mapping.sql"
 SOURCE_ROLES = MIGRATIONS / "20260807200500_standard_source_roles.sql"
 USAGE = MIGRATIONS / "20260807195900_ai_usage_response_and_cache_write.sql"
 DECISIONS = MIGRATIONS / "20260807200000_ai_suggestion_decisions.sql"
+EXPANDED_DECISIONS = MIGRATIONS / "20260809003000_expand_ai_planning_decision_fields.sql"
 
 
 def test_teacher_maps_assignment_to_one_canonical_catalog_course() -> None:
@@ -109,4 +110,33 @@ def test_teacher_ai_decisions_are_narrow_and_do_not_store_suggestion_text() -> N
     assert "aue.teacher_id = actor_id" in source
     assert "accepted_by_teacher" in source
     assert "record_ai_suggestion_decision" in source
+    assert "suggestion_text" not in source
+
+
+def test_expanded_weekly_ai_fields_keep_the_same_teacher_review_contract() -> None:
+    source = EXPANDED_DECISIONS.read_text(encoding="utf-8")
+
+    for field in (
+        "unit_topic",
+        "learning_targets",
+        "know",
+        "understand",
+        "do_statement",
+        "activities",
+        "assessments",
+        "resources",
+        "literacy_standards",
+        "act_preparation",
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "weekly_reflection",
+    ):
+        assert f"'{field}'" in source
+    assert "private.has_role('teacher'::public.app_role, null)" in source
+    assert "aue.teacher_id = actor_id" in source
+    assert "decision in ('accepted', 'edited')" in source
+    assert "target_decision not in ('accepted', 'edited', 'rejected')" in source
     assert "suggestion_text" not in source

@@ -1,8 +1,11 @@
 from pathlib import Path
 
 FRONTEND = Path(__file__).resolve().parents[2] / "frontend" / "src"
+MAIN = FRONTEND / "main.tsx"
+CURRICULUM_ROWS = FRONTEND / "curriculumRows.ts"
 MAPPING = FRONTEND / "StandardsCourseMappingPanel.tsx"
-STANDARDS = FRONTEND / "CanonicalStandardsPanel.tsx"
+CANONICAL_STANDARDS = FRONTEND / "CanonicalStandardsPanel.tsx"
+LIVE_STANDARDS = FRONTEND / "StandardsPanel.tsx"
 PLANNING = FRONTEND / "AiPlanningPanel.tsx"
 REFLECTION = FRONTEND / "AiReflectionPanel.tsx"
 WEEKLY_CONTEXT = FRONTEND / "ScheduleExceptionPanel.tsx"
@@ -26,16 +29,19 @@ def test_teacher_mapping_uses_two_step_catalog_and_explicit_correction_warning()
 
 def test_mapping_and_standards_requests_use_teacher_bearer_token() -> None:
     mapping = MAPPING.read_text(encoding="utf-8")
-    standards = STANDARDS.read_text(encoding="utf-8")
+    canonical = CANONICAL_STANDARDS.read_text(encoding="utf-8")
+    live = LIVE_STANDARDS.read_text(encoding="utf-8")
 
     assert 'Authorization: `Bearer ${accessToken}`' in mapping
-    assert 'Authorization: `Bearer ${accessToken}`' in standards
+    assert 'Authorization: `Bearer ${accessToken}`' in canonical
+    assert 'Authorization: `Bearer ${accessToken}`' in live
     assert "catalog_course_id" in mapping
-    assert "standard_entry_ids" in standards
+    assert "standard_entry_ids" in canonical
+    assert "standard_entry_ids" in live
 
 
 def test_weekly_standard_selector_shows_canonical_course_and_exact_source_provenance() -> None:
-    source = STANDARDS.read_text(encoding="utf-8")
+    source = CANONICAL_STANDARDS.read_text(encoding="utf-8")
 
     assert "catalog_category" in source
     assert "catalog_course" in source
@@ -45,6 +51,36 @@ def test_weekly_standard_selector_shows_canonical_course_and_exact_source_proven
     assert "exact standard entry" in source
     assert "AI cannot rewrite authoritative wording" in source
     assert "Search by code, wording, strand, or source" in source
+
+
+def test_live_weekly_selector_prioritizes_scheduled_lesson_relevance(
+) -> None:
+    source = LIVE_STANDARDS.read_text(encoding="utf-8")
+
+    assert "Suggested for this week" in source
+    assert "weeklyLessons?: PlannedLessonContext[]" in source
+    assert "weeklyLessons = []" in source
+    assert "relevanceScore" in source
+    assert "deterministic relevance aid, not AI rewriting" in source
+    assert "Browse all approved standards" in source
+    assert "Search by code, wording, strand, or source" in source
+    assert "Unit ${match[1]} · Chapter ${match[2]}" in source
+    assert 'new CustomEvent("tpp:standards-saved"' in source
+
+
+def test_teacher_setup_uses_schedule_minutes_and_passes_live_week_to_standards() -> None:
+    main = MAIN.read_text(encoding="utf-8")
+    parser = CURRICULUM_ROWS.read_text(encoding="utf-8")
+
+    assert 'from "./curriculumRows"' in main
+    assert "parseCurriculumRows" in main
+    assert "Leave minutes blank for normal lessons" in main
+    assert "Minutes come from the course schedule." in main
+    assert "weeklyLessons={plan}" in main
+    assert "Optional minutes override" in main
+    assert "estimated_minutes: number | null" in parser
+    assert "if (!value.trim()) return null" in parser
+    assert "previous pilot format" in parser
 
 
 def test_weekly_plan_reaches_course_mapping_and_canonical_standards_selector() -> None:
@@ -72,6 +108,33 @@ def test_ai_planning_and_reflection_remain_teacher_reviewed_drafts() -> None:
     assert "Nothing has been added to your plan" in planning
     assert "Nothing has been added to your saved plan" in reflection
     assert "saved weekly plan, finalized Friday validation" in reflection
+
+
+def test_integrated_planning_draft_covers_full_hqi_workflow_and_bulk_teacher_acceptance() -> None:
+    source = PLANNING.read_text(encoding="utf-8")
+
+    for field in (
+        "unit_topic",
+        "literacy_standards",
+        "act_preparation",
+        "learning_targets",
+        "know",
+        "understand",
+        "do_statement",
+        "activities",
+        "assessments",
+        "resources",
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+    ):
+        assert f'"{field}"' in source
+    assert "Apply full planning draft" in source
+    assert "tpp:standards-saved" in source
+    assert "approved Alabama literacy standards" in source
+    assert "governed ACT reference catalog" in source
 
 
 def test_ai_surfaces_show_no_student_data_notice_and_accessible_status() -> None:
@@ -107,7 +170,14 @@ def test_platform_admin_act_reference_review_is_human_controlled() -> None:
 def test_gate_e_teacher_components_do_not_collect_student_specific_fields() -> None:
     combined = "\n".join(
         path.read_text(encoding="utf-8")
-        for path in (MAPPING, STANDARDS, PLANNING, REFLECTION, ACT_ADMIN)
+        for path in (
+            MAPPING,
+            CANONICAL_STANDARDS,
+            LIVE_STANDARDS,
+            PLANNING,
+            REFLECTION,
+            ACT_ADMIN,
+        )
     ).lower()
 
     # Warning copy is required to name prohibited student-data categories. This

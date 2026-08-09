@@ -6,7 +6,7 @@ class CurriculumLessonImport:
     sequence: int
     unit_title: str
     lesson_title: str
-    estimated_minutes: int
+    estimated_minutes: int | None = None
     standards: tuple[str, ...] = ()
     learning_targets: tuple[str, ...] = ()
     assessment: str = ""
@@ -19,8 +19,8 @@ class CurriculumLessonImport:
             raise ValueError("unit title is required")
         if not self.lesson_title.strip():
             raise ValueError("lesson title is required")
-        if self.estimated_minutes < 1:
-            raise ValueError("estimated minutes must be at least 1")
+        if self.estimated_minutes is not None and self.estimated_minutes < 1:
+            raise ValueError("estimated minutes must be at least 1 when provided")
 
 
 def validate_curriculum_import(

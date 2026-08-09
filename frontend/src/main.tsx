@@ -4,6 +4,7 @@ import ReactDOM from "react-dom/client";
 import { AdminSubmissionPanel } from "./AdminSubmissionPanel";
 import { AiPlanningPanel, type PlanningFieldKey } from "./AiPlanningPanel";
 import { AiReflectionPanel } from "./AiReflectionPanel";
+import { parseCurriculumRows } from "./curriculumRows";
 import { ScheduleExceptionPanel } from "./ScheduleExceptionPanel";
 import { StandardsAdministrationPanel } from "./StandardsAdministrationPanel";
 import { StandardsCourseMappingPanel } from "./StandardsCourseMappingPanel";
@@ -414,29 +415,13 @@ function App() {
     event.preventDefault();
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
-    const rows = String(form.get("lesson_rows") ?? "")
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line, index) => {
-        const [unit, lesson, minutes, standards = "", targets = "", assessment = ""] = line
-          .split("|")
-          .map((value) => value.trim());
-        const estimatedMinutes = Number(minutes);
-        if (!unit || !lesson || !Number.isInteger(estimatedMinutes) || estimatedMinutes < 1) {
-          throw new Error(`Curriculum row ${index + 1} must include unit, lesson, and minutes.`);
-        }
-        return {
-          sequence: index + 1,
-          unit_title: unit,
-          lesson_title: lesson,
-          estimated_minutes: estimatedMinutes,
-          standards: standards ? standards.split(";").map((value) => value.trim()).filter(Boolean) : [],
-          learning_targets: targets ? targets.split(";").map((value) => value.trim()).filter(Boolean) : [],
-          assessment,
-          can_split: true,
-        };
-      });
+    let rows;
+    try {
+      rows = parseCurriculumRows(String(form.get("lesson_rows") ?? ""));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Curriculum rows are invalid.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -885,12 +870,37 @@ function App() {
 
         {view === "curriculum" && isTeacher && (
           <section className="panel">
-            <div className="section-heading compact"><div><p className="eyebrow">Teacher setup</p><h2>Import a sequenced curriculum</h2><p className="supporting">One lesson per line: Unit | Lesson | Minutes | Standards | Learning targets | Assessment</p></div></div>
+            <div className="section-heading compact">
+              <div>
+                <p className="eyebrow">Teacher setup</p>
+                <h2>Import a sequenced curriculum</h2>
+                <p className="supporting">
+                  One lesson per line: Unit | Lesson | Standards | Learning targets | Assessment |
+                  Optional minutes override. Leave minutes blank for normal lessons; TPP uses the
+                  course schedule you configure next.
+                </p>
+              </div>
+            </div>
             <form className="form-grid" onSubmit={(event) => void createCurriculum(event)}>
               <label>Curriculum name<input name="name" required placeholder="Army JROTC LET 1" /></label>
               <label>Version<input name="version" required placeholder="2026–27" /></label>
               <label>Standards family<input name="standards_family" placeholder="Army JROTC / Alabama" /></label>
-              <label className="full-width">Lesson rows<textarea name="lesson_rows" rows={12} required defaultValue={"Introduction | Course orientation and expectations | 50 | | Explain course expectations | Exit ticket\nDrill and Ceremony | Attention, Parade Rest, At Ease, Rest | 50 | | Demonstrate stationary positions | Performance check"} /></label>
+              <label className="full-width">
+                Lesson rows
+                <textarea
+                  name="lesson_rows"
+                  rows={12}
+                  required
+                  defaultValue={"Introduction | Course orientation and expectations | | Explain course expectations | Exit ticket\nDrill and Ceremony | Attention, Parade Rest, At Ease, Rest | | Demonstrate stationary positions | Performance check"}
+                />
+              </label>
+              <div className="guidance-card full-width">
+                <strong>Minutes come from the course schedule.</strong>
+                <p>
+                  Use the optional final column only when a lesson should intentionally span
+                  multiple meetings or use a different duration than the normal period/block.
+                </p>
+              </div>
               <div className="form-actions full-width"><button className="primary" disabled={busy}>Import curriculum</button></div>
             </form>
           </section>
@@ -898,7 +908,7 @@ function App() {
 
         {view === "assignment" && isTeacher && (
           <section className="panel">
-            <div className="section-heading compact"><div><p className="eyebrow">Course configuration</p><h2>Create a teaching assignment</h2><p className="supporting">Period, block, and custom meeting patterns use actual instructional minutes.</p></div></div>
+            <div className="section-heading compact"><div><p className="eyebrow">Course configuration</p><h2>Create a teaching assignment</h2><p className="supporting">Period, block, and custom meeting patterns define normal instructional minutes for each curriculum lesson.</p></div></div>
             {curricula.length === 0 ? (
               <div className="empty-state"><p>Import at least one curriculum before creating a course.</p><button className="primary" onClick={() => setView("curriculum")}>Import curriculum</button></div>
             ) : (
@@ -922,7 +932,7 @@ function App() {
 
         {view === "plan" && isTeacher && (
           <section className="panel">
-            <div className="section-heading compact"><div><p className="eyebrow">Next-week preparation</p><h2>Weekly plan</h2><p className="supporting">Generate the schedule, complete required planning fields, then explicitly submit the saved weekly plan.</p></div></div>
+            <div className="section-heading compact"><div><p className="eyebrow">Next-week preparation</p><h2>Weekly plan</h2><p className="supporting">Generate the schedule, select relevant authoritative standards, review the planning draft, then explicitly submit the saved weekly plan.</p></div></div>
             <div className="toolbar">
               <label>Course<select value={selectedAssignmentId} onChange={(event) => selectPlanningAssignment(event.target.value)}><option value="">Select a course</option>{assignments.map((assignment) => <option value={assignment.id} key={assignment.id}>{assignment.course_name}</option>)}</select></label>
               <label>Week of<input type="date" value={weekStart} onChange={(event) => selectPlanningWeek(event.target.value)} /></label>
@@ -952,9 +962,10 @@ function App() {
               accessToken={session.access_token}
               assignmentId={selectedAssignmentId || null}
               weekStart={weekStart}
+              weeklyLessons={plan}
               onSelectionResolved={resolveSelectedStandards}
             />
-            <div className="section-heading compact draft-heading"><div><p className="eyebrow">Anniston HQI fields</p><h2>Planning narrative</h2><p className="supporting">Literacy Standards and ACT Preparation are required.</p></div><span className="badge">Revision {draftRevision ?? 0} · {draftDirty ? "Unsaved changes" : submissionLabel(draftSubmissionStatus)}</span></div>
+            <div className="section-heading compact draft-heading"><div><p className="eyebrow">Anniston HQI fields</p><h2>Planning narrative</h2><p className="supporting">Literacy Standards and ACT Preparation are required. TPP can prepare a grounded starting draft from the scheduled curriculum and selected standards.</p></div><span className="badge">Revision {draftRevision ?? 0} · {draftDirty ? "Unsaved changes" : submissionLabel(draftSubmissionStatus)}</span></div>
             {draftSubmittedAt && <p className="guidance-text">Last submitted {new Date(draftSubmittedAt).toLocaleString()}.</p>}
             <div className="form-grid">
               <label>Unit / topic<input value={draft.unit_topic} onChange={(event) => setDraft({ ...draft, unit_topic: event.target.value })} /></label>
