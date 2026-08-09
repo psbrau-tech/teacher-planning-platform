@@ -65,7 +65,7 @@ type AssignmentStandards = {
   selected_entry_ids: string[];
 };
 
-type PlannedLessonContext = {
+export type PlannedLessonContext = {
   unit_title: string;
   lesson_title: string;
   lesson_date: string;
@@ -75,6 +75,7 @@ type StandardsPanelProps = {
   accessToken: string;
   assignmentId: string | null;
   weekStart: string;
+  weeklyLessons?: PlannedLessonContext[];
   onSelectionResolved?: (selected: StandardEntry[]) => void;
 };
 
@@ -159,10 +160,10 @@ export function StandardsPanel({
   accessToken,
   assignmentId,
   weekStart,
+  weeklyLessons = [],
   onSelectionResolved,
 }: StandardsPanelProps) {
   const [catalog, setCatalog] = useState<AssignmentStandards | null>(null);
-  const [weeklyLessons, setWeeklyLessons] = useState<PlannedLessonContext[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
   const [browseOpen, setBrowseOpen] = useState(false);
@@ -174,7 +175,6 @@ export function StandardsPanel({
   useEffect(() => {
     let active = true;
     setCatalog(null);
-    setWeeklyLessons([]);
     setSelected(new Set());
     setQuery("");
     setBrowseOpen(false);
@@ -190,29 +190,17 @@ export function StandardsPanel({
     const load = async () => {
       setLoading(true);
       try {
-        const headers = { Authorization: `Bearer ${accessToken}` };
-        const [standardsResponse, planResponse] = await Promise.all([
-          fetch(
-            `/api/v1/standards/assignment/${encodeURIComponent(assignmentId)}` +
-              `?week_start=${encodeURIComponent(weekStart)}`,
-            { headers },
-          ),
-          fetch(
-            `/api/v1/plans?assignment_id=${encodeURIComponent(assignmentId)}` +
-              `&week_start=${encodeURIComponent(weekStart)}`,
-            { headers },
-          ),
-        ]);
-        if (!standardsResponse.ok) {
-          throw new Error(await readError(standardsResponse, "Standards could not be loaded."));
+        const response = await fetch(
+          `/api/v1/standards/assignment/${encodeURIComponent(assignmentId)}` +
+            `?week_start=${encodeURIComponent(weekStart)}`,
+          { headers: { Authorization: `Bearer ${accessToken}` } },
+        );
+        if (!response.ok) {
+          throw new Error(await readError(response, "Standards could not be loaded."));
         }
-        const body = (await standardsResponse.json()) as AssignmentStandards;
-        const lessons = planResponse.ok
-          ? ((await planResponse.json()) as PlannedLessonContext[])
-          : [];
+        const body = (await response.json()) as AssignmentStandards;
         if (!active) return;
         setCatalog(body);
-        setWeeklyLessons(lessons);
         setSelected(new Set(body.selected_entry_ids));
         onSelectionResolved?.(selectedEntriesFor(body));
       } catch (caught) {
@@ -357,7 +345,7 @@ export function StandardsPanel({
       </div>
 
       {!assignmentId ? <p>Select a course before choosing standards.</p> : null}
-      {loading ? <p>Loading approved standards and this week&apos;s lessons…</p> : null}
+      {loading ? <p>Loading approved standards…</p> : null}
       {error ? <p className="error-message" role="alert">{error}</p> : null}
 
       {catalog && !catalog.mapped ? (
