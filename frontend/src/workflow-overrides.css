@@ -1,150 +1,93 @@
-.course-management-grid {
-  margin-bottom: 1.25rem;
+.course-management-grid { margin-bottom: 1.25rem; }
+.setup-section { display: block; margin-top: 1.25rem; border: 1px solid var(--border-color, #d7dfeb); border-radius: 14px; padding: 1rem; background: #fff; }
+.setup-section > summary { cursor: pointer; font-weight: 700; font-size: 1rem; margin-bottom: .75rem; }
+.pacing-setup, .standards-setup, .week-curriculum-section { margin-top: 1.5rem; }
+.compact-guidance { padding: .7rem .85rem; min-width: 220px; }
+.compact-guidance p { margin: .25rem 0 0; }
+.danger-link { color: #8b1e1e !important; }
+
+.boundary-strip {
+  background: #fdecec !important;
+  border-top: 1px solid #c94a55 !important;
+  border-bottom: 1px solid #c94a55 !important;
+  color: #8f2029 !important;
+  font-weight: 800;
 }
 
-.setup-section {
-  display: block;
-  margin-top: 1.25rem;
-  border: 1px solid var(--border-color, #d7dfeb);
-  border-radius: 14px;
-  padding: 1rem;
-  background: #fff;
+.toast-alert {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  width: min(520px, calc(100vw - 36px));
+  z-index: 2000;
+  box-shadow: 0 16px 45px rgba(28, 41, 61, .24);
+  margin: 0;
 }
 
-.setup-section > summary {
-  cursor: pointer;
-  font-weight: 700;
-  font-size: 1rem;
-  margin-bottom: .75rem;
-}
+.weekly-curriculum-list { display: grid; gap: .8rem; }
+.weekly-curriculum-item { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, 240px); gap: 1rem; align-items: center; padding: 1rem; border: 1px solid #d7dfeb; border-radius: 12px; background: #fff; }
+.weekly-curriculum-item.carried-forward { border-width: 2px; border-color: #d69d2e; background: #fffaf0; }
+.weekly-curriculum-item h3 { margin: .3rem 0 0; }
+.carry-badge { background: #fff0c7 !important; color: #6a4500 !important; }
 
-.pacing-setup,
-.standards-setup,
-.week-curriculum-section {
-  margin-top: 1.5rem;
-}
-
-.compact-guidance {
-  padding: .7rem .85rem;
-  min-width: 220px;
-}
-
-.compact-guidance p {
-  margin: .25rem 0 0;
-}
-
-.danger-link {
-  color: #8b1e1e !important;
-}
-
-.weekly-curriculum-list {
-  display: grid;
-  gap: .8rem;
-}
-
-.weekly-curriculum-item {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(180px, 240px);
-  gap: 1rem;
-  align-items: center;
-  padding: 1rem;
-  border: 1px solid #d7dfeb;
-  border-radius: 12px;
-  background: #fff;
-}
-
-.weekly-curriculum-item.carried-forward {
-  border-width: 2px;
-  border-color: #d69d2e;
-  background: #fffaf0;
-}
-
-.weekly-curriculum-item h3 {
-  margin: .3rem 0 0;
-}
-
-.carry-badge {
-  background: #fff0c7 !important;
-  color: #6a4500 !important;
-}
-
-.working-status {
-  display: flex;
-  align-items: center;
-  gap: .5rem;
-  flex-wrap: wrap;
-  padding: .75rem 1rem;
-  border: 1px solid #cdd9ea;
-  border-radius: 10px;
-  background: #f7faff;
-}
-
-.button-spinner {
-  display: inline-block;
-  width: 1em;
-  height: 1em;
-  border: 2px solid currentColor;
-  border-right-color: transparent;
-  border-radius: 50%;
-  animation: tpp-spin .75s linear infinite;
-  vertical-align: -.15em;
-}
-
-@keyframes tpp-spin {
-  to { transform: rotate(360deg); }
-}
+.working-status { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; padding: .75rem 1rem; border: 1px solid #cdd9ea; border-radius: 10px; background: #f7faff; }
+.button-spinner { display: inline-block; width: 1em; height: 1em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: tpp-spin .75s linear infinite; vertical-align: -.15em; }
+@keyframes tpp-spin { to { transform: rotate(360deg); } }
 
 .report-period-control {
   display: flex;
-  align-items: end;
+  align-items: flex-end;
   flex-wrap: wrap;
-  gap: .75rem;
+  gap: .9rem;
+  padding: 1rem;
   margin: .75rem 0 1.25rem;
+  border: 1px solid #dfe5ee;
+  border-radius: 14px;
+  background: #f8fafc;
 }
+.report-period-control label { display: flex; flex-direction: column; gap: .45rem; min-width: 210px; color: #4f5f76; font-size: .82rem; font-weight: 750; }
+.report-period-control select, .report-period-control input { width: 100%; border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px 11px; color: #172033; background: #fff; }
+.report-period-control .period-summary { margin: 0; min-width: 250px; flex: 1; }
+.admin-activity-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 2rem; }
 
-.governance-list {
+.governance-list { display: grid; gap: .55rem; }
+.governance-source { border: 1px solid #d7dfeb; border-radius: 10px; background: #fff; padding: .2rem .8rem; }
+.governance-source > summary { cursor: pointer; padding: .75rem 0; }
+.governance-source > summary span { display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; }
+.governance-source > summary small { color: #5f6f86; }
+
+.muted-text { color: #66758b; font-size: .9rem; }
+
+.pdf-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1900;
   display: grid;
-  gap: .55rem;
+  place-items: center;
+  padding: 22px;
+  background: rgba(18, 31, 49, .68);
 }
-
-.governance-source {
-  border: 1px solid #d7dfeb;
-  border-radius: 10px;
-  background: #fff;
-  padding: .2rem .8rem;
+.pdf-modal {
+  width: min(1100px, 100%);
+  height: min(900px, calc(100vh - 44px));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: white;
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .35);
 }
-
-.governance-source > summary {
-  cursor: pointer;
-  padding: .75rem 0;
-}
-
-.governance-source > summary span {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: baseline;
-}
-
-.governance-source > summary small {
-  color: #5f6f86;
-}
-
-.pdf-review-grid:focus {
-  outline: 3px solid rgba(24, 77, 132, .28);
-  outline-offset: 5px;
-}
-
-.muted-text {
-  color: #66758b;
-  font-size: .9rem;
-}
+.pdf-modal-heading { display: flex; justify-content: space-between; align-items: center; gap: 18px; padding: 16px 20px; border-bottom: 1px solid #dfe5ee; }
+.pdf-modal-heading h2 { font-size: 1.25rem; margin: 0; }
+.pdf-modal iframe { width: 100%; height: 100%; border: 0; background: #eef2f6; }
 
 @media (max-width: 760px) {
-  .weekly-curriculum-item {
-    grid-template-columns: 1fr;
-  }
-  .governance-source > summary span {
-    display: block;
-  }
+  .weekly-curriculum-item { grid-template-columns: 1fr; }
+  .governance-source > summary span { display: block; }
+  .admin-activity-grid { grid-template-columns: 1fr; }
+  .report-period-control { align-items: stretch; flex-direction: column; }
+  .report-period-control label, .report-period-control .period-summary { min-width: 0; width: 100%; }
+  .pdf-modal-backdrop { padding: 8px; }
+  .pdf-modal { height: calc(100vh - 16px); }
+  .pdf-modal-heading { align-items: stretch; flex-direction: column; }
 }
