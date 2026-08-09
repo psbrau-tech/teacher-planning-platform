@@ -10,9 +10,22 @@ type WeeklySubmission = {
   course_name: string | null;
   week_start: string;
   revision: number | null;
+  submitted_revision: number | null;
   submission_status: string;
   submitted_at: string | null;
-  generated_document_count: number;
+};
+
+type SubmittedPlan = {
+  school_id: string;
+  school_name: string;
+  teacher_id: string;
+  teacher_name: string;
+  assignment_id: string;
+  course_name: string;
+  week_start: string;
+  submitted_revision: number;
+  submitted_at: string;
+  source_data: Record<string, string>;
 };
 
 type Props = {
@@ -39,14 +52,19 @@ function labelFor(status: string): string {
   }[status] ?? status;
 }
 
-function statusClass(status: string): string {
-  return status === "submitted" ? "status" : "badge";
+function fieldLabel(key: string): string {
+  return key
+    .split("_")
+    .map((part) => part ? part[0].toUpperCase() + part.slice(1) : part)
+    .join(" ");
 }
 
 export function AdminSubmissionPanel({ accessToken, roles, disabled = false }: Props) {
   const [weekStart, setWeekStart] = useState(mondayFor());
   const [rows, setRows] = useState<WeeklySubmission[]>([]);
+  const [selectedPlan, setSelectedPlan] = useState<SubmittedPlan | null>(null);
   const [loading, setLoading] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState("");
 
   const isDistrictAdmin = roles.includes("district_admin");
@@ -58,23 +76,26 @@ export function AdminSubmissionPanel({ accessToken, roles, disabled = false }: P
     pending: rows.filter((row) => ["draft", "not_started"].includes(row.submission_status)).length,
   }), [rows]);
 
+  async function responseMessage(response: Response, fallback: string): Promise<string> {
+    try {
+      const payload = await response.json() as { detail?: string };
+      return payload.detail ?? fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
   async function load() {
     setLoading(true);
     setError("");
+    setSelectedPlan(null);
     try {
       const response = await fetch(
         `/api/v1/administration/submissions?week_start=${encodeURIComponent(weekStart)}`,
         { headers: { Authorization: `Bearer ${accessToken}` } },
       );
       if (!response.ok) {
-        let detail = "Weekly submission reporting could not be loaded.";
-        try {
-          const payload = await response.json() as { detail?: string };
-          detail = payload.detail ?? detail;
-        } catch {
-          // Use bounded fallback message.
-        }
-        throw new Error(detail);
+        throw new Error(await responseMessage(response, "Weekly submission reporting could not be loaded."));
       }
       setRows(await response.json() as WeeklySubmission[]);
     } catch (caught) {
@@ -82,6 +103,26 @@ export function AdminSubmissionPanel({ accessToken, roles, disabled = false }: P
       setError(caught instanceof Error ? caught.message : "Weekly submission reporting could not be loaded.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadSubmittedPlan(assignmentId: string) {
+    setDetailLoading(true);
+    setError("");
+    try {
+      const response = await fetch(
+        `/api/v1/administration/submissions/${encodeURIComponent(assignmentId)}?week_start=${encodeURIComponent(weekStart)}`,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      );
+      if (!response.ok) {
+        throw new Error(await responseMessage(response, "Submitted weekly plan could not be loaded."));
+      }
+      setSelectedPlan(await response.json() as SubmittedPlan);
+    } catch (caught) {
+      setSelectedPlan(null);
+      setError(caught instanceof Error ? caught.message : "Submitted weekly plan could not be loaded.");
+    } finally {
+      setDetailLoading(false);
     }
   }
 
@@ -96,7 +137,7 @@ export function AdminSubmissionPanel({ accessToken, roles, disabled = false }: P
           <p className="eyebrow">{scopeLabel} Administrator</p>
           <h2>Weekly plan submissions</h2>
           <p className="supporting">
-            Verify teacher professional planning submissions by week and course. No student data is used.
+            Verify teacher professional planning submissions by week and course, then inspect the exact immutable submitted revision.
           </p>
         </div>
       </div>
@@ -133,7 +174,8 @@ export function AdminSubmissionPanel({ accessToken, roles, disabled = false }: P
                 <th>Course</th>
                 <th>Status</th>
                 <th>Submitted</th>
-                <th>Documents</th>
+                <th>Revision</th>
+                <th>Plan</th>
               </tr>
             </thead>
             <tbody>
@@ -142,14 +184,47 @@ export function AdminSubmissionPanel({ accessToken, roles, disabled = false }: P
                   <td>{row.school_name}</td>
                   <td>{row.teacher_name}</td>
                   <td>{row.course_name ?? "—"}</td>
-                  <td><span className={statusClass(row.submission_status)}>{labelFor(row.submission_status)}</span></td>
+                  <td><span className={row.submission_status === "submitted" ? "status" : "badge"}>{labelFor(row.submission_status)}</span></td>
                   <td>{row.submitted_at ? new Date(row.submitted_at).toLocaleString() : "—"}</td>
-                  <td>{row.generated_document_count}</td>
+                  <td>{row.submitted_revision ?? "—"}</td>
+                  <td>
+                    <button
+                      className="link-button"
+                      disabled={!row.assignment_id || !row.submitted_revision || disabled || detailLoading}
+                      onClick={() => row.assignment_id && void loadSubmittedPlan(row.assignment_id)}
+                    >
+                      View submitted plan
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      )}
+
+      {selectedPlan && (
+        <article className="card submitted-plan-detail" aria-label="Submitted weekly plan detail">
+          <div className="card-row">
+            <div>
+              <span className="badge">Submitted revision {selectedPlan.submitted_revision}</span>
+              <h3>{selectedPlan.teacher_name} · {selectedPlan.course_name}</h3>
+              <p>{selectedPlan.school_name} · Week of {selectedPlan.week_start}</p>
+              <small>Submitted {new Date(selectedPlan.submitted_at).toLocaleString()}</small>
+            </div>
+            <button className="link-button" onClick={() => setSelectedPlan(null)}>Close</button>
+          </div>
+          <dl className="submitted-plan-fields">
+            {Object.entries(selectedPlan.source_data)
+              .filter(([, value]) => value.trim())
+              .map(([key, value]) => (
+                <div key={key}>
+                  <dt>{fieldLabel(key)}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
+          </dl>
+        </article>
       )}
     </section>
   );
