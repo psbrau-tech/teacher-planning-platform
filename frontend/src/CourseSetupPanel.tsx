@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { parseCurriculumRows } from "./curriculumRows";
+import { downloadPacingTemplate } from "./pacingTemplate";
 import { StandardsCourseMappingPanel } from "./StandardsCourseMappingPanel";
 
 type Curriculum = {
@@ -32,6 +33,14 @@ type Assignment = {
   meeting_patterns: MeetingPattern[];
   revision: number;
   updated_at: string;
+};
+
+type CatalogCategory = {
+  id: string;
+  category_key: string;
+  display_name: string;
+  category_type: string;
+  sort_order: number;
 };
 
 type Props = {
@@ -67,25 +76,6 @@ async function readError(response: Response, fallback: string): Promise<string> 
   }
 }
 
-function downloadPacingTemplate() {
-  const content = [
-    "# TPP Curriculum & Pacing template",
-    "# One lesson per line:",
-    "# Unit | Lesson | Standards | Learning targets | Assessment | Optional minutes override",
-    "Introduction | Course orientation and expectations | | Explain course expectations | Exit ticket |",
-    "Drill and Ceremony | Attention, Parade Rest, At Ease, Rest | | Demonstrate stationary positions | Performance check |",
-  ].join("\n");
-  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = window.document.createElement("a");
-  anchor.href = url;
-  anchor.download = "tpp-curriculum-pacing-template.txt";
-  window.document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
-}
-
 export function CourseSetupPanel({
   accessToken,
   schoolId,
@@ -104,6 +94,7 @@ export function CourseSetupPanel({
   const [working, setWorking] = useState(false);
   const [pacingAssignmentId, setPacingAssignmentId] = useState(selectedAssignmentId);
   const [reuseCurriculumId, setReuseCurriculumId] = useState("");
+  const [standardsFamilies, setStandardsFamilies] = useState<CatalogCategory[]>([]);
   const editing = assignments.find((item) => item.id === editingId) ?? null;
   const pacingAssignment = assignments.find((item) => item.id === pacingAssignmentId)
     ?? assignments.find((item) => item.id === selectedAssignmentId)
@@ -121,6 +112,24 @@ export function CourseSetupPanel({
   );
 
   const authHeaders = { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" };
+
+  useEffect(() => {
+    let active = true;
+    const loadFamilies = async () => {
+      try {
+        const response = await fetch("/api/v1/standards/catalog/categories", {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (!response.ok) throw new Error(await readError(response, "Standards families could not be loaded."));
+        const rows = await response.json() as CatalogCategory[];
+        if (active) setStandardsFamilies(rows);
+      } catch (caught) {
+        if (active) onError(caught instanceof Error ? caught.message : "Standards families could not be loaded.");
+      }
+    };
+    void loadFamilies();
+    return () => { active = false; };
+  }, [accessToken, onError]);
 
   async function createPlaceholderCurriculum(courseName: string, version: string): Promise<Curriculum> {
     const response = await fetch("/api/v1/curricula", {
@@ -356,7 +365,7 @@ export function CourseSetupPanel({
               <h2>Set the instructional sequence</h2>
               <p className="supporting">TPP uses this longer-term sequence to build each week, then Friday validation keeps the section's pacing position current when instruction is completed, moved, skipped, or carried forward.</p>
             </div>
-            <button type="button" className="secondary" onClick={downloadPacingTemplate}>Download pacing template</button>
+            <button type="button" className="secondary" onClick={downloadPacingTemplate}>Download Excel pacing template</button>
           </div>
           <div className="toolbar">
             <label>Class<select value={pacingAssignment?.id ?? ""} onChange={(event) => { setPacingAssignmentId(event.target.value); onSelectAssignment(event.target.value); }}>
@@ -374,11 +383,17 @@ export function CourseSetupPanel({
 
           <details>
             <summary>Add or replace this class's pacing sequence</summary>
-            <p className="supporting">Use the TPP template for predictable import. File-upload support for additional document formats can be added after the pilot without changing the pacing model.</p>
+            <p className="supporting">Use the Excel pacing template as a familiar planning worksheet. Copy the completed rows into the pacing sequence below for this pilot; direct spreadsheet upload can be added after pilot acceptance.</p>
             <form className="form-grid" onSubmit={(event) => void savePacing(event)}>
               <label>Curriculum name<input name="name" required defaultValue={pacingAssignment ? `${pacingAssignment.course_name} Curriculum & Pacing` : ""} /></label>
               <label>Version<input name="version" required defaultValue={academicVersion(pacingAssignment?.meeting_patterns[0])} /></label>
-              <label>Standards family<input name="standards_family" placeholder="Army JROTC / Alabama" /></label>
+              <label>Standards family
+                <select name="standards_family" defaultValue={currentPacing?.standards_family ?? ""}>
+                  <option value="">Select a governed standards family</option>
+                  {standardsFamilies.map((family) => <option value={family.display_name} key={family.id}>{family.display_name}</option>)}
+                </select>
+              </label>
+              <div className="guidance-card compact-guidance"><strong>Standards family is a planning label.</strong><p>The exact authoritative course mapping is selected in Standards setup below.</p></div>
               <label className="full-width">Pacing sequence<textarea name="lesson_rows" rows={12} required placeholder="Unit | Lesson | Standards | Learning targets | Assessment | Optional minutes override" /></label>
               <div className="guidance-card full-width"><strong>Normal lesson minutes come from the class schedule.</strong><p>Use the optional final column only when a lesson intentionally spans multiple meetings or uses a different duration.</p></div>
               <div className="form-actions full-width"><button className="primary" disabled={disabled || working}>{working ? "Saving…" : "Save Curriculum & Pacing"}</button></div>
