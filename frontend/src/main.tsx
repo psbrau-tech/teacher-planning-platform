@@ -598,7 +598,7 @@ function App() {
     setBusy(true); setError("");
     try {
       const blob = await documentBlob(document);
-      const filename = `anniston-hqi-${document}-${weekStart}.pdf`;
+      const filename = `anniston-planning-${document}-${weekStart}.pdf`;
       if (action === "download") {
         downloadBlob(blob, filename);
       } else {
@@ -838,7 +838,7 @@ function App() {
               <div className="button-row"><button className="primary" disabled={!selectedAssignmentId || busy} onClick={() => void saveDraft()}>Save draft</button><button className="secondary" disabled={!savedForReview || busy} onClick={() => window.document.getElementById("pdf-review")?.scrollIntoView({ behavior: "smooth" })}>Next: Review PDFs</button></div>
               <div className="pdf-review-grid" id="pdf-review">
                 {([
-                  ["instructional-framework", "High Quality Instruction Planning Framework"],
+                  ["instructional-framework", "Instructional Planning Framework"],
                   ["week-at-a-glance", "Week at a Glance"],
                   ["weekly-reflection", "Weekly Reflection / PLC Discussion"],
                   ["packet", "Combined packet"],
