@@ -9,7 +9,7 @@
 .submission-table table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 760px;
+  min-width: 860px;
 }
 
 .submission-table th,
@@ -34,4 +34,35 @@
 .submission-table:focus-visible {
   outline: 3px solid currentColor;
   outline-offset: 2px;
+}
+
+.submitted-plan-detail {
+  margin-top: 1rem;
+}
+
+.submitted-plan-detail .card-row {
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.submitted-plan-fields {
+  display: grid;
+  gap: 0.9rem;
+  margin: 1rem 0 0;
+}
+
+.submitted-plan-fields > div {
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border, #d9dee7);
+}
+
+.submitted-plan-fields dt {
+  margin-bottom: 0.25rem;
+  font-weight: 700;
+}
+
+.submitted-plan-fields dd {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
