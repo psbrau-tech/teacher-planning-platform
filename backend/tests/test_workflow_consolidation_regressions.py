@@ -112,11 +112,15 @@ def test_period_reporting_is_real_and_date_scoped_not_cosmetic() -> None:
     admin_ui = (ROOT / "frontend" / "src" / "AdministrationOverview.tsx").read_text(
         encoding="utf-8"
     )
-    assert "period_start" in migration
-    assert "period_end" in migration
+    assert "target_start date" in migration
+    assert "target_end date" in migration
+    assert "w.week_start between target_start and target_end" in migration
+    assert "sl.school_date between target_start and target_end" in migration
     assert "weekly_plans_created" in migration
     assert "instruction_records_validated" in migration
     assert "documents_requested" in migration
+    assert "period_start" in admin_ui
+    assert "period_end" in admin_ui
     assert "Current week" in admin_ui
     assert "Last 4 weeks" in admin_ui
     assert "Current grading period" in admin_ui
