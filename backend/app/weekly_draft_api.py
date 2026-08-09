@@ -85,7 +85,10 @@ def _submission_state(
     except SupabaseRestError as error:
         if error.status_code in {401, 403}:
             raise HTTPException(status_code=403, detail="Pilot data access was denied") from error
-        raise HTTPException(status_code=503, detail="Weekly submission state is unavailable") from error
+        raise HTTPException(
+            status_code=503,
+            detail="Weekly submission state is unavailable",
+        ) from error
     if not isinstance(payload, list) or not payload or not isinstance(payload[0], dict):
         raise HTTPException(status_code=503, detail="Weekly submission state is unavailable")
     row = payload[0]
@@ -198,10 +201,16 @@ def submit_weekly_draft(
         )
     except SupabaseRestError as error:
         if error.status_code in {401, 403}:
-            raise HTTPException(status_code=403, detail="Weekly plan submission is not authorized") from error
+            raise HTTPException(
+                status_code=403,
+                detail="Weekly plan submission is not authorized",
+            ) from error
         if error.status_code in {400, 409}:
             raise HTTPException(status_code=409, detail="Weekly plan revision conflict") from error
-        raise HTTPException(status_code=503, detail="Weekly plan submission is unavailable") from error
+        raise HTTPException(
+            status_code=503,
+            detail="Weekly plan submission is unavailable",
+        ) from error
 
     refreshed = store.get(teacher.subject, payload.assignment_id, payload.week_start)
     if refreshed is None:
