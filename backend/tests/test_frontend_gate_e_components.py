@@ -126,7 +126,7 @@ def test_weekly_reflection_is_required_and_entirely_teacher_authored() -> None:
     assert "Suggest Weekly Reflection" not in reflection
 
 
-def test_integrated_planning_draft_covers_full_planning_workflow_and_bulk_teacher_acceptance() -> None:
+def test_planning_draft_covers_full_workflow_and_bulk_teacher_acceptance() -> None:
     source = PLANNING.read_text(encoding="utf-8")
 
     for field in (
