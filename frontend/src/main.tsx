@@ -481,7 +481,7 @@ function App() {
       setMessage(`${created.course_name} was configured.`);
       setView("plan");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Teaching assignment setup failed.");
+      setError(caught instanceof Error ? caught.message : "Class schedule setup failed.");
     } finally { setBusy(false); }
   }
 
@@ -584,6 +584,23 @@ function App() {
       return saved;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Weekly draft save failed.");
+      return null;
+    } finally { setBusy(false); }
+  }
+
+  async function saveCloseoutDraft(): Promise<WeeklyDraft | null> {
+    if (!selectedAssignmentId) return null;
+    setBusy(true); setError("");
+    try {
+      const saved = await api<WeeklyDraft>("/api/v1/weekly-drafts", {
+        method: "PUT",
+        body: JSON.stringify({ assignment_id: selectedAssignmentId, week_start: weekStart, content: draft, expected_revision: draftRevision }),
+      });
+      setDraftRevision(saved.revision); setDraftState(saved.content); setDraftSubmissionStatus(saved.submission_status); setDraftSubmittedAt(saved.submitted_at); setDraftDirty(false);
+      setMessage(`Friday closeout saved at revision ${saved.revision}.`);
+      return saved;
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Friday closeout save failed.");
       return null;
     } finally { setBusy(false); }
   }
@@ -704,7 +721,7 @@ function App() {
   async function closeWeekAndContinue() {
     if (!validationFinalized) { setError("Complete Friday validation before closing the week."); return; }
     if (!reflectionIsComplete) { setError("Complete all 12 Weekly Reflection / PLC Discussion prompts before submitting the Friday closeout."); return; }
-    const saved = await saveDraft();
+    const saved = await saveCloseoutDraft();
     if (!saved) return;
     const submitted = await submitDraft(saved.revision);
     if (!submitted) return;
@@ -741,8 +758,8 @@ function App() {
       <nav className="workflow-nav" aria-label="Planning workflow">
         <button className={view === "dashboard" ? "active" : ""} onClick={() => setView("dashboard")}>Dashboard</button>
         {isTeacher && <button className={view === "curriculum" ? "active" : ""} onClick={() => setView("curriculum")}>Curriculum</button>}
-        {isTeacher && <button className={view === "assignment" ? "active" : ""} onClick={() => setView("assignment")}>Courses</button>}
-        {isTeacher && <button className={view === "validation" ? "active" : ""} onClick={() => openFridayCloseout()}>Friday closeout</button>}
+        {isTeacher && <button className={view === "assignment" ? "active" : ""} onClick={() => setView("assignment")}>Course Setup</button>}
+        {isTeacher && <button className={view === "validation" ? "active" : ""} onClick={() => openFridayCloseout()}>Friday validation</button>}
         {isTeacher && <button className={view === "plan" ? "active" : ""} onClick={() => setView("plan")}>Weekly plan</button>}
         {canViewAdministration && <button className={view === "administration" ? "active" : ""} onClick={() => setView("administration")}>Administration</button>}
       </nav>
@@ -757,17 +774,17 @@ function App() {
               <div>
                 <p className="eyebrow">Weekly workflow</p>
                 <h2>Close this week. Then build the next one.</h2>
-                <p>Normal routine: Friday validation → required teacher reflection → reconcile carry-forward → plan → review PDFs → submit. For the first week, start with Plan this week. You can also plan next week early.</p>
+                <p>Normal routine: Friday validation → required teacher reflection → reconcile carry-forward → plan → review PDFs → submit. Use Weekly plan for the first/current planning cycle, or start next week early when needed.</p>
               </div>
               <div className="hero-actions">
-                <button className="primary" disabled={!selectedAssignmentId} onClick={() => openFridayCloseout()}>Complete Friday closeout</button>
-                <button className="secondary" disabled={!selectedAssignmentId} onClick={() => openPlanningWeek(mondayFor())}>Plan this week</button>
+                <button className="primary" disabled={!selectedAssignmentId} onClick={() => openFridayCloseout()}>Complete Friday validation</button>
+                <button className="secondary" disabled={!selectedAssignmentId} onClick={() => openPlanningWeek(mondayFor())}>Open weekly plan</button>
                 <button className="secondary" disabled={!selectedAssignmentId} onClick={() => openPlanningWeek(addDays(mondayFor(), 7))}>Plan next week early</button>
               </div>
             </section>
             <section>
-              <div className="section-heading"><div><p className="eyebrow">Teaching assignments</p><h2>Your courses</h2></div><button className="secondary" onClick={() => setView(curricula.length ? "assignment" : "curriculum")}>Add course</button></div>
-              {assignments.length === 0 ? <div className="empty-state"><h3>No courses configured yet</h3><p>Add a curriculum, then create the first course and meeting pattern.</p></div> : (
+              <div className="section-heading"><div><p className="eyebrow">Course setup</p><h2>Your courses</h2></div><button className="secondary" onClick={() => setView(curricula.length ? "assignment" : "curriculum")}>Add course</button></div>
+              {assignments.length === 0 ? <div className="empty-state"><h3>No courses configured yet</h3><p>Add a curriculum, then create the first class schedule.</p></div> : (
                 <div className="grid">{assignments.map((assignment) => {
                   const curriculum = curricula.find((item) => item.id === assignment.curriculum_id);
                   return <article className={`card ${selectedAssignmentId === assignment.id ? "selected" : ""}`} key={assignment.id}><div className="card-row"><span className="badge">Revision {assignment.revision}</span><span className="status">Active</span></div><h3>{assignment.course_name}</h3><p>{assignment.meeting_patterns.map((pattern) => `${pattern.start_time.slice(0, 5)}–${pattern.end_time.slice(0, 5)}`).join(", ")}</p><small>{curriculum ? `${curriculum.name} · ${curriculum.version}` : assignment.curriculum_id}</small><button className="link-button" onClick={() => openFridayCloseout(assignment.id)}>Use this course</button></article>;
@@ -802,13 +819,13 @@ function App() {
 
         {view === "assignment" && isTeacher && (
           <section className="panel">
-            <div className="section-heading compact"><div><p className="eyebrow">Course configuration</p><h2>Create a teaching assignment</h2><p className="supporting">Period, block, and custom meeting patterns define normal instructional minutes.</p></div></div>
-            {curricula.length === 0 ? <div className="empty-state"><p>Add at least one curriculum before creating a course.</p><button className="primary" onClick={() => setView("curriculum")}>Add curriculum</button></div> : (
+            <div className="section-heading compact"><div><p className="eyebrow">Course Setup</p><h2>Create your class schedule</h2><p className="supporting">Period, block, and custom meeting patterns define normal instructional minutes.</p></div></div>
+            {curricula.length === 0 ? <div className="empty-state"><p>Add at least one curriculum before creating a class schedule.</p><button className="primary" onClick={() => setView("curriculum")}>Add curriculum</button></div> : (
               <form className="form-grid" onSubmit={(event) => void createAssignment(event)}>
                 <label>Course name<input name="course_name" required placeholder="Army JROTC LET 1" /></label><label>Course code<input name="course_code" placeholder="JROTC-1" /></label><label>Grade band<input name="grade_band" placeholder="9–12" /></label><label>Curriculum<select name="curriculum_id" required>{curricula.map((curriculum) => <option value={curriculum.id} key={curriculum.id}>{curriculum.name} · {curriculum.version}</option>)}</select></label>
                 <label>Schedule type<select name="schedule_type"><option value="period">Period</option><option value="block">Block</option><option value="custom">Custom</option></select></label><label>Rotation label<input name="rotation_label" placeholder="Daily, A Day, B Day" /></label><label>Start time<input name="start_time" type="time" defaultValue="08:00" required /></label><label>End time<input name="end_time" type="time" defaultValue="08:50" required /></label><label>Effective start<input name="effective_start" type="date" defaultValue="2026-08-10" required /></label><label>Effective end<input name="effective_end" type="date" defaultValue="2027-05-28" required /></label>
                 <fieldset className="full-width"><legend>Meeting weekdays</legend><div className="weekday-row">{[[1,"Mon"],[2,"Tue"],[3,"Wed"],[4,"Thu"],[5,"Fri"]].map(([value,label]) => <label className="check" key={value}><input type="checkbox" name="weekday" value={value} defaultChecked />{label}</label>)}</div></fieldset>
-                <div className="form-actions full-width"><button className="primary" disabled={busy}>Create course</button></div>
+                <div className="form-actions full-width"><button className="primary" disabled={busy}>Save class schedule</button></div>
               </form>
             )}
           </section>
@@ -832,7 +849,7 @@ function App() {
 
             <AiReflectionPanel accessToken={session.access_token} assignmentId={selectedAssignmentId || null} weekStart={weekStart} disabled={!validationFinalized || busy} onApplyReflection={(value) => updateDraft((current) => ({ ...current, reflection: value }))} />
 
-            {validationFinalized && <section className="review-section"><div className="section-heading compact"><div><p className="eyebrow">Step 2 · Required reflection</p><h2>Finish the weekly closeout</h2><p className="supporting">Save and submit the current week after all 12 district reflection prompts are complete. Then TPP will take you to next week for carry-forward reconciliation.</p></div></div><div className="button-row"><button className="secondary" disabled={!reflectionIsComplete || busy} onClick={() => void saveDraft()}>Save Friday closeout</button><button className="primary" disabled={!reflectionIsComplete || busy} onClick={() => void closeWeekAndContinue()}>Submit closeout & review next week</button>{savedForReview && <><button className="secondary" onClick={() => void exportDocument("weekly-reflection", "download")}>Download reflection PDF</button><button className="secondary" onClick={() => void exportDocument("weekly-reflection", "print")}>Print reflection PDF</button></>}</div></section>}
+            {validationFinalized && <section className="review-section"><div className="section-heading compact"><div><p className="eyebrow">Step 2 · Required reflection</p><h2>Finish the weekly closeout</h2><p className="supporting">Save and submit the current week after all 12 district reflection prompts are complete. Then TPP will take you to next week for carry-forward reconciliation.</p></div></div><div className="button-row"><button className="secondary" disabled={!reflectionIsComplete || busy} onClick={() => void saveCloseoutDraft()}>Save Friday closeout</button><button className="primary" disabled={!reflectionIsComplete || busy} onClick={() => void closeWeekAndContinue()}>Submit Friday closeout & plan next week</button>{savedForReview && <><button className="secondary" onClick={() => void exportDocument("weekly-reflection", "download")}>Download reflection PDF</button><button className="secondary" onClick={() => void exportDocument("weekly-reflection", "print")}>Print reflection PDF</button></>}</div></section>}
           </section>
         )}
 
