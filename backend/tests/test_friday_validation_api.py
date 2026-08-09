@@ -65,6 +65,21 @@ def test_friday_validation_can_be_saved_and_reloaded() -> None:
     assert loaded.json() == result
 
 
+def test_friday_validation_update_can_resolve_current_revision_for_client() -> None:
+    body = payload()
+    headers = {"X-TPP-Teacher-ID": "teacher-api-retry"}
+
+    first = client.put("/api/v1/friday-validations", json=body, headers=headers)
+    assert first.status_code == 200
+    assert first.json()["revision"] == 1
+
+    body["lessons"][0]["teacher_note"] = "Updated after teacher review"
+    second = client.put("/api/v1/friday-validations", json=body, headers=headers)
+    assert second.status_code == 200
+    assert second.json()["revision"] == 2
+    assert second.json()["lessons"][0]["teacher_note"] == "Updated after teacher review"
+
+
 def test_friday_validation_rejects_stale_revision() -> None:
     body = payload()
     headers = {"X-TPP-Teacher-ID": "teacher-api-b"}
