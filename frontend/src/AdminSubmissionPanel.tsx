@@ -71,13 +71,12 @@ export function AdminSubmissionPanel({ accessToken, roles, disabled = false }: P
 
   const isPlatformAdmin = roles.includes("platform_admin");
   const isDistrictAdmin = roles.includes("district_admin");
-  const scopeLabel = isPlatformAdmin ? "Platform" : isDistrictAdmin ? "District" : "School";
+  const isSchoolAdmin = roles.includes("school_admin");
+  const scopeLabel = isDistrictAdmin ? "District Administrator" : isSchoolAdmin ? "School Administrator" : isPlatformAdmin ? "Planning Administration" : "Administration";
   const canFilterSchools = isPlatformAdmin || isDistrictAdmin;
 
   const schools = useMemo(
-    () => Array.from(
-      new Map(rows.map((row) => [row.school_id, row.school_name])).entries(),
-    ).sort((left, right) => left[1].localeCompare(right[1])),
+    () => Array.from(new Map(rows.map((row) => [row.school_id, row.school_name])).entries()).sort((left, right) => left[1].localeCompare(right[1])),
     [rows],
   );
 
@@ -86,8 +85,7 @@ export function AdminSubmissionPanel({ accessToken, roles, disabled = false }: P
     return rows.filter((row) => {
       if (schoolFilter && row.school_id !== schoolFilter) return false;
       if (!search) return true;
-      return row.teacher_name.toLowerCase().includes(search)
-        || (row.course_name ?? "").toLowerCase().includes(search);
+      return row.teacher_name.toLowerCase().includes(search) || (row.course_name ?? "").toLowerCase().includes(search);
     });
   }, [rows, schoolFilter, teacherFilter]);
 
@@ -111,13 +109,8 @@ export function AdminSubmissionPanel({ accessToken, roles, disabled = false }: P
     setError("");
     setSelectedPlan(null);
     try {
-      const response = await fetch(
-        `/api/v1/administration/submissions?week_start=${encodeURIComponent(weekStart)}`,
-        { headers: { Authorization: `Bearer ${accessToken}` } },
-      );
-      if (!response.ok) {
-        throw new Error(await responseMessage(response, "Weekly submission reporting could not be loaded."));
-      }
+      const response = await fetch(`/api/v1/administration/submissions?week_start=${encodeURIComponent(weekStart)}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+      if (!response.ok) throw new Error(await responseMessage(response, "Weekly submission reporting could not be loaded."));
       setRows(await response.json() as WeeklySubmission[]);
     } catch (caught) {
       setRows([]);
@@ -131,13 +124,8 @@ export function AdminSubmissionPanel({ accessToken, roles, disabled = false }: P
     setDetailLoading(true);
     setError("");
     try {
-      const response = await fetch(
-        `/api/v1/administration/submissions/${encodeURIComponent(assignmentId)}?week_start=${encodeURIComponent(weekStart)}`,
-        { headers: { Authorization: `Bearer ${accessToken}` } },
-      );
-      if (!response.ok) {
-        throw new Error(await responseMessage(response, "Submitted weekly plan could not be loaded."));
-      }
+      const response = await fetch(`/api/v1/administration/submissions/${encodeURIComponent(assignmentId)}?week_start=${encodeURIComponent(weekStart)}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+      if (!response.ok) throw new Error(await responseMessage(response, "Submitted weekly plan could not be loaded."));
       setSelectedPlan(await response.json() as SubmittedPlan);
     } catch (caught) {
       setSelectedPlan(null);
@@ -147,126 +135,31 @@ export function AdminSubmissionPanel({ accessToken, roles, disabled = false }: P
     }
   }
 
-  useEffect(() => {
-    void load();
-  }, [weekStart, accessToken]);
+  useEffect(() => { void load(); }, [weekStart, accessToken]);
 
   return (
     <section>
       <div className="section-heading compact">
         <div>
-          <p className="eyebrow">{scopeLabel} Administrator</p>
+          <p className="eyebrow">{scopeLabel}</p>
           <h2>Weekly plan submissions</h2>
-          <p className="supporting">
-            Verify teacher professional planning submissions by week and course, then inspect the exact immutable submitted revision.
-          </p>
+          <p className="supporting">Verify professional planning submissions by week and course, then inspect the exact immutable submitted revision.</p>
         </div>
       </div>
       <div className="toolbar">
-        <label>
-          Week of
-          <input
-            type="date"
-            value={weekStart}
-            disabled={disabled || loading}
-            onChange={(event) => setWeekStart(event.target.value)}
-          />
-        </label>
-        {canFilterSchools && (
-          <label>
-            School
-            <select value={schoolFilter} onChange={(event) => setSchoolFilter(event.target.value)}>
-              <option value="">All governed schools</option>
-              {schools.map(([schoolId, schoolName]) => (
-                <option value={schoolId} key={schoolId}>{schoolName}</option>
-              ))}
-            </select>
-          </label>
-        )}
-        <label>
-          Teacher or course
-          <input
-            type="search"
-            value={teacherFilter}
-            placeholder="Filter results"
-            onChange={(event) => setTeacherFilter(event.target.value)}
-          />
-        </label>
-        <button className="secondary" disabled={disabled || loading} onClick={() => void load()}>
-          Refresh submissions
-        </button>
+        <label>Week of<input type="date" value={weekStart} disabled={disabled || loading} onChange={(event) => setWeekStart(event.target.value)} /></label>
+        {canFilterSchools && <label>School<select value={schoolFilter} onChange={(event) => setSchoolFilter(event.target.value)}><option value="">All governed schools</option>{schools.map(([schoolId, schoolName]) => <option value={schoolId} key={schoolId}>{schoolName}</option>)}</select></label>}
+        <label>Teacher or course<input type="search" value={teacherFilter} placeholder="Filter results" onChange={(event) => setTeacherFilter(event.target.value)} /></label>
+        <button className="secondary" disabled={disabled || loading} onClick={() => void load()}>Refresh submissions</button>
       </div>
       {error && <p className="error-message" role="alert">{error}</p>}
-      <section className="summary" aria-label="Weekly submission summary">
-        <div><strong>{summary.submitted}</strong><span>submitted</span></div>
-        <div><strong>{summary.revised}</strong><span>revised after submission</span></div>
-        <div><strong>{summary.pending}</strong><span>not submitted</span></div>
-        <div><strong>{filteredRows.length}</strong><span>teacher-course records</span></div>
-      </section>
-      {filteredRows.length === 0 && !loading ? (
-        <div className="empty-state"><p>No governed teacher-course records match the selected week and filters.</p></div>
-      ) : (
+      <section className="summary" aria-label="Weekly submission summary"><div><strong>{summary.submitted}</strong><span>submitted</span></div><div><strong>{summary.revised}</strong><span>revised after submission</span></div><div><strong>{summary.pending}</strong><span>not submitted</span></div><div><strong>{filteredRows.length}</strong><span>teacher-course records</span></div></section>
+      {filteredRows.length === 0 && !loading ? <div className="empty-state"><p>No governed teacher-course records match the selected week and filters.</p></div> : (
         <div className="submission-table" role="region" aria-label="Weekly plan submission status" tabIndex={0}>
-          <table>
-            <thead>
-              <tr>
-                <th>School</th>
-                <th>Teacher</th>
-                <th>Course</th>
-                <th>Status</th>
-                <th>Submitted</th>
-                <th>Revision</th>
-                <th>Plan</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRows.map((row) => (
-                <tr key={`${row.school_id}-${row.teacher_id}-${row.assignment_id ?? "none"}`}>
-                  <td>{row.school_name}</td>
-                  <td>{row.teacher_name}</td>
-                  <td>{row.course_name ?? "—"}</td>
-                  <td><span className={row.submission_status === "submitted" ? "status" : "badge"}>{labelFor(row.submission_status)}</span></td>
-                  <td>{row.submitted_at ? new Date(row.submitted_at).toLocaleString() : "—"}</td>
-                  <td>{row.submitted_revision ?? "—"}</td>
-                  <td>
-                    <button
-                      className="link-button"
-                      disabled={!row.assignment_id || !row.submitted_revision || disabled || detailLoading}
-                      onClick={() => row.assignment_id && void loadSubmittedPlan(row.assignment_id)}
-                    >
-                      View submitted plan
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <table><thead><tr><th>School</th><th>Teacher</th><th>Course</th><th>Status</th><th>Submitted</th><th>Revision</th><th>Plan</th></tr></thead><tbody>{filteredRows.map((row) => <tr key={`${row.school_id}-${row.teacher_id}-${row.assignment_id ?? "none"}`}><td>{row.school_name}</td><td>{row.teacher_name}</td><td>{row.course_name ?? "—"}</td><td><span className={row.submission_status === "submitted" ? "status" : "badge"}>{labelFor(row.submission_status)}</span></td><td>{row.submitted_at ? new Date(row.submitted_at).toLocaleString() : "—"}</td><td>{row.submitted_revision ?? "—"}</td><td><button className="link-button" disabled={!row.assignment_id || !row.submitted_revision || disabled || detailLoading} onClick={() => row.assignment_id && void loadSubmittedPlan(row.assignment_id)}>View submitted plan</button></td></tr>)}</tbody></table>
         </div>
       )}
-
-      {selectedPlan && (
-        <article className="card submitted-plan-detail" aria-label="Submitted weekly plan detail">
-          <div className="card-row">
-            <div>
-              <span className="badge">Submitted revision {selectedPlan.submitted_revision}</span>
-              <h3>{selectedPlan.teacher_name} · {selectedPlan.course_name}</h3>
-              <p>{selectedPlan.school_name} · Week of {selectedPlan.week_start}</p>
-              <small>Submitted {new Date(selectedPlan.submitted_at).toLocaleString()}</small>
-            </div>
-            <button className="link-button" onClick={() => setSelectedPlan(null)}>Close</button>
-          </div>
-          <dl className="submitted-plan-fields">
-            {Object.entries(selectedPlan.source_data)
-              .filter(([, value]) => value.trim())
-              .map(([key, value]) => (
-                <div key={key}>
-                  <dt>{fieldLabel(key)}</dt>
-                  <dd>{value}</dd>
-                </div>
-              ))}
-          </dl>
-        </article>
-      )}
+      {selectedPlan && <article className="card submitted-plan-detail" aria-label="Submitted weekly plan detail"><div className="card-row"><div><span className="badge">Submitted revision {selectedPlan.submitted_revision}</span><h3>{selectedPlan.teacher_name} · {selectedPlan.course_name}</h3><p>{selectedPlan.school_name} · Week of {selectedPlan.week_start}</p><small>Submitted {new Date(selectedPlan.submitted_at).toLocaleString()}</small></div><button className="link-button" onClick={() => setSelectedPlan(null)}>Close</button></div><dl className="submitted-plan-fields">{Object.entries(selectedPlan.source_data).filter(([, value]) => value.trim()).map(([key, value]) => <div key={key}><dt>{fieldLabel(key)}</dt><dd>{value}</dd></div>)}</dl></article>}
     </section>
   );
 }
