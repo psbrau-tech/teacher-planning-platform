@@ -58,7 +58,7 @@ class CurriculumLesson(BaseModel):
     sequence: int = Field(ge=1)
     unit_title: str
     lesson_title: str
-    estimated_minutes: int = Field(gt=0)
+    estimated_minutes: int | None = Field(default=None, gt=0)
     standards: list[str] = []
     learning_target: str
     know: list[str] = []
