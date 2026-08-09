@@ -107,7 +107,8 @@ class FakeClient:
                     "code": "R1",
                     "text": (
                         "Read a variety of print and nonprint documents to acquire new "
-                        "information and respond to the needs and demands of society and the workplace."
+                        "information and respond to the needs and demands of society "
+                        "and the workplace."
                     ),
                     "strand": "Recurring Standards",
                     "sequence": 1,
@@ -275,7 +276,8 @@ def test_ai_planning_context_is_server_grounded_and_excludes_identity_pii(
     assert body["suggestions"]["unit_topic"] == "Leadership: Styles and Team Roles"
     assert body["suggestions"]["learning_targets"].startswith("Compare leadership styles")
     assert "Grade 10 R1" in body["suggestions"]["literacy_standards"]
-    assert "Read a variety of print and nonprint documents" in body["suggestions"]["literacy_standards"]
+    literacy = body["suggestions"]["literacy_standards"]
+    assert "Read a variety of print and nonprint documents" in literacy
     assert "CLR 401" in body["suggestions"]["act_preparation"]
     assert "Locate important details" in body["suggestions"]["act_preparation"]
     assert body["suggestions"]["tuesday"].startswith("Analyze leadership styles")
