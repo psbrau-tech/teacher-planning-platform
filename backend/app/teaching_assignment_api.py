@@ -1,13 +1,13 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from .auth import AuthenticatedTeacher, require_teacher
 from .models import MeetingPattern
 from .settings import Settings, get_settings
 from .supabase_persistence import PersistenceError, SupabaseTeachingAssignmentStore
-from .supabase_rest import SupabaseRestClient
+from .supabase_rest import SupabaseRestClient, SupabaseRestError
 from .teaching_assignments import (
     TeachingAssignmentRecord,
     TeachingAssignmentStore,
@@ -158,3 +158,39 @@ def update_teaching_assignment(
         status_code = 404 if detail == "teaching assignment not found" else 409
         raise HTTPException(status_code=status_code, detail=detail) from error
     return _to_read_model(record)
+
+
+@router.delete("/{assignment_id}", status_code=204)
+def archive_teaching_assignment(
+    assignment_id: str,
+    teacher: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> Response:
+    """Remove a course from active teacher planning while preserving its history."""
+    if teacher.access_token is None:
+        try:
+            teaching_assignment_store.archive(teacher.subject, assignment_id)
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        return Response(status_code=204)
+
+    client = SupabaseRestClient.from_settings(settings, access_token=teacher.access_token)
+    try:
+        rows = client.request(
+            "PATCH",
+            "teaching_assignments",
+            params={
+                "id": f"eq.{assignment_id}",
+                "teacher_id": f"eq.{teacher.subject}",
+                "is_active": "eq.true",
+            },
+            payload={"is_active": False},
+            prefer="return=representation",
+        )
+    except SupabaseRestError as error:
+        if error.status_code in {401, 403}:
+            raise HTTPException(status_code=403, detail="Pilot data access was denied") from error
+        raise HTTPException(status_code=503, detail="Course removal is unavailable") from error
+    if not isinstance(rows, list) or not rows:
+        raise HTTPException(status_code=404, detail="Teaching assignment not found")
+    return Response(status_code=204)
