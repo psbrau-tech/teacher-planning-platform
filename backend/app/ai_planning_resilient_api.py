@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from . import ai_planning_api as core
 from .act_reference import ActReferenceError, load_act_candidate_entries, load_approved_act_entries
+from .ai_openai import AiServiceError
 from .auth import AuthenticatedTeacher, require_teacher
 from .settings import Settings, get_settings
 
@@ -60,7 +61,9 @@ def suggest_planning_resilient(
 ) -> core.PlanningSuggestionRead:
     """Return grounded planning while rejecting unknown governed reference IDs."""
     client = core._client(identity, settings)
-    standards = core.get_assignment_standards(assignment_id, week_start, identity, settings)
+    standards = core.get_assignment_standards(  # type: ignore[attr-defined]
+        assignment_id, week_start, identity, settings
+    )
     if not standards.mapped:
         raise HTTPException(status_code=409, detail="Approved standards mapping is required")
 
@@ -99,7 +102,7 @@ def suggest_planning_resilient(
     ]
 
     try:
-        result = core.request_structured_response(
+        result = core.request_structured_response(  # type: ignore[attr-defined]
             settings=settings,
             teacher_subject=identity.subject,
             instructions=core.PLANNING_INSTRUCTIONS,
@@ -107,7 +110,7 @@ def suggest_planning_resilient(
             schema_name="tpp_weekly_planning_suggestion",
             schema=core.PLANNING_SUGGESTION_SCHEMA,
         )
-    except core.AiServiceError as error:
+    except AiServiceError as error:
         core._record_usage(
             client,
             identity=identity,
