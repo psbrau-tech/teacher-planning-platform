@@ -51,7 +51,8 @@ def test_weekly_standard_selector_shows_canonical_course_and_exact_source_proven
     assert "Search by code, wording, strand, or source" in source
 
 
-def test_live_weekly_selector_prioritizes_scheduled_lesson_relevance_without_hiding_catalog() -> None:
+def test_live_weekly_selector_prioritizes_scheduled_lesson_relevance(
+) -> None:
     source = LIVE_STANDARDS.read_text(encoding="utf-8")
 
     assert "Suggested for this week" in source
