@@ -1,15 +1,4 @@
-import { useState } from "react";
-
-type ReflectionResponse = {
-  usage_event_id: string;
-  model: string;
-  estimated_cost_usd: string;
-  suggestions: {
-    weekly_reflection: string;
-  };
-};
-
-type Decision = "accepted" | "edited" | "rejected";
+import { useEffect, useMemo, useState } from "react";
 
 type AiReflectionPanelProps = {
   accessToken: string;
@@ -19,14 +8,44 @@ type AiReflectionPanelProps = {
   onApplyReflection: (value: string) => void;
 };
 
-async function readError(response: Response, fallback: string): Promise<string> {
+type ReflectionFields = Record<string, string>;
+
+type WeeklyDraftRead = {
+  content: Record<string, string>;
+};
+
+const REFLECTION_PROMPTS = [
+  "What knowledge has been building this week?",
+  "What understandings are being developed?",
+  "What evidence is demonstrating mastery?",
+  "What misconceptions emerged?",
+  "What standard(s) or parts of the standard need reteaching?",
+  "Which students need intervention?",
+  "What is the plan for intervention (Tier 2 and Tier 3)?",
+  "Which students need enrichment?",
+  "What is the plan for enrichment?",
+  "Which instructional moves worked?",
+  "What instructional adjustments will I make next week?",
+  "What are next week's instructional priorities?",
+] as const;
+
+function emptyReflection(): ReflectionFields {
+  return Object.fromEntries(REFLECTION_PROMPTS.map((_prompt, index) => [`reflect_${index + 1}`, ""]));
+}
+
+function parseReflection(value: string | undefined): ReflectionFields {
+  if (!value) return emptyReflection();
   try {
-    const body = (await response.json()) as { detail?: unknown };
-    if (typeof body.detail === "string" && body.detail.trim()) return body.detail;
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return emptyReflection();
+    const source = parsed as Record<string, unknown>;
+    return Object.fromEntries(REFLECTION_PROMPTS.map((_prompt, index) => {
+      const key = `reflect_${index + 1}`;
+      return [key, typeof source[key] === "string" ? source[key] : ""];
+    }));
   } catch {
-    // Keep the bounded fallback; never surface raw provider/server content.
+    return emptyReflection();
   }
-  return fallback;
 }
 
 export function AiReflectionPanel({
@@ -36,186 +55,103 @@ export function AiReflectionPanel({
   disabled = false,
   onApplyReflection,
 }: AiReflectionPanelProps) {
-  const [result, setResult] = useState<ReflectionResponse | null>(null);
-  const [editedText, setEditedText] = useState("");
-  const [decision, setDecision] = useState<Decision | null>(null);
-  const [working, setWorking] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [responses, setResponses] = useState<ReflectionFields>(emptyReflection);
+  const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  const requestReflection = async () => {
-    if (!assignmentId) return;
-    setWorking(true);
-    setError(null);
+  useEffect(() => {
+    let active = true;
+    setResponses(emptyReflection());
     setMessage(null);
-    setDecision(null);
-    try {
-      const response = await fetch(
-        `/api/v1/ai/reflection/${encodeURIComponent(assignmentId)}` +
-          `/week/${encodeURIComponent(weekStart)}`,
-        {
-          method: "POST",
-          headers: { Authorization: `Bearer ${accessToken}` },
-        },
-      );
-      if (!response.ok) {
-        throw new Error(await readError(response, "AI reflection assistance is unavailable."));
-      }
-      const body = (await response.json()) as ReflectionResponse;
-      setResult(body);
-      setEditedText(body.suggestions.weekly_reflection);
-      setMessage(
-        "AI reflection draft is ready for review. Nothing has been added to your saved plan.",
-      );
-    } catch (caught) {
-      setResult(null);
-      setError(caught instanceof Error ? caught.message : "AI reflection assistance is unavailable.");
-    } finally {
-      setWorking(false);
-    }
-  };
+    if (!accessToken || !assignmentId || !weekStart) return () => { active = false; };
 
-  const recordDecision = async (nextDecision: Decision) => {
-    if (!result) return;
-    setWorking(true);
-    setError(null);
-    try {
-      const response = await fetch(
-        `/api/v1/ai/usage/${encodeURIComponent(result.usage_event_id)}` +
-          "/decision/weekly_reflection",
-        {
-          method: "PUT",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ decision: nextDecision }),
-        },
-      );
-      if (!response.ok) {
-        throw new Error(await readError(response, "AI reflection decision could not be recorded."));
+    const load = async () => {
+      setLoading(true);
+      try {
+        const response = await fetch(
+          `/api/v1/weekly-drafts?assignment_id=${encodeURIComponent(assignmentId)}&week_start=${encodeURIComponent(weekStart)}`,
+          { headers: { Authorization: `Bearer ${accessToken}` } },
+        );
+        if (!response.ok) return;
+        const draft = await response.json() as WeeklyDraftRead;
+        if (!active) return;
+        setResponses(parseReflection(draft.content.reflection));
+      } finally {
+        if (active) setLoading(false);
       }
-      if (nextDecision === "accepted") {
-        onApplyReflection(result.suggestions.weekly_reflection);
-      } else if (nextDecision === "edited") {
-        onApplyReflection(editedText);
-      }
-      setDecision(nextDecision);
-      setMessage(
-        nextDecision === "rejected"
-          ? "AI reflection suggestion rejected. Your plan was not changed."
-          : "Reflection applied to the working form. Save the weekly draft when ready.",
-      );
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "AI reflection decision could not be recorded.");
-    } finally {
-      setWorking(false);
-    }
+    };
+    void load();
+    return () => { active = false; };
+  }, [accessToken, assignmentId, weekStart]);
+
+  const answeredCount = useMemo(
+    () => REFLECTION_PROMPTS.filter((_prompt, index) => (responses[`reflect_${index + 1}`] ?? "").length > 0).length,
+    [responses],
+  );
+
+  const updateResponse = (key: string, value: string) => {
+    setResponses((current) => {
+      const next = { ...current, [key]: value };
+      onApplyReflection(JSON.stringify(next));
+      return next;
+    });
+    setMessage("Reflection updated in the working plan. Save the weekly draft to keep your changes.");
   };
 
   return (
-    <section className="panel ai-reflection-panel" aria-labelledby="ai-reflection-heading">
+    <section className="panel ai-reflection-panel" aria-labelledby="weekly-reflection-heading">
       <div className="section-heading-row">
         <div>
-          <p className="eyebrow">Optional reflection assistance</p>
-          <h2 id="ai-reflection-heading">Weekly Reflection suggestion</h2>
-        </div>
-        <button
-          type="button"
-          className="secondary"
-          disabled={!assignmentId || disabled || working}
-          onClick={() => void requestReflection()}
-        >
-          {working && !result ? "Generating reflection…" : "Suggest Weekly Reflection"}
-        </button>
-      </div>
-
-      <div className="guidance-card ai-guidance">
-        <strong>Reflection suggestions are drafts.</strong>
-        <p>
-          The suggestion is generated only from the saved weekly plan, finalized Friday validation,
-          and governed standards context. It does not infer or use student-specific information.
-        </p>
-      </div>
-
-      <div className="guidance-card" role="note" aria-label="Student data restriction">
-        <strong>Do not include student data.</strong>
-        <p>
-          Weekly Reflection AI assistance is limited to professional planning and finalized
-          validation context. Do not enter student names, identifiers, grades, identifiable student
-          work, IEP or 504 information, health or discipline information, or other information that
-          can reasonably be linked to a student.
-        </p>
-      </div>
-
-      {error ? (
-        <p className="error-message" role="alert">
-          {error}
-        </p>
-      ) : null}
-      {message ? (
-        <p className="success-message" role="status" aria-live="polite">
-          {message}
-        </p>
-      ) : null}
-
-      {result ? (
-        <article className="ai-suggestion-card">
-          <div className="ai-suggestion-heading">
-            <div>
-              <p className="example-label">AI draft suggestion — not saved</p>
-              <h3>Weekly Reflection</h3>
-            </div>
-            {decision ? <span className="decision-badge">{decision}</span> : null}
-          </div>
-
-          {decision ? (
-            <p>
-              {decision === "rejected"
-                ? "Suggestion rejected."
-                : "Applied to the working form. Save the weekly draft when ready."}
-            </p>
-          ) : (
-            <>
-              <textarea
-                aria-label="AI draft Weekly Reflection"
-                rows={7}
-                value={editedText}
-                onChange={(event) => setEditedText(event.target.value)}
-              />
-              <div className="button-row">
-                <button
-                  type="button"
-                  className="primary"
-                  disabled={working}
-                  onClick={() => void recordDecision("accepted")}
-                >
-                  Accept as written
-                </button>
-                <button
-                  type="button"
-                  className="secondary"
-                  disabled={working}
-                  onClick={() => void recordDecision("edited")}
-                >
-                  Apply edited version
-                </button>
-                <button
-                  type="button"
-                  className="link-button"
-                  disabled={working}
-                  onClick={() => void recordDecision("rejected")}
-                >
-                  Reject
-                </button>
-              </div>
-            </>
-          )}
-          <p className="muted-text">
-            Model: {result.model} · Estimated request cost: ${result.estimated_cost_usd}
+          <p className="eyebrow">Required teacher reflection</p>
+          <h2 id="weekly-reflection-heading">Weekly Reflection / PLC Discussion</h2>
+          <p className="supporting">
+            This reflection is your professional judgment. TPP does not generate or rewrite these responses.
           </p>
-        </article>
-      ) : null}
+        </div>
+        <span className="badge">{answeredCount} of {REFLECTION_PROMPTS.length} completed</span>
+      </div>
+
+      <div className="guidance-card" role="note" aria-label="Reflection data boundary">
+        <strong>Use class- or group-level observations only.</strong>
+        <p>
+          Do not enter student names, identifiers, grades, identifiable student work, IEP/504,
+          health, discipline, or other student-specific information. For intervention and enrichment
+          prompts, describe groups or instructional needs rather than individual students.
+        </p>
+      </div>
+
+      {!assignmentId ? <p>Select a course before completing the reflection.</p> : null}
+      {loading ? <p>Loading saved reflection…</p> : null}
+
+      <div className="reflection-question-list">
+        {REFLECTION_PROMPTS.map((prompt, index) => {
+          const key = `reflect_${index + 1}`;
+          return (
+            <label className="reflection-question" key={key}>
+              <span><strong>{index + 1}.</strong> {prompt}</span>
+              {(index === 5 || index === 7) ? (
+                <small>Respond at the class or group level. Do not identify individual students.</small>
+              ) : null}
+              <textarea
+                rows={4}
+                value={responses[key] ?? ""}
+                disabled={disabled}
+                required
+                onChange={(event) => updateResponse(key, event.target.value)}
+              />
+            </label>
+          );
+        })}
+      </div>
+
+      {disabled ? (
+        <p className="guidance-text">Complete Friday validation before entering the required weekly reflection.</p>
+      ) : (
+        <p className="guidance-text">
+          All 12 district prompts are required for the normal weekly closeout. TPP does not evaluate the substance of your response.
+        </p>
+      )}
+      {message ? <p className="success-message" role="status">{message}</p> : null}
     </section>
   );
 }
