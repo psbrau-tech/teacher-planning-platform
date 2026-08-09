@@ -3,7 +3,7 @@ import json
 from app.document_service import normalize_planning_payload
 
 
-def test_integrated_weekly_plan_maps_only_direct_pdf_equivalents() -> None:
+def test_integrated_weekly_plan_maps_only_defensible_pdf_equivalents() -> None:
     payload = {
         "teacher": "Synthetic Teacher",
         "course": "Army JROTC LET 1",
@@ -38,12 +38,16 @@ def test_integrated_weekly_plan_maps_only_direct_pdf_equivalents() -> None:
     assert normalized["understand"] == payload["understand"]
     assert normalized["do"] == payload["do"]
     assert normalized["resources"] == payload["resources"]
+    assert normalized["clt_mon"] == payload["learning_targets"]
+    assert normalized["rrt_mon"] == payload["monday"]
+    assert normalized["clt_tue"] == payload["learning_targets"]
+    assert normalized["rrt_tue"] == payload["tuesday"]
+    assert "clt_wed" not in normalized
+    assert "rrt_wed" not in normalized
     assert "plds" not in normalized
     assert "formative" not in normalized
     assert "summative" not in normalized
     assert "performance_task" not in normalized
-    assert "clt_mon" not in normalized
-    assert "rrt_mon" not in normalized
     assert "cfu_mon" not in normalized
     assert "esl_mon" not in normalized
     assert normalized["reflect_1"] == "Class-level response 1"
@@ -54,10 +58,12 @@ def test_exact_pdf_fields_are_preserved_when_teacher_supplies_them() -> None:
     normalized = normalize_planning_payload(
         {
             "learning_targets": "Integrated learning target",
+            "monday": "Integrated Monday narrative",
             "plds": "Teacher-authored proficiency descriptor",
             "activities": "Integrated activity",
             "performance_task": "Teacher-authored performance task",
             "clt_mon": "Teacher-authored Monday learning target",
+            "rrt_mon": "Teacher-authored Monday task",
             "cfu_mon": "Teacher-authored Monday check for understanding",
         }
     )
@@ -65,4 +71,5 @@ def test_exact_pdf_fields_are_preserved_when_teacher_supplies_them() -> None:
     assert normalized["plds"] == "Teacher-authored proficiency descriptor"
     assert normalized["performance_task"] == "Teacher-authored performance task"
     assert normalized["clt_mon"] == "Teacher-authored Monday learning target"
+    assert normalized["rrt_mon"] == "Teacher-authored Monday task"
     assert normalized["cfu_mon"] == "Teacher-authored Monday check for understanding"
