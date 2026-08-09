@@ -77,12 +77,10 @@ type StandardsPanelProps = {
   weekStart: string;
   weeklyLessons?: PlannedLessonContext[];
   onSelectionResolved?: (selected: StandardEntry[]) => void;
+  onSelectionSaved?: (selected: StandardEntry[]) => void;
 };
 
-type RankedStandard = {
-  standard: StandardEntry;
-  score: number;
-};
+type RankedStandard = { standard: StandardEntry; score: number };
 
 const STOP_WORDS = new Set([
   "about", "after", "again", "along", "also", "and", "are", "before", "between",
@@ -101,42 +99,25 @@ async function readError(response: Response, fallback: string): Promise<string> 
   return fallback;
 }
 
-function selectedEntriesFor(catalog: AssignmentStandards): StandardEntry[] {
-  const selectedIds = new Set(catalog.selected_entry_ids);
-  return catalog.standards.filter((standard) => selectedIds.has(standard.id));
-}
-
 function normalize(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function tokens(value: string): string[] {
-  return normalize(value)
-    .split(" ")
-    .filter((token) => token.length >= 4 && !STOP_WORDS.has(token));
+  return normalize(value).split(" ").filter((token) => token.length >= 4 && !STOP_WORDS.has(token));
 }
 
 function relevanceScore(standard: StandardEntry, lessons: PlannedLessonContext[]): number {
   if (lessons.length === 0) return 0;
   const standardText = normalize(`${standard.code} ${standard.strand ?? ""} ${standard.text}`);
   let score = 0;
-
   for (const lesson of lessons) {
     const unit = normalize(lesson.unit_title);
     const title = normalize(lesson.lesson_title);
     if (unit.length >= 5 && standardText.includes(unit)) score += 8;
     if (title.length >= 8 && standardText.includes(title)) score += 14;
-
-    for (const token of new Set(tokens(lesson.unit_title))) {
-      if (standardText.includes(token)) score += 2;
-    }
-    for (const token of new Set(tokens(lesson.lesson_title))) {
-      if (standardText.includes(token)) score += 3;
-    }
+    for (const token of new Set(tokens(lesson.unit_title))) if (standardText.includes(token)) score += 2;
+    for (const token of new Set(tokens(lesson.lesson_title))) if (standardText.includes(token)) score += 3;
   }
   return score;
 }
@@ -162,6 +143,7 @@ export function StandardsPanel({
   weekStart,
   weeklyLessons = [],
   onSelectionResolved,
+  onSelectionSaved,
 }: StandardsPanelProps) {
   const [catalog, setCatalog] = useState<AssignmentStandards | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -180,38 +162,34 @@ export function StandardsPanel({
     setBrowseOpen(false);
     setMessage(null);
     setError(null);
-
-    if (!accessToken || !assignmentId || !weekStart) {
-      return () => { active = false; };
-    }
+    if (!accessToken || !assignmentId || !weekStart) return () => { active = false; };
 
     const load = async () => {
       setLoading(true);
       try {
         const response = await fetch(
-          `/api/v1/standards/assignment/${encodeURIComponent(assignmentId)}` +
-            `?week_start=${encodeURIComponent(weekStart)}`,
+          `/api/v1/standards/assignment/${encodeURIComponent(assignmentId)}?week_start=${encodeURIComponent(weekStart)}`,
           { headers: { Authorization: `Bearer ${accessToken}` } },
         );
-        if (!response.ok) {
-          throw new Error(await readError(response, "Standards could not be loaded."));
-        }
-        const body = (await response.json()) as AssignmentStandards;
+        if (!response.ok) throw new Error(await readError(response, "Standards could not be loaded."));
+        const body = await response.json() as AssignmentStandards;
         if (!active) return;
+        const validIds = new Set(body.standards.map((standard) => standard.id));
+        const savedIds = body.selected_entry_ids.filter((id) => validIds.has(id));
+        const savedEntries = body.standards.filter((standard) => savedIds.includes(standard.id));
         setCatalog(body);
-        setSelected(new Set(body.selected_entry_ids));
-        onSelectionResolved?.(selectedEntriesFor(body));
+        setSelected(new Set(savedIds));
+        onSelectionResolved?.(savedEntries);
+        onSelectionSaved?.(savedEntries);
       } catch (caught) {
-        if (!active) return;
-        setError(caught instanceof Error ? caught.message : "Standards could not be loaded.");
+        if (active) setError(caught instanceof Error ? caught.message : "Standards could not be loaded.");
       } finally {
         if (active) setLoading(false);
       }
     };
-
     void load();
     return () => { active = false; };
-  }, [accessToken, assignmentId, onSelectionResolved, weekStart]);
+  }, [accessToken, assignmentId, onSelectionResolved, onSelectionSaved, weekStart]);
 
   const selectedEntries = useMemo(() => {
     if (!catalog) return [];
@@ -259,8 +237,8 @@ export function StandardsPanel({
   const toggle = (standardId: string) => {
     setSelected((current) => {
       const next = new Set(current);
-      if (next.has(standardId)) next.delete(standardId);
-      else next.add(standardId);
+      if (next.has(standardId)) next.delete(standardId); else next.add(standardId);
+      if (catalog) onSelectionResolved?.(catalog.standards.filter((standard) => next.has(standard.id)));
       return next;
     });
     setMessage(null);
@@ -268,36 +246,29 @@ export function StandardsPanel({
 
   const save = async () => {
     if (!accessToken || !assignmentId || !catalog?.mapped) return;
-    setSaving(true);
-    setMessage(null);
-    setError(null);
+    setSaving(true); setMessage(null); setError(null);
     try {
+      const validIds = new Set(catalog.standards.map((standard) => standard.id));
+      const selectedIds = Array.from(selected).filter((id) => validIds.has(id));
+      const savedEntries = catalog.standards.filter((standard) => selectedIds.includes(standard.id));
       const response = await fetch(
-        `/api/v1/standards/assignment/${encodeURIComponent(assignmentId)}` +
-          `/week/${encodeURIComponent(weekStart)}`,
+        `/api/v1/standards/assignment/${encodeURIComponent(assignmentId)}/week/${encodeURIComponent(weekStart)}`,
         {
           method: "PUT",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ standard_entry_ids: Array.from(selected) }),
+          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ standard_entry_ids: selectedIds }),
         },
       );
-      if (!response.ok) {
-        throw new Error(await readError(response, "Standards selection could not be saved."));
-      }
-      const body = (await response.json()) as { selected_count: number };
-      setMessage(
-        body.selected_count > 0
-          ? `${body.selected_count} authoritative standard${body.selected_count === 1 ? "" : "s"} saved. Your planning draft will be prepared below.`
-          : "Weekly standards selection cleared.",
-      );
-      onSelectionResolved?.(selectedEntries);
+      if (!response.ok) throw new Error(await readError(response, "Standards selection could not be saved."));
+      const body = await response.json() as { selected_count: number };
+      setSelected(new Set(selectedIds));
+      onSelectionResolved?.(savedEntries);
+      onSelectionSaved?.(savedEntries);
+      setMessage(body.selected_count > 0
+        ? `${body.selected_count} authoritative standard${body.selected_count === 1 ? "" : "s"} saved. Your planning draft will be prepared below.`
+        : "Weekly standards selection cleared.");
       if (body.selected_count > 0) {
-        window.dispatchEvent(new CustomEvent("tpp:standards-saved", {
-          detail: { assignmentId, weekStart },
-        }));
+        window.dispatchEvent(new CustomEvent("tpp:standards-saved", { detail: { assignmentId, weekStart } }));
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Standards selection could not be saved.");
@@ -308,134 +279,36 @@ export function StandardsPanel({
 
   const renderStandard = (standard: StandardEntry) => (
     <label className="standard-option" key={standard.id}>
-      <input
-        type="checkbox"
-        checked={selected.has(standard.id)}
-        onChange={() => toggle(standard.id)}
-      />
+      <input type="checkbox" checked={selected.has(standard.id)} onChange={() => toggle(standard.id)} />
       <span>
-        <span className="standard-heading-row">
-          <strong>{standard.code}</strong>
-          {standard.strand ? <span className="badge">{standard.strand}</span> : null}
-        </span>
+        <span className="standard-heading-row"><strong>{standard.code}</strong>{standard.strand ? <span className="badge">{standard.strand}</span> : null}</span>
         <span className="standard-text">{standard.text}</span>
       </span>
     </label>
   );
 
-  const sources = catalog?.sources?.length
-    ? catalog.sources
-    : catalog?.source
-      ? [catalog.source]
-      : [];
+  const sources = catalog?.sources?.length ? catalog.sources : catalog?.source ? [catalog.source] : [];
 
   return (
     <section className="panel standards-panel" aria-labelledby="standards-panel-heading">
-      <div className="section-heading-row">
-        <div>
-          <p className="eyebrow">Authoritative standards</p>
-          <h2 id="standards-panel-heading">Standards for this week</h2>
-          {catalog?.catalog_category && catalog.catalog_course ? (
-            <p className="supporting">
-              {catalog.catalog_category.display_name} → {catalog.catalog_course.display_name}
-            </p>
-          ) : null}
-        </div>
-      </div>
-
+      <div className="section-heading-row"><div><p className="eyebrow">Authoritative standards</p><h2 id="standards-panel-heading">Standards for this week</h2>{catalog?.catalog_category && catalog.catalog_course ? <p className="supporting">{catalog.catalog_category.display_name} → {catalog.catalog_course.display_name}</p> : null}</div></div>
       {!assignmentId ? <p>Select a course before choosing standards.</p> : null}
       {loading ? <p>Loading approved standards…</p> : null}
       {error ? <p className="error-message" role="alert">{error}</p> : null}
-
-      {catalog && !catalog.mapped ? (
-        <div className="guidance-card">
-          <strong>Standards mapping required.</strong>
-          <p>Select the Subject / Career Cluster and Grade / Course for this course above.</p>
-        </div>
-      ) : null}
-
-      {catalog?.mapped ? (
-        <>
-          <div className="standards-provenance">
-            {sources.map((source) => (
-              <div className="provenance-row" key={`${source.id}-${source.snapshot_id}`}>
-                <strong>{sourceLabel(source)}</strong>
-                <span>{source.edition}</span>
-                <span>Snapshot retrieved {new Date(source.retrieved_at).toLocaleDateString()}</span>
-                <a className="source-link" href={source.landing_url} target="_blank" rel="noreferrer">
-                  View authoritative source
-                </a>
-              </div>
-            ))}
-          </div>
-
-          <div className="guidance-card">
-            <strong>Suggested for this week</strong>
-            <p>
-              TPP compares this week&apos;s scheduled unit and lesson titles with the exact approved
-              course standards. This is deterministic relevance matching, not AI-generated standards.
-            </p>
-          </div>
-
-          {weeklyLessons.length === 0 ? (
-            <p className="guidance-text">Build or reopen the week to receive lesson-based suggestions.</p>
-          ) : suggestedStandards.length > 0 ? (
-            <div className="standard-list suggested-standard-list">
-              {suggestedStandards.map(renderStandard)}
-            </div>
-          ) : (
-            <div className="empty-state"><p>No strong wording match was found. Browse or search the approved catalog below.</p></div>
-          )}
-
-          {selectedEntries.length > 0 ? (
-            <p className="guidance-text">
-              <strong>Selected for this week:</strong> {selectedEntries.map((item) => item.code).join(", ")}
-            </p>
-          ) : null}
-
-          <details
-            className="standards-browser"
-            open={browseOpen}
-            onToggle={(event) => setBrowseOpen(event.currentTarget.open)}
-          >
-            <summary>Browse all approved standards ({catalog.standards.length})</summary>
-            {browseOpen ? (
-              <>
-                <label className="standards-search">
-                  Search standards
-                  <input
-                    type="search"
-                    value={query}
-                    placeholder="Search by code, wording, strand, or source"
-                    onChange={(event) => setQuery(event.target.value)}
-                  />
-                </label>
-                {groupedStandards.length === 0 ? (
-                  <div className="empty-state"><p>No standards match this search.</p></div>
-                ) : groupedStandards.map(([group, standards]) => (
-                  <details className="standard-group" key={group} open={Boolean(query.trim())}>
-                    <summary>{group} ({standards.length})</summary>
-                    <div className="standard-list">{standards.map(renderStandard)}</div>
-                  </details>
-                ))}
-              </>
-            ) : null}
-          </details>
-
-          <p className="guidance-text">
-            Select only the standards that apply this week. Exact approved wording and source
-            provenance are preserved.
-          </p>
-
-          <div className="button-row">
-            <button type="button" className="primary" onClick={() => void save()} disabled={saving}>
-              {saving ? "Saving standards…" : "Save standards and continue"}
-            </button>
-            <span>{selected.size} selected</span>
-          </div>
-          {message ? <p className="success-message" role="status">{message}</p> : null}
-        </>
-      ) : null}
+      {catalog && !catalog.mapped ? <div className="guidance-card"><strong>Standards mapping required.</strong><p>Set the authoritative standards mapping in Course Setup.</p></div> : null}
+      {catalog?.mapped ? <>
+        <div className="standards-provenance">{sources.map((source) => <div className="provenance-row" key={`${source.id}-${source.snapshot_id}`}><strong>{sourceLabel(source)}</strong><span>{source.edition}</span><span>Snapshot retrieved {new Date(source.retrieved_at).toLocaleDateString()}</span><a className="source-link" href={source.landing_url} target="_blank" rel="noreferrer">View authoritative source</a></div>)}</div>
+        <div className="guidance-card"><strong>Suggested for this week</strong><p>TPP compares this week&apos;s scheduled unit and lesson titles with the exact approved course standards. This is deterministic relevance matching, not AI-generated standards.</p></div>
+        {weeklyLessons.length === 0 ? <p className="guidance-text">Build or reopen the week to receive lesson-based suggestions.</p> : suggestedStandards.length > 0 ? <div className="standard-list suggested-standard-list">{suggestedStandards.map(renderStandard)}</div> : <div className="empty-state"><p>No strong wording match was found. Browse or search the approved catalog below.</p></div>}
+        {selectedEntries.length > 0 ? <p className="guidance-text"><strong>Selected for this week:</strong> {selectedEntries.map((item) => item.code).join(", ")}</p> : null}
+        <details className="standards-browser" open={browseOpen} onToggle={(event) => setBrowseOpen(event.currentTarget.open)}>
+          <summary>Browse all approved standards ({catalog.standards.length})</summary>
+          {browseOpen ? <><label className="standards-search">Search standards<input type="search" value={query} placeholder="Search by code, wording, strand, or source" onChange={(event) => setQuery(event.target.value)} /></label>{groupedStandards.length === 0 ? <div className="empty-state"><p>No standards match this search.</p></div> : groupedStandards.map(([group, standards]) => <details className="standard-group" key={group} open={Boolean(query.trim())}><summary>{group} ({standards.length})</summary><div className="standard-list">{standards.map(renderStandard)}</div></details>)}</> : null}
+        </details>
+        <p className="guidance-text">Select only the standards that apply this week. Exact approved wording and source provenance are preserved.</p>
+        <div className="button-row"><button type="button" className="primary" onClick={() => void save()} disabled={saving}>{saving ? "Saving standards…" : "Save standards and continue"}</button><span>{selectedEntries.length} selected</span></div>
+        {message ? <p className="success-message" role="status">{message}</p> : null}
+      </> : null}
     </section>
   );
 }

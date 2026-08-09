@@ -25,10 +25,13 @@ def test_frontend_clears_stale_planning_context_on_course_and_week_changes() -> 
     assert "Friday validation" in source
     assert "Course Setup" in source
 
-    # Friday optimistic concurrency must carry the loaded revision through browser state.
+    # Friday optimistic concurrency preflights an existing saved revision before writing.
     assert "const [validationRevision, setValidationRevision]" in source
     assert "setValidationRevision(saved.revision);" in source
-    assert "expected_revision: validationRevision" in source
+    assert "let expectedRevision = validationRevision;" in source
+    assert "if (expectedRevision === null)" in source
+    assert "expectedRevision = existing.revision;" in source
+    assert "expected_revision: expectedRevision" in source
 
     # Friday closeout persists teacher-owned reflection through its dedicated endpoint.
     assert "async function saveCloseoutDraft()" in source

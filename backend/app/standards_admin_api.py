@@ -25,6 +25,7 @@ class AdminStandardsSourceRead(BaseModel):
     provides_standard_entries: bool
     discovery_status: str
     approved_snapshot_id: UUID | None
+    approved_snapshot_retrieved_at: str | None
     catalog_category_key: str | None
     catalog_category_name: str | None
 
@@ -201,6 +202,29 @@ def list_admin_sources(
             },
         )
     )
+    snapshot_ids = sorted(
+        {
+            str(row.get("approved_snapshot_id"))
+            for row in rows
+            if row.get("approved_snapshot_id")
+        }
+    )
+    retrieved_by_snapshot: dict[str, str] = {}
+    if snapshot_ids:
+        snapshots = _records(
+            _request(
+                client,
+                "GET",
+                "standard_snapshots",
+                params={
+                    "id": f"in.({','.join(snapshot_ids)})",
+                    "select": "id,retrieved_at",
+                },
+            )
+        )
+        retrieved_by_snapshot = {
+            _text(row, "id"): _text(row, "retrieved_at") for row in snapshots
+        }
     return [
         AdminStandardsSourceRead(
             id=_uuid(row, "id"),
@@ -213,6 +237,9 @@ def list_admin_sources(
             provides_standard_entries=_bool(row, "provides_standard_entries"),
             discovery_status=_text(row, "discovery_status"),
             approved_snapshot_id=_optional_uuid(row, "approved_snapshot_id"),
+            approved_snapshot_retrieved_at=retrieved_by_snapshot.get(
+                str(row.get("approved_snapshot_id"))
+            ),
             catalog_category_key=_optional_text(row, "catalog_category_key"),
             catalog_category_name=_optional_text(row, "catalog_category_name"),
         )
@@ -256,7 +283,6 @@ def list_pending_snapshots(
             )
         )
         source_by_id = {_text(row, "id"): row for row in sources}
-
     count_rows = _records(
         _request(
             client,
@@ -266,7 +292,6 @@ def list_pending_snapshots(
         )
     )
     counts_by_id = {_text(row, "snapshot_id"): row for row in count_rows}
-
     results: list[PendingSnapshotRead] = []
     for snapshot in snapshots:
         snapshot_id = _uuid(snapshot, "id")
@@ -297,7 +322,9 @@ def list_pending_snapshots(
                 parser_status=(
                     str(parser_status) if isinstance(parser_status, str) else None
                 ),
-                parser_error=(str(parser_error) if isinstance(parser_error, str) else None),
+                parser_error=(
+                    str(parser_error) if isinstance(parser_error, str) else None
+                ),
                 course_count=_int(counts, "course_count"),
                 standard_entry_count=_int(counts, "standard_entry_count"),
             )
@@ -387,9 +414,9 @@ def get_catalog_run(
             params={
                 "run_id": f"eq.{run_id}",
                 "select": (
-                    "id,source_key,result_state,family,category_name,authority,observed_title,"
-                    "observed_edition,observed_document_url,previous_title,previous_edition,"
-                    "previous_document_url"
+                    "id,source_key,result_state,family,category_name,authority,"
+                    "observed_title,observed_edition,observed_document_url,"
+                    "previous_title,previous_edition,previous_document_url"
                 ),
                 "order": "result_state.asc,source_key.asc",
             },

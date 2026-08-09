@@ -16,6 +16,7 @@ type AiPlanningPanelProps = {
   weekStart: string;
   currentFields: CurrentPlanningFields;
   hasScheduledLessons: boolean;
+  hasSavedStandards: boolean;
   onApplyField: (field: PlanningFieldKey, value: string) => void;
 };
 
@@ -41,7 +42,7 @@ async function readError(response: Response, fallback: string): Promise<string> 
   return fallback;
 }
 
-export function AiPlanningPanel({ accessToken, assignmentId, weekStart, currentFields, hasScheduledLessons, onApplyField }: AiPlanningPanelProps) {
+export function AiPlanningPanel({ accessToken, assignmentId, weekStart, currentFields, hasScheduledLessons, hasSavedStandards, onApplyField }: AiPlanningPanelProps) {
   const [result, setResult] = useState<SuggestionResponse | null>(null);
   const [working, setWorking] = useState(false);
   const [decisionWorking, setDecisionWorking] = useState<PlanningFieldKey | "all" | null>(null);
@@ -56,16 +57,17 @@ export function AiPlanningPanel({ accessToken, assignmentId, weekStart, currentF
   const requestDraft = useCallback(async (fieldToRegenerate?: PlanningFieldKey): Promise<SuggestionResponse> => {
     if (!accessToken || !assignmentId) throw new Error("Select a course before generating a planning draft.");
     if (!hasScheduledLessons) throw new Error("Build this week's curriculum schedule before generating a planning draft.");
+    if (!hasSavedStandards) throw new Error("Save at least one authoritative standard before generating a planning draft.");
     const requestFields: CurrentPlanningFields = fieldToRegenerate ? { ...currentFields, [fieldToRegenerate]: "" } : currentFields;
     const response = await fetch(`/api/v1/ai/planning/${encodeURIComponent(assignmentId)}/week/${encodeURIComponent(weekStart)}`, {
       method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify(requestFields),
     });
     if (!response.ok) throw new Error(await readError(response, "AI planning suggestions are unavailable."));
     return await response.json() as SuggestionResponse;
-  }, [accessToken, assignmentId, currentFields, hasScheduledLessons, weekStart]);
+  }, [accessToken, assignmentId, currentFields, hasSavedStandards, hasScheduledLessons, weekStart]);
 
   const suggest = useCallback(async (automatic = false) => {
-    if (!accessToken || !assignmentId || working || !hasScheduledLessons) return;
+    if (!accessToken || !assignmentId || working || !hasScheduledLessons || !hasSavedStandards) return;
     setWorking(true); setError(null); setMessage(automatic ? "Standards saved. Building your weekly planning draft…" : "Building your weekly planning draft…");
     try {
       const body = await requestDraft();
@@ -75,13 +77,13 @@ export function AiPlanningPanel({ accessToken, assignmentId, weekStart, currentF
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "AI planning suggestions are unavailable."); setMessage(null);
     } finally { setWorking(false); }
-  }, [accessToken, assignmentId, hasScheduledLessons, requestDraft, working]);
+  }, [accessToken, assignmentId, hasSavedStandards, hasScheduledLessons, requestDraft, working]);
 
   useEffect(() => {
     const handleStandardsSaved = (event: Event) => {
       const detail = (event as CustomEvent<{ assignmentId?: string; weekStart?: string }>).detail;
       if (detail?.assignmentId !== assignmentId || detail?.weekStart !== weekStart || !hasScheduledLessons) return;
-      void suggest(true);
+      window.setTimeout(() => void suggest(true), 0);
     };
     window.addEventListener("tpp:standards-saved", handleStandardsSaved);
     return () => window.removeEventListener("tpp:standards-saved", handleStandardsSaved);
@@ -128,8 +130,9 @@ export function AiPlanningPanel({ accessToken, assignmentId, weekStart, currentF
 
   return (
     <section className="panel ai-planning-panel" aria-labelledby="ai-planning-heading">
-      <div className="section-heading-row"><div><p className="eyebrow">Planning assistance</p><h2 id="ai-planning-heading">Weekly planning draft</h2><p className="supporting">TPP prepares a grounded starting point from the curriculum actually scheduled this week. You decide what becomes part of your plan.</p></div><button type="button" className="secondary" onClick={() => void suggest(false)} disabled={!accessToken || !assignmentId || !hasScheduledLessons || working}>{working ? <><span className="button-spinner" aria-hidden="true" /> Generating draft…</> : result ? "Generate a new draft" : "Generate planning draft"}</button></div>
+      <div className="section-heading-row"><div><p className="eyebrow">Planning assistance</p><h2 id="ai-planning-heading">Weekly planning draft</h2><p className="supporting">TPP prepares a grounded starting point from the curriculum actually scheduled this week. You decide what becomes part of your plan.</p></div><button type="button" className="secondary" onClick={() => void suggest(false)} disabled={!accessToken || !assignmentId || !hasScheduledLessons || !hasSavedStandards || working}>{working ? <><span className="button-spinner" aria-hidden="true" /> Generating draft…</> : result ? "Generate a new draft" : "Generate planning draft"}</button></div>
       {!hasScheduledLessons ? <div className="guidance-card"><strong>Build this week's curriculum first.</strong><p>Add Curriculum & Pacing in Course Setup if needed, then build/reconcile the week. AI will not invent a weekly lesson sequence from standards alone.</p></div> : null}
+      {hasScheduledLessons && !hasSavedStandards ? <div className="guidance-card"><strong>Save the standards you want to use.</strong><p>Select at least one authoritative standard above and choose Save standards and continue. AI planning starts only from the saved governed selection.</p></div> : null}
       {working ? <div className="working-status" role="status" aria-live="polite"><span className="button-spinner" aria-hidden="true" /><strong> Building your weekly planning draft…</strong><span>TPP is using the scheduled lessons, selected standards, approved literacy candidates, and governed ACT references.</span></div> : null}
       <div className="guidance-card ai-guidance"><strong>Planning suggestions are drafts.</strong><p>Suggestions use this week&apos;s scheduled lessons, selected authoritative standards, approved Alabama literacy standards, and governed ACT references. Authoritative wording is never rewritten.</p></div>
       <div className="guidance-card" role="note" aria-label="Student data restriction"><strong>Professional planning only.</strong><p>Do not enter student names, identifiers, grades, identifiable student work, IEP/504, health, discipline, or other student-specific information.</p></div>
