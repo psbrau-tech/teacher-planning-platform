@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 
-type ScheduleException = {
+export type ScheduleException = {
   id: string;
   teaching_assignment_id: string;
   exception_date: string;
@@ -15,6 +15,7 @@ type Props = {
   weekStart: string;
   disabled?: boolean;
   onChanged: () => void;
+  onExceptionsChanged?: (exceptions: ScheduleException[]) => void;
 };
 
 function addDays(isoDate: string, days: number): string {
@@ -38,6 +39,7 @@ export function ScheduleExceptionPanel({
   weekStart,
   disabled = false,
   onChanged,
+  onExceptionsChanged,
 }: Props) {
   const [exceptions, setExceptions] = useState<ScheduleException[]>([]);
   const [exceptionDate, setExceptionDate] = useState(weekStart);
@@ -51,6 +53,7 @@ export function ScheduleExceptionPanel({
   async function loadExceptions() {
     if (!assignmentId) {
       setExceptions([]);
+      onExceptionsChanged?.([]);
       return;
     }
     const response = await fetch(
@@ -60,7 +63,9 @@ export function ScheduleExceptionPanel({
     if (!response.ok) {
       throw new Error(await responseDetail(response, "Schedule exceptions could not be loaded."));
     }
-    setExceptions(await response.json() as ScheduleException[]);
+    const loaded = await response.json() as ScheduleException[];
+    setExceptions(loaded);
+    onExceptionsChanged?.(loaded);
   }
 
   useEffect(() => {
@@ -197,7 +202,7 @@ export function ScheduleExceptionPanel({
         </div>
       </form>
       {notice && <p className="status">{notice}</p>}
-      {error && <p className="error-message">{error}</p>}
+      {error && <p className="error-message" role="alert">{error}</p>}
       {exceptions.length > 0 && (
         <div className="grid">
           {exceptions.map((exception) => (
