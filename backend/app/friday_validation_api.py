@@ -154,8 +154,23 @@ def save_friday_validation(
         for item in payload.lessons
     }
     try:
+        store = _store_for(teacher, settings)
+        current = store.get(
+            teacher.subject,
+            payload.assignment_id,
+            payload.week_start,
+        )
+        if current is not None and payload.expected_revision is None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Friday validation revision conflict: reload the saved validation "
+                    "before updating it"
+                ),
+            )
+
         result = apply_friday_validation(scheduled, updates)
-        record = _store_for(teacher, settings).save(
+        record = store.save(
             teacher_id=teacher.subject,
             assignment_id=payload.assignment_id,
             week_start=payload.week_start,

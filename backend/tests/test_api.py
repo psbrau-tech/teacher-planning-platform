@@ -1,4 +1,7 @@
+from io import BytesIO
+
 from fastapi.testclient import TestClient
+from pypdf import PdfReader
 
 from app.main import app
 
@@ -44,7 +47,7 @@ def test_anniston_hqi_field_contract_is_exposed() -> None:
     ]
 
 
-def test_document_generation_uses_approved_template() -> None:
+def test_legacy_document_route_uses_current_unbranded_planning_packet() -> None:
     response = client.post(
         "/api/v1/documents/anniston-hqi",
         json={"teacher": "Synthetic Teacher", "course": "LET 1"},
@@ -52,6 +55,12 @@ def test_document_generation_uses_approved_template() -> None:
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/pdf"
     assert response.content.startswith(b"%PDF")
+
+    reader = PdfReader(BytesIO(response.content))
+    text = "\n".join(page.extract_text() or "" for page in reader.pages)
+    assert "Instructional Planning Framework" in text
+    assert "High Quality Instruction" not in text
+    assert "HQI" not in text
 
 
 def test_independent_document_adds_continuation_pages() -> None:
