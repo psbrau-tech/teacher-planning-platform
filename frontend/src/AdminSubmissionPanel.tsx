@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import "./AdminSubmissionPanel.css";
 
 type WeeklySubmission = {
   school_id: string;
