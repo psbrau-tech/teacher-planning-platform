@@ -34,9 +34,7 @@ def normalize_planning_payload(payload: dict[str, str]) -> dict[str, str]:
     }
 
     def set_if_blank(field: str, value: str | None) -> None:
-        if field not in normalized and isinstance(value, str):
-            normalized[field] = value
-        elif not normalized.get(field) and isinstance(value, str):
+        if isinstance(value, str) and (field not in normalized or not normalized.get(field)):
             normalized[field] = value
 
     set_if_blank("teacher", payload.get("teacher"))
