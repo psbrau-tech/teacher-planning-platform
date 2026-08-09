@@ -219,6 +219,7 @@ function App() {
   const [draftSubmittedAt, setDraftSubmittedAt] = useState<string | null>(null);
   const [validations, setValidations] = useState<Record<string, ValidationEntry>>({});
   const [validationFinalized, setValidationFinalized] = useState(false);
+  const [validationRevision, setValidationRevision] = useState<number | null>(null);
   const [standardsMappingVersion, setStandardsMappingVersion] = useState(0);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -250,6 +251,7 @@ function App() {
     setPlan([]);
     setValidations({});
     setValidationFinalized(false);
+    setValidationRevision(null);
     setDraftRevision(null);
     setDraftSubmissionStatus("not_submitted");
     setDraftSubmittedAt(null);
@@ -276,6 +278,27 @@ function App() {
     clearPlanningContext(selectedAssignment, nextWeek);
     setError("");
     setMessage("");
+  }
+
+  function openFridayCloseout(assignmentId = selectedAssignmentId) {
+    const assignment = assignments.find((item) => item.id === assignmentId) ?? null;
+    const currentWeek = mondayFor();
+    setSelectedAssignmentId(assignmentId);
+    setWeekStart(currentWeek);
+    clearPlanningContext(assignment, currentWeek);
+    setError("");
+    setMessage("");
+    setView("validation");
+  }
+
+  function openPlanningWeek(targetWeek: string, assignmentId = selectedAssignmentId) {
+    const assignment = assignments.find((item) => item.id === assignmentId) ?? null;
+    setSelectedAssignmentId(assignmentId);
+    setWeekStart(targetWeek);
+    clearPlanningContext(assignment, targetWeek);
+    setError("");
+    setMessage("");
+    setView("plan");
   }
 
   useEffect(() => {
@@ -471,6 +494,7 @@ function App() {
       });
       setPlan(generated);
       setValidations(Object.fromEntries(generated.map((lesson) => [lesson.scheduled_lesson_id, { status: "", reason: "", teacherNote: "", carryForward: false }])));
+      setValidationRevision(null);
       setMessage(`Built ${generated.length} scheduled lesson segment${generated.length === 1 ? "" : "s"}. Review any carry-forward changes before planning.`);
       await loadDraft(false);
     } catch (caught) {
@@ -494,10 +518,12 @@ function App() {
           carryForward: stored.carry_forward,
         } : { status: "", reason: "", teacherNote: "", carryForward: false }];
       })));
+      setValidationRevision(saved.revision);
       setValidationFinalized(true);
     } catch (caught) {
       const text = caught instanceof Error ? caught.message.toLowerCase() : "";
       if (!text.includes("not found")) throw caught;
+      setValidationRevision(null);
       setValidationFinalized(false);
     }
   }
@@ -649,6 +675,7 @@ function App() {
         body: JSON.stringify({
           assignment_id: selectedAssignmentId,
           week_start: weekStart,
+          expected_revision: validationRevision,
           lessons: plan.map((lesson) => {
             const entry = validations[lesson.scheduled_lesson_id];
             return {
@@ -664,6 +691,7 @@ function App() {
           }),
         }),
       });
+      setValidationRevision(saved.revision);
       setValidationFinalized(true);
       setMessage(`Friday validation complete. ${saved.carry_forward_curriculum_lesson_ids.length} lesson${saved.carry_forward_curriculum_lesson_ids.length === 1 ? "" : "s"} selected to carry forward. Complete the required reflection below.`);
       return saved;
@@ -714,7 +742,7 @@ function App() {
         <button className={view === "dashboard" ? "active" : ""} onClick={() => setView("dashboard")}>Dashboard</button>
         {isTeacher && <button className={view === "curriculum" ? "active" : ""} onClick={() => setView("curriculum")}>Curriculum</button>}
         {isTeacher && <button className={view === "assignment" ? "active" : ""} onClick={() => setView("assignment")}>Courses</button>}
-        {isTeacher && <button className={view === "validation" ? "active" : ""} onClick={() => setView("validation")}>Friday closeout</button>}
+        {isTeacher && <button className={view === "validation" ? "active" : ""} onClick={() => openFridayCloseout()}>Friday closeout</button>}
         {isTeacher && <button className={view === "plan" ? "active" : ""} onClick={() => setView("plan")}>Weekly plan</button>}
         {canViewAdministration && <button className={view === "administration" ? "active" : ""} onClick={() => setView("administration")}>Administration</button>}
       </nav>
@@ -729,11 +757,12 @@ function App() {
               <div>
                 <p className="eyebrow">Weekly workflow</p>
                 <h2>Close this week. Then build the next one.</h2>
-                <p>Normal routine: Friday validation → required teacher reflection → reconcile carry-forward → plan → review PDFs → submit. You can still start next week early.</p>
+                <p>Normal routine: Friday validation → required teacher reflection → reconcile carry-forward → plan → review PDFs → submit. For the first week, start with Plan this week. You can also plan next week early.</p>
               </div>
               <div className="hero-actions">
-                <button className="primary" disabled={!selectedAssignmentId} onClick={() => setView("validation")}>Complete Friday closeout</button>
-                <button className="secondary" disabled={!selectedAssignmentId} onClick={() => { selectPlanningWeek(addDays(weekStart, 7)); setView("plan"); }}>Plan next week early</button>
+                <button className="primary" disabled={!selectedAssignmentId} onClick={() => openFridayCloseout()}>Complete Friday closeout</button>
+                <button className="secondary" disabled={!selectedAssignmentId} onClick={() => openPlanningWeek(mondayFor())}>Plan this week</button>
+                <button className="secondary" disabled={!selectedAssignmentId} onClick={() => openPlanningWeek(addDays(mondayFor(), 7))}>Plan next week early</button>
               </div>
             </section>
             <section>
@@ -741,7 +770,7 @@ function App() {
               {assignments.length === 0 ? <div className="empty-state"><h3>No courses configured yet</h3><p>Add a curriculum, then create the first course and meeting pattern.</p></div> : (
                 <div className="grid">{assignments.map((assignment) => {
                   const curriculum = curricula.find((item) => item.id === assignment.curriculum_id);
-                  return <article className={`card ${selectedAssignmentId === assignment.id ? "selected" : ""}`} key={assignment.id}><div className="card-row"><span className="badge">Revision {assignment.revision}</span><span className="status">Active</span></div><h3>{assignment.course_name}</h3><p>{assignment.meeting_patterns.map((pattern) => `${pattern.start_time.slice(0, 5)}–${pattern.end_time.slice(0, 5)}`).join(", ")}</p><small>{curriculum ? `${curriculum.name} · ${curriculum.version}` : assignment.curriculum_id}</small><button className="link-button" onClick={() => { selectPlanningAssignment(assignment.id); setView("validation"); }}>Use this course</button></article>;
+                  return <article className={`card ${selectedAssignmentId === assignment.id ? "selected" : ""}`} key={assignment.id}><div className="card-row"><span className="badge">Revision {assignment.revision}</span><span className="status">Active</span></div><h3>{assignment.course_name}</h3><p>{assignment.meeting_patterns.map((pattern) => `${pattern.start_time.slice(0, 5)}–${pattern.end_time.slice(0, 5)}`).join(", ")}</p><small>{curriculum ? `${curriculum.name} · ${curriculum.version}` : assignment.curriculum_id}</small><button className="link-button" onClick={() => openFridayCloseout(assignment.id)}>Use this course</button></article>;
                 })}</div>
               )}
             </section>
@@ -811,7 +840,7 @@ function App() {
           <section className="panel">
             <div className="section-heading compact"><div><p className="eyebrow">Next-week preparation</p><h2>Weekly plan</h2><p className="supporting">Build or reconcile the schedule, choose relevant authoritative standards, use the planning draft as needed, review the approved PDFs, then submit.</p></div></div>
             <div className="toolbar"><label>Course<select value={selectedAssignmentId} onChange={(event) => selectPlanningAssignment(event.target.value)}><option value="">Select a course</option>{assignments.map((assignment) => <option value={assignment.id} key={assignment.id}>{assignment.course_name}</option>)}</select></label><label>Week of<input type="date" value={weekStart} onChange={(event) => selectPlanningWeek(event.target.value)} /></label><button className="primary" disabled={!selectedAssignmentId || busy} onClick={() => void generatePlan()}>Build / reconcile week</button><button className="secondary" disabled={!selectedAssignmentId || busy} onClick={() => void loadPlan()}>Reopen saved week</button></div>
-            <ScheduleExceptionPanel key={`${selectedAssignmentId}-${weekStart}`} accessToken={session.access_token} assignmentId={selectedAssignmentId} weekStart={weekStart} disabled={busy} onChanged={() => { setPlan([]); setValidations({}); }} />
+            <ScheduleExceptionPanel key={`${selectedAssignmentId}-${weekStart}`} accessToken={session.access_token} assignmentId={selectedAssignmentId} weekStart={weekStart} disabled={busy} onChanged={() => { setPlan([]); setValidations({}); setValidationRevision(null); setValidationFinalized(false); }} />
             {plan.length > 0 && <div className="plan-list">{plan.map((lesson) => <article key={lesson.scheduled_lesson_id}><div><strong>{lesson.lesson_date}</strong><span>{lesson.planned_minutes} minutes</span></div><div><small>{lesson.unit_title}</small><h3>{lesson.lesson_title}</h3></div><span className="badge">Segment {lesson.segment_number}</span></article>)}</div>}
 
             <StandardsCourseMappingPanel accessToken={session.access_token} assignmentId={selectedAssignmentId || null} disabled={busy} onMappingSaved={() => setStandardsMappingVersion((current) => current + 1)} />
