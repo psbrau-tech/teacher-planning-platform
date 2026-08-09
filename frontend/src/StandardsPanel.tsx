@@ -182,9 +182,7 @@ export function StandardsPanel({
     setError(null);
 
     if (!accessToken || !assignmentId || !weekStart) {
-      return () => {
-        active = false;
-      };
+      return () => { active = false; };
     }
 
     const load = async () => {
@@ -212,9 +210,7 @@ export function StandardsPanel({
     };
 
     void load();
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [accessToken, assignmentId, onSelectionResolved, weekStart]);
 
   const selectedEntries = useMemo(() => {
@@ -222,31 +218,23 @@ export function StandardsPanel({
     return catalog.standards.filter((standard) => selected.has(standard.id));
   }, [catalog, selected]);
 
-  const ranked = useMemo<RankedStandard[]>(() => {
-    if (!catalog) return [];
-    return catalog.standards
+  const suggestedStandards = useMemo(() => {
+    if (!catalog || weeklyLessons.length === 0) return [];
+    const ranked: RankedStandard[] = catalog.standards
       .map((standard) => ({ standard, score: relevanceScore(standard, weeklyLessons) }))
       .filter((item) => item.score > 0)
       .sort((a, b) => b.score - a.score || a.standard.sequence - b.standard.sequence);
-  }, [catalog, weeklyLessons]);
-
-  const suggestedStandards = useMemo(() => {
-    if (!catalog) return [];
-    const byId = new Map<string, StandardEntry>();
     const representedCodes = new Set<string>();
-    for (const standard of selectedEntries) {
-      byId.set(standard.id, standard);
-      representedCodes.add(standard.code.toLowerCase());
-    }
+    const suggestions: StandardEntry[] = [];
     for (const item of ranked) {
-      if (byId.size >= selectedEntries.length + 8) break;
       const code = item.standard.code.toLowerCase();
       if (representedCodes.has(code)) continue;
-      byId.set(item.standard.id, item.standard);
       representedCodes.add(code);
+      suggestions.push(item.standard);
+      if (suggestions.length >= 5) break;
     }
-    return Array.from(byId.values());
-  }, [catalog, ranked, selectedEntries]);
+    return suggestions;
+  }, [catalog, weeklyLessons]);
 
   const visibleStandards = useMemo(() => {
     if (!catalog) return [];
@@ -302,16 +290,14 @@ export function StandardsPanel({
       const body = (await response.json()) as { selected_count: number };
       setMessage(
         body.selected_count > 0
-          ? `${body.selected_count} authoritative standard${body.selected_count === 1 ? "" : "s"} saved. A planning draft will be prepared below for teacher review.`
+          ? `${body.selected_count} authoritative standard${body.selected_count === 1 ? "" : "s"} saved. Your planning draft will be prepared below.`
           : "Weekly standards selection cleared.",
       );
       onSelectionResolved?.(selectedEntries);
       if (body.selected_count > 0) {
-        window.dispatchEvent(
-          new CustomEvent("tpp:standards-saved", {
-            detail: { assignmentId, weekStart },
-          }),
-        );
+        window.dispatchEvent(new CustomEvent("tpp:standards-saved", {
+          detail: { assignmentId, weekStart },
+        }));
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Standards selection could not be saved.");
@@ -364,11 +350,7 @@ export function StandardsPanel({
       {catalog && !catalog.mapped ? (
         <div className="guidance-card">
           <strong>Standards mapping required.</strong>
-          <p>
-            Select the Subject / Career Cluster and Grade / Course for this teaching assignment
-            above. You control the course mapping; the platform administrator governs which
-            authoritative source snapshots are approved for use.
-          </p>
+          <p>Select the Subject / Career Cluster and Grade / Course for this teaching assignment above.</p>
         </div>
       ) : null}
 
@@ -390,33 +372,26 @@ export function StandardsPanel({
           <div className="guidance-card">
             <strong>Suggested for this week</strong>
             <p>
-              TPP compares the imported unit and lesson titles scheduled this week with the exact
-              approved course standards. This is a deterministic relevance aid, not AI rewriting.
-              The complete approved course remains available below.
+              TPP compares this week&apos;s scheduled unit and lesson titles with the exact approved
+              course standards. This is deterministic relevance matching, not AI-generated standards.
             </p>
           </div>
 
-          {weeklyLessons.length > 0 ? (
-            <div className="weekly-context-chips" aria-label="Scheduled lesson context">
-              {weeklyLessons.map((lesson) => (
-                <span className="badge" key={`${lesson.lesson_date}-${lesson.lesson_title}`}>
-                  {lesson.unit_title}: {lesson.lesson_title}
-                </span>
-              ))}
+          {weeklyLessons.length === 0 ? (
+            <p className="guidance-text">Generate or reopen the week to receive lesson-based suggestions.</p>
+          ) : suggestedStandards.length > 0 ? (
+            <div className="standard-list suggested-standard-list">
+              {suggestedStandards.map(renderStandard)}
             </div>
           ) : (
-            <p className="guidance-text">
-              Generate or reopen the week to receive lesson-based standard suggestions.
-            </p>
+            <div className="empty-state"><p>No strong wording match was found. Browse or search the approved catalog below.</p></div>
           )}
 
-          <div className="standard-list suggested-standard-list">
-            {suggestedStandards.length > 0 ? suggestedStandards.map(renderStandard) : (
-              <div className="empty-state">
-                <p>No strong wording match was found. Search or browse the complete approved course.</p>
-              </div>
-            )}
-          </div>
+          {selectedEntries.length > 0 ? (
+            <p className="guidance-text">
+              <strong>Selected for this week:</strong> {selectedEntries.map((item) => item.code).join(", ")}
+            </p>
+          ) : null}
 
           <details
             className="standards-browser"
@@ -439,21 +414,21 @@ export function StandardsPanel({
             {groupedStandards.length === 0 ? (
               <div className="empty-state"><p>No standards match this search.</p></div>
             ) : groupedStandards.map(([group, standards]) => (
-              <section className="standard-group" key={group} aria-label={group}>
-                <h3>{group}</h3>
+              <details className="standard-group" key={group} open={Boolean(query.trim())}>
+                <summary>{group} ({standards.length})</summary>
                 <div className="standard-list">{standards.map(renderStandard)}</div>
-              </section>
+              </details>
             ))}
           </details>
 
           <p className="guidance-text">
-            Select only the standards that apply to this week. The exact approved source text and
-            snapshot are preserved; AI cannot rewrite authoritative wording.
+            Select only the standards that apply this week. Exact approved wording and source
+            provenance are preserved.
           </p>
 
           <div className="button-row">
-            <button type="button" onClick={() => void save()} disabled={saving}>
-              {saving ? "Saving standards…" : "Save standards for week"}
+            <button type="button" className="primary" onClick={() => void save()} disabled={saving}>
+              {saving ? "Saving standards…" : "Save standards and continue"}
             </button>
             <span>{selected.size} selected</span>
           </div>
