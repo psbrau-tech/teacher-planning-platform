@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 from fastapi import HTTPException
 
@@ -34,8 +36,9 @@ def test_teacher_role_is_required_for_teacher_workflows() -> None:
     assert error.value.status_code == 403
 
 
-def test_school_reporting_allows_school_or_platform_administrator() -> None:
+def test_reporting_allows_school_district_or_platform_administrator() -> None:
     assert require_school_reporting_admin(_identity("school_admin"))
+    assert require_school_reporting_admin(_identity("district_admin"))
     assert require_school_reporting_admin(_identity("platform_admin"))
 
     with pytest.raises(HTTPException) as error:
@@ -47,16 +50,16 @@ def test_school_reporting_allows_school_or_platform_administrator() -> None:
 def test_cost_reporting_requires_platform_administrator() -> None:
     assert require_platform_admin(_identity("platform_admin"))
 
-    with pytest.raises(HTTPException) as error:
-        require_platform_admin(_identity("school_admin"))
-
-    assert error.value.status_code == 403
+    for denied_role in ("school_admin", "district_admin", "teacher"):
+        with pytest.raises(HTTPException) as error:
+            require_platform_admin(_identity(denied_role))
+        assert error.value.status_code == 403
 
 
 def test_legacy_route_roles_are_explicit() -> None:
     assert required_legacy_roles("/api/v1/admin/costs") == frozenset({"platform_admin"})
     assert required_legacy_roles("/api/v1/admin/summary") == frozenset(
-        {"school_admin", "platform_admin"}
+        {"school_admin", "district_admin", "platform_admin"}
     )
     assert required_legacy_roles(
         "/api/v1/documents/anniston-hqi-packet"
@@ -89,7 +92,7 @@ class _FakeReportingClient:
         payload: dict[str, object] | list[dict[str, object]] | None = None,
         prefer: str | None = None,
     ) -> object:
-        del method, params, payload, prefer
+        del method, params, prefer
         if resource == "school_admin_usage_summary":
             return [
                 {
@@ -122,6 +125,26 @@ class _FakeReportingClient:
                     "discarded_outputs": 1,
                 }
             ]
+        if resource == "rpc/admin_weekly_submission_status":
+            assert payload == {
+                "target_week_start": "2026-08-10",
+                "target_school_id": None,
+            }
+            return [
+                {
+                    "school_id": "school-1",
+                    "school_name": "Anniston High School",
+                    "teacher_id": "teacher-1",
+                    "teacher_name": "Teacher One",
+                    "assignment_id": "assignment-1",
+                    "course_name": "Pilot English 10",
+                    "week_start": "2026-08-10",
+                    "revision": 3,
+                    "submission_status": "submitted",
+                    "submitted_at": "2026-08-08T23:00:00+00:00",
+                    "generated_document_count": 1,
+                }
+            ]
         raise AssertionError(f"Unexpected resource: {resource}")
 
 
@@ -138,9 +161,19 @@ def test_governed_reporting_views_are_normalized(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(administration_api, "_client", fake_client_factory)
 
     usage = administration_api.school_usage(_identity("school_admin"), Settings())
+    submissions = administration_api.weekly_submissions(
+        date(2026, 8, 10),
+        _identity("district_admin"),
+        Settings(),
+        None,
+    )
     costs = administration_api.platform_costs(_identity("platform_admin"), Settings())
 
     assert usage.assignments_configured == 7
     assert usage.data_boundary == "teacher-and-curriculum-only"
+    assert len(submissions) == 1
+    assert submissions[0].teacher_name == "Teacher One"
+    assert submissions[0].submission_status == "submitted"
+    assert submissions[0].generated_document_count == 1
     assert len(costs) == 1
     assert str(costs[0].estimated_cost_usd) == "0.25"
