@@ -56,9 +56,22 @@ class WeeklySubmissionRead(BaseModel):
     course_name: str | None = None
     week_start: date
     revision: int | None = None
+    submitted_revision: int | None = None
     submission_status: str
     submitted_at: str | None = None
-    generated_document_count: int = 0
+
+
+class WeeklySubmittedPlanRead(BaseModel):
+    school_id: str
+    school_name: str
+    teacher_id: str
+    teacher_name: str
+    assignment_id: str
+    course_name: str
+    week_start: date
+    submitted_revision: int
+    submitted_at: str
+    source_data: dict[str, str]
 
 
 def _records(payload: object) -> list[dict[str, Any]]:
@@ -136,6 +149,33 @@ def weekly_submissions(
         raise HTTPException(status_code=503, detail=str(error)) from error
 
     return [WeeklySubmissionRead.model_validate(row) for row in _records(payload)]
+
+
+@router.get("/submissions/{assignment_id}", response_model=WeeklySubmittedPlanRead)
+def submitted_plan(
+    assignment_id: str,
+    week_start: date,
+    identity: Annotated[AuthenticatedTeacher, Depends(require_school_reporting_admin)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> WeeklySubmittedPlanRead:
+    try:
+        payload = _client(identity, settings).request(
+            "POST",
+            "rpc/admin_weekly_submission_document",
+            payload={
+                "target_assignment_id": assignment_id,
+                "target_week_start": week_start.isoformat(),
+            },
+        )
+    except (RuntimeError, SupabaseRestError) as error:
+        if isinstance(error, SupabaseRestError):
+            raise _reporting_error(error) from error
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+    rows = _records(payload)
+    if not rows:
+        raise HTTPException(status_code=404, detail="Submitted weekly plan was not found")
+    return WeeklySubmittedPlanRead.model_validate(rows[0])
 
 
 @router.get("/costs", response_model=list[SchoolCostRead])
