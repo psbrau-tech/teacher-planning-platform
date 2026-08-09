@@ -12,20 +12,13 @@ DEFAULT_TEMPLATE_PATH = (
     Path(__file__).resolve().parent.parent / "assets" / "anniston_hqi_lesson_plan.fillable.pdf"
 )
 
-_DAY_ALIASES = (
-    ("monday", "mon"),
-    ("tuesday", "tue"),
-    ("wednesday", "wed"),
-    ("thursday", "thu"),
-    ("friday", "fri"),
-)
-
 
 def normalize_planning_payload(payload: dict[str, str]) -> dict[str, str]:
-    """Translate the teacher working-plan shape into the approved HQI document contract.
+    """Translate the teacher working-plan shape into the approved planning-document contract.
 
-    Exact HQI fields always win. The aliases below let the integrated weekly planner feed the
-    principal-approved PDFs without inventing content for fields the teacher did not address.
+    Exact PDF fields always win. Only fields with the same instructional meaning are aliased from
+    the integrated weekly planner. TPP intentionally leaves non-equivalent PDF fields blank rather
+    than relabeling teacher content or fabricating information for an official export.
     """
     normalized = {
         field: value
@@ -37,6 +30,7 @@ def normalize_planning_payload(payload: dict[str, str]) -> dict[str, str]:
         if isinstance(value, str) and (field not in normalized or not normalized.get(field)):
             normalized[field] = value
 
+    # These integrated planning fields have direct equivalents in the approved document contract.
     set_if_blank("teacher", payload.get("teacher"))
     set_if_blank("course", payload.get("course"))
     set_if_blank("grade", payload.get("grade"))
@@ -48,21 +42,14 @@ def normalize_planning_payload(payload: dict[str, str]) -> dict[str, str]:
     set_if_blank("know", payload.get("know"))
     set_if_blank("understand", payload.get("understand"))
     set_if_blank("do", payload.get("do"))
-    set_if_blank("plds", payload.get("learning_targets"))
-    set_if_blank("formative", payload.get("assessments"))
-    set_if_blank("performance_task", payload.get("activities"))
     set_if_blank("resources", payload.get("resources"))
 
-    learning_targets = payload.get("learning_targets", "")
-    assessments = payload.get("assessments", "")
-    for day_name, suffix in _DAY_ALIASES:
-        daily_text = payload.get(day_name, "")
-        if not daily_text.strip():
-            continue
-        set_if_blank(f"clt_{suffix}", learning_targets)
-        set_if_blank(f"rrt_{suffix}", daily_text)
-        set_if_blank(f"cfu_{suffix}", assessments)
-        set_if_blank(f"esl_{suffix}", assessments)
+    # Do not coerce broad planning fields into more specific district-document concepts. In
+    # particular, learning targets are not proficiency descriptors; generic activities are not
+    # necessarily a performance task; and generic assessments are not automatically formative,
+    # summative, checks for understanding, or evidence of learning. Exact teacher-authored PDF
+    # fields (including clt_mon, cfu_tue, formative, performance_task, etc.) remain supported via
+    # the exact-field pass above.
 
     reflection_value = payload.get("reflection")
     if isinstance(reflection_value, str) and reflection_value:
