@@ -3,7 +3,7 @@ import json
 from app.document_service import normalize_planning_payload
 
 
-def test_integrated_weekly_plan_maps_into_approved_pdf_contract() -> None:
+def test_integrated_weekly_plan_maps_only_direct_pdf_equivalents() -> None:
     payload = {
         "teacher": "Synthetic Teacher",
         "course": "Army JROTC LET 1",
@@ -34,24 +34,35 @@ def test_integrated_weekly_plan_maps_into_approved_pdf_contract() -> None:
 
     assert normalized["teacher"] == "Synthetic Teacher"
     assert normalized["standards"].startswith("U1C3L2")
-    assert normalized["clt_mon"] == payload["learning_targets"]
-    assert normalized["rrt_mon"] == payload["monday"]
-    assert normalized["cfu_mon"] == payload["assessments"]
-    assert normalized["esl_mon"] == payload["assessments"]
-    assert "clt_wed" not in normalized
+    assert normalized["know"] == payload["know"]
+    assert normalized["understand"] == payload["understand"]
+    assert normalized["do"] == payload["do"]
+    assert normalized["resources"] == payload["resources"]
+    assert "plds" not in normalized
+    assert "formative" not in normalized
+    assert "summative" not in normalized
+    assert "performance_task" not in normalized
+    assert "clt_mon" not in normalized
+    assert "rrt_mon" not in normalized
+    assert "cfu_mon" not in normalized
+    assert "esl_mon" not in normalized
     assert normalized["reflect_1"] == "Class-level response 1"
     assert normalized["reflect_12"] == "Class-level response 12"
 
 
-def test_exact_pdf_fields_are_not_overwritten_by_working_plan_aliases() -> None:
+def test_exact_pdf_fields_are_preserved_when_teacher_supplies_them() -> None:
     normalized = normalize_planning_payload(
         {
             "learning_targets": "Integrated learning target",
             "plds": "Teacher-authored proficiency descriptor",
             "activities": "Integrated activity",
             "performance_task": "Teacher-authored performance task",
+            "clt_mon": "Teacher-authored Monday learning target",
+            "cfu_mon": "Teacher-authored Monday check for understanding",
         }
     )
 
     assert normalized["plds"] == "Teacher-authored proficiency descriptor"
     assert normalized["performance_task"] == "Teacher-authored performance task"
+    assert normalized["clt_mon"] == "Teacher-authored Monday learning target"
+    assert normalized["cfu_mon"] == "Teacher-authored Monday check for understanding"
