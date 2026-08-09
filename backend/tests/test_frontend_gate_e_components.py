@@ -83,15 +83,21 @@ def test_teacher_setup_uses_schedule_minutes_and_passes_live_week_to_standards()
     assert "previous pilot format" in parser
 
 
-def test_weekly_plan_reaches_course_mapping_and_canonical_standards_selector() -> None:
-    source = WEEKLY_CONTEXT.read_text(encoding="utf-8")
+def test_weekly_plan_reaches_mapping_and_live_standards_once() -> None:
+    main = MAIN.read_text(encoding="utf-8")
+    schedule = WEEKLY_CONTEXT.read_text(encoding="utf-8")
 
-    assert 'from "./StandardsCourseMappingPanel"' in source
-    assert 'from "./CanonicalStandardsPanel"' in source
-    assert "<StandardsCourseMappingPanel" in source
-    assert "<CanonicalStandardsPanel" in source
-    assert "mappingRevision" in source
-    assert "onMappingSaved" in source
+    assert 'from "./StandardsCourseMappingPanel"' in main
+    assert 'from "./StandardsPanel"' in main
+    assert "<StandardsCourseMappingPanel" in main
+    assert "<StandardsPanel" in main
+    assert "standardsMappingVersion" in main
+    assert "onMappingSaved" in main
+
+    # Schedule adjustment is intentionally schedule-only. Standards are rendered
+    # once by the weekly-plan flow after schedule reconciliation.
+    assert "StandardsCourseMappingPanel" not in schedule
+    assert "CanonicalStandardsPanel" not in schedule
 
 
 def test_ai_planning_remains_teacher_reviewed_and_recoverable() -> None:
