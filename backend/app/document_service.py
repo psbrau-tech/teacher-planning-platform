@@ -12,6 +12,14 @@ DEFAULT_TEMPLATE_PATH = (
     Path(__file__).resolve().parent.parent / "assets" / "anniston_hqi_lesson_plan.fillable.pdf"
 )
 
+_DAY_ALIASES = (
+    ("monday", "mon"),
+    ("tuesday", "tue"),
+    ("wednesday", "wed"),
+    ("thursday", "thu"),
+    ("friday", "fri"),
+)
+
 
 def normalize_planning_payload(payload: dict[str, str]) -> dict[str, str]:
     """Translate the teacher working-plan shape into the approved planning-document contract.
@@ -44,12 +52,24 @@ def normalize_planning_payload(payload: dict[str, str]) -> dict[str, str]:
     set_if_blank("do", payload.get("do"))
     set_if_blank("resources", payload.get("resources"))
 
+    # The integrated weekly plan contains a teacher-approved learning target and an explicit
+    # teacher-approved narrative for each scheduled weekday. Those have defensible counterparts in
+    # the Week at a Glance. Unscheduled weekdays remain blank. More specialized rows are not
+    # inferred from generic assessments or activities.
+    learning_targets = payload.get("learning_targets", "")
+    for day_name, suffix in _DAY_ALIASES:
+        daily_text = payload.get(day_name, "")
+        if not isinstance(daily_text, str) or not daily_text.strip():
+            continue
+        set_if_blank(f"clt_{suffix}", learning_targets)
+        set_if_blank(f"rrt_{suffix}", daily_text)
+
     # Do not coerce broad planning fields into more specific district-document concepts. In
     # particular, learning targets are not proficiency descriptors; generic activities are not
     # necessarily a performance task; and generic assessments are not automatically formative,
     # summative, checks for understanding, or evidence of learning. Exact teacher-authored PDF
-    # fields (including clt_mon, cfu_tue, formative, performance_task, etc.) remain supported via
-    # the exact-field pass above.
+    # fields (including cfu_mon, formative, performance_task, etc.) remain supported through the
+    # exact-field pass above.
 
     reflection_value = payload.get("reflection")
     if isinstance(reflection_value, str) and reflection_value:
