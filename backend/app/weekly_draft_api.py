@@ -146,8 +146,20 @@ def save_weekly_draft(
     teacher: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> WeeklyDraftRead:
+    store = _store_for(teacher, settings)
     try:
-        draft = _store_for(teacher, settings).save(
+        current = store.get(
+            teacher.subject,
+            payload.assignment_id,
+            payload.week_start,
+        )
+        if (
+            current is not None
+            and payload.expected_revision == current.revision
+            and current.content == payload.content
+        ):
+            return _to_read_model(current, teacher, settings)
+        draft = store.save(
             teacher_id=teacher.subject,
             assignment_id=payload.assignment_id,
             week_start=payload.week_start,
