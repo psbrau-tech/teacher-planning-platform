@@ -1,4 +1,4 @@
-"""Render the Anniston HQI set as three branded, flowing PDF documents."""
+"""Render the Anniston planning set as three branded, flowing PDF documents."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ AHS_WHITE = colors.white
 LOGO_PATH = Path(__file__).parents[1] / "assets" / "ahs_logo.png"
 
 DOCUMENT_TITLES: dict[HqiDocument, str] = {
-    HqiDocument.INSTRUCTIONAL_FRAMEWORK: "High Quality Instruction Planning Framework",
+    HqiDocument.INSTRUCTIONAL_FRAMEWORK: "Instructional Planning Framework",
     HqiDocument.WEEK_AT_A_GLANCE: "Week at a Glance",
     HqiDocument.WEEKLY_REFLECTION: "Weekly Reflection / PLC Discussion",
 }
