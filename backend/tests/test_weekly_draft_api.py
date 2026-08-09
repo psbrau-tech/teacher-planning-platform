@@ -59,6 +59,32 @@ def test_weekly_draft_create_update_submit_revise_and_resubmit() -> None:
     assert submitted.json()["submission_status"] == "submitted"
     assert submitted.json()["submitted_at"] is not None
 
+    duplicate_submit = client.post(
+        "/api/v1/weekly-drafts/submit",
+        headers=HEADERS,
+        json={
+            "assignment_id": "assignment-1",
+            "week_start": "2026-08-10",
+            "expected_revision": 2,
+        },
+    )
+    assert duplicate_submit.status_code == 200
+    assert duplicate_submit.json()["submitted_at"] == submitted.json()["submitted_at"]
+
+    no_change_save = client.put(
+        "/api/v1/weekly-drafts",
+        headers=HEADERS,
+        json={
+            "assignment_id": "assignment-1",
+            "week_start": "2026-08-10",
+            "content": {"unit_topic": "Leadership and followership"},
+            "expected_revision": 2,
+        },
+    )
+    assert no_change_save.status_code == 200
+    assert no_change_save.json()["revision"] == 2
+    assert no_change_save.json()["submission_status"] == "submitted"
+
     revised = client.put(
         "/api/v1/weekly-drafts",
         headers=HEADERS,
