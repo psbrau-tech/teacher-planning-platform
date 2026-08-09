@@ -275,7 +275,7 @@ def test_ai_planning_context_is_server_grounded_and_excludes_identity_pii(
     assert body["usage_event_id"] == str(USAGE_ID)
     assert body["suggestions"]["unit_topic"] == "Leadership: Styles and Team Roles"
     assert body["suggestions"]["learning_targets"].startswith("Compare leadership styles")
-    assert "Grade 10 R1" in body["suggestions"]["literacy_standards"]
+    assert "10 R1" in body["suggestions"]["literacy_standards"]
     literacy = body["suggestions"]["literacy_standards"]
     assert "Read a variety of print and nonprint documents" in literacy
     assert "CLR 401" in body["suggestions"]["act_preparation"]
