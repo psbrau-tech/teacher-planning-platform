@@ -183,10 +183,10 @@ function reflectionComplete(value: string): boolean {
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
+  const anchor = window.document.createElement("a");
   anchor.href = url;
   anchor.download = filename;
-  document.body.appendChild(anchor);
+  window.document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);
@@ -239,7 +239,6 @@ function App() {
     [curricula, selectedAssignment],
   );
   const savedForReview = Boolean(draftRevision && !draftDirty);
-  const nextWeekStart = addDays(weekStart, 7);
   const reflectionIsComplete = reflectionComplete(draft.reflection);
 
   function updateDraft(next: React.SetStateAction<Record<string, string>>) {
@@ -609,7 +608,7 @@ function App() {
           previewWindow.location.href = url;
           window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
         } else {
-          const frame = document.createElement("iframe");
+          const frame = window.document.createElement("iframe");
           frame.style.position = "fixed"; frame.style.width = "0"; frame.style.height = "0"; frame.style.border = "0";
           frame.src = url;
           frame.onload = () => {
@@ -618,7 +617,7 @@ function App() {
               window.setTimeout(() => { URL.revokeObjectURL(url); frame.remove(); }, 5_000);
             }, 500);
           };
-          document.body.appendChild(frame);
+          window.document.body.appendChild(frame);
         }
       }
       setMessage(`${document === "packet" ? "Combined packet" : document} ${action === "download" ? "downloaded" : action === "print" ? "opened for printing" : "opened for review"}.`);
@@ -836,7 +835,7 @@ function App() {
             <section className="review-section" id="review-actions">
               <div className="section-heading compact"><div><p className="eyebrow">Review and submit</p><h2>Approved district PDFs</h2><p className="supporting">Save the working plan first. Then review, download, or print any approved PDF before submitting the weekly plan. Page counts expand automatically with teacher content.</p></div><span className="badge">Revision {draftRevision ?? 0} · {draftDirty ? "Unsaved changes" : submissionLabel(draftSubmissionStatus)}</span></div>
               {draftSubmittedAt && <p className="guidance-text">Last submitted {new Date(draftSubmittedAt).toLocaleString()}.</p>}
-              <div className="button-row"><button className="primary" disabled={!selectedAssignmentId || busy} onClick={() => void saveDraft()}>Save draft</button><button className="secondary" disabled={!savedForReview || busy} onClick={() => document.getElementById("pdf-review")?.scrollIntoView({ behavior: "smooth" })}>Next: Review PDFs</button></div>
+              <div className="button-row"><button className="primary" disabled={!selectedAssignmentId || busy} onClick={() => void saveDraft()}>Save draft</button><button className="secondary" disabled={!savedForReview || busy} onClick={() => window.document.getElementById("pdf-review")?.scrollIntoView({ behavior: "smooth" })}>Next: Review PDFs</button></div>
               <div className="pdf-review-grid" id="pdf-review">
                 {([
                   ["instructional-framework", "High Quality Instruction Planning Framework"],
