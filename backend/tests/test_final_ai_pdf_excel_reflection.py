@@ -67,11 +67,16 @@ def test_excel_pacing_round_trip_is_browser_side_and_populates_lesson_cards() ->
     importer = (FRONTEND / "pacingWorkbookImport.ts").read_text(encoding="utf-8")
     assert "Load Excel pacing file" in editor
     assert "readPacingWorkbook" in editor
-    assert 'accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"' in editor
+    excel_accept = (
+        'accept=".xlsx,'
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"'
+    )
+    assert excel_accept in editor
     assert "DecompressionStream" in importer
     assert "xl/worksheets/sheet1.xml" in importer
     assert "Unit / Topic and Lesson / Focus columns" in importer
-    assert "standards" not in "ImportedPacingRow"  # standards remain outside pacing import contract
+    contract = importer.split("type ZipEntry", maxsplit=1)[0]
+    assert "standards" not in contract.lower()
 
 
 def test_pdf_field_ui_explains_ai_assistance_and_teacher_review() -> None:
