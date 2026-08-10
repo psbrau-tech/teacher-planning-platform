@@ -18,6 +18,7 @@ from .document_service import (
     generate_anniston_hqi,
     generate_anniston_hqi_document,
     generate_anniston_hqi_packet,
+    generate_anniston_lesson_plan_packet,
 )
 from .fixtures import (
     ASSIGNMENT_IDS,
@@ -49,9 +50,6 @@ from .standards_catalog_api import router as standards_catalog_router
 from .teaching_assignment_api import router as teaching_assignment_router
 from .weekly_draft_api import router as weekly_draft_router
 
-# HQI was an early source of inspiration for the pilot, but it is not TPP's product identity.
-# Keep legacy internal route/type names stable during the pilot while removing the legacy
-# framework name from every teacher-visible generated document and download filename.
 DOCUMENT_TITLES[HqiDocument.INSTRUCTIONAL_FRAMEWORK] = "Instructional Planning Framework"
 
 app = FastAPI(
@@ -71,8 +69,6 @@ app.include_router(schedule_exception_router)
 app.include_router(standards_router)
 app.include_router(standards_catalog_router)
 app.include_router(standards_admin_router)
-# This route is intentionally registered first for the shared planning path. It preserves
-# fail-closed governed references while retaining the rest of a valid teacher planning draft.
 app.include_router(ai_planning_resilient_router)
 app.include_router(ai_planning_router)
 app.include_router(ai_reflection_router)
@@ -80,69 +76,66 @@ app.include_router(weekly_draft_router)
 app.include_router(friday_validation_router)
 
 
+def _require_template() -> None:
+    if not DEFAULT_TEMPLATE_PATH.exists():
+        raise HTTPException(status_code=503, detail="The approved planning PDF template is unavailable")
+
+
 @app.get("/health", tags=["operations"])
 def health() -> dict[str, str]:
-    return {"status": "ok", "service": "tpp-api"}
+    return {"status": "ok", "service": "teacher-planning-platform"}
 
 
-@app.get("/api/v1/assignments", tags=["teacher"])
-def list_assignments() -> list[dict[str, object]]:
-    """Synthetic pilot endpoint until the live teacher workflow replaces it."""
-    return [
-        {
-            "id": assignment_id,
-            "course_name": level,
-            "schedule_type": "block" if level == "LET 4" else "period",
-            "curriculum": f"Army JROTC {level}",
-        }
-        for level, assignment_id in ASSIGNMENT_IDS.items()
-    ]
-
-
-@app.get("/api/v1/weekly-plan", response_model=list[PlannedLesson], tags=["planning"])
-def weekly_plan(
-    level: Annotated[str, Query(pattern=r"^LET [1-4]$")],
-    week_start: Annotated[date, Query(description="Monday date for the requested week")],
-) -> list[PlannedLesson]:
-    assignment_id = ASSIGNMENT_IDS.get(level)
-    if assignment_id is None:
-        raise HTTPException(status_code=404, detail="Teaching assignment not found")
-
-    patterns = [afternoon_block_pattern()] if level == "LET 4" else [period_pattern()]
-    return build_weekly_plan(
-        assignment_id=assignment_id,
-        week_start=week_start,
-        patterns=patterns,
-        lessons=synthetic_jrotc_lessons(level),
-        exceptions=anniston_exceptions(),
-    )
-
-
-@app.get("/api/v1/templates/anniston-hqi/fields", tags=["documents"])
-def anniston_hqi_fields() -> dict[str, object]:
+@app.get("/api/v1/standards", tags=["standards"])
+def standards() -> dict[str, object]:
     return {
-        "template": "Anniston City Schools Planning Document Set",
-        "field_count": len(ALL_HQI_FIELDS),
-        "fields": ALL_HQI_FIELDS,
-        "template_installed": DEFAULT_TEMPLATE_PATH.exists(),
-        "documents": [document.value for document in HqiDocument],
+        "source": "Anniston pilot controlled catalog",
+        "standards": [
+            {"code": "JROTC-LET1-U1", "description": "Foundations and citizenship"},
+            {"code": "JROTC-LET1-U2", "description": "Leadership and personal growth"},
+        ],
     }
 
 
-def _require_template() -> None:
-    if not DEFAULT_TEMPLATE_PATH.exists():
-        raise HTTPException(
-            status_code=503,
-            detail="The approved Anniston planning PDF template is not installed.",
-        )
+@app.get("/api/v1/plan", tags=["planning"])
+def generated_plan(
+    course: Annotated[str, Query()] = "LET 1",
+    week_start: Annotated[date, Query()] = date(2026, 8, 10),
+) -> dict[str, object]:
+    lessons = synthetic_jrotc_lessons()
+    pattern = afternoon_block_pattern() if course == "LET 2" else period_pattern()
+    result = build_weekly_plan(
+        assignment_id=ASSIGNMENT_IDS.get(course, ASSIGNMENT_IDS["LET 1"]),
+        week_start=week_start,
+        lessons=lessons,
+        meeting_patterns=(pattern,),
+        exceptions=anniston_exceptions(),
+    )
+    return {
+        "week_start": week_start.isoformat(),
+        "assignment_id": result[0].assignment_id if result else ASSIGNMENT_IDS["LET 1"],
+        "lessons": [
+            {
+                "scheduled_lesson_id": item.scheduled_lesson_id,
+                "curriculum_lesson_id": item.curriculum_lesson_id,
+                "unit_title": item.unit_title,
+                "lesson_title": item.lesson_title,
+                "lesson_date": item.lesson_date.isoformat(),
+                "sequence": item.sequence,
+                "planned_minutes": item.planned_minutes,
+                "segment_number": item.segment_number,
+                "status": item.status,
+            }
+            for item in result
+        ],
+    }
 
 
 @app.post("/api/v1/documents/anniston-hqi", tags=["documents"])
-def generate_hqi_document_legacy(
+def generate_hqi_document(
     payload: Annotated[dict[str, str], Body()],
     flatten: Annotated[bool, Query()] = False,
 ) -> StreamingResponse:
-    """Legacy three-page export retained temporarily for compatibility."""
     _require_template()
     try:
         document = generate_anniston_hqi(payload, flatten=flatten)
@@ -186,6 +179,29 @@ def generate_hqi_section_document(
     )
 
 
+@app.post("/api/v1/documents/anniston-lesson-plan-packet", tags=["documents"])
+def generate_lesson_plan_packet(
+    payload: Annotated[dict[str, str], Body()],
+    flatten: Annotated[bool, Query()] = False,
+) -> StreamingResponse:
+    _require_template()
+    try:
+        packet, documents = generate_anniston_lesson_plan_packet(payload, flatten=flatten)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    continuation_pages = sum(item.continuation_page_count for item in documents)
+    suffix = "-flat" if flatten else ""
+    return StreamingResponse(
+        BytesIO(packet),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="anniston-weekly-lesson-plan{suffix}.pdf"',
+            "X-TPP-Document-Count": str(len(documents)),
+            "X-TPP-Continuation-Pages": str(continuation_pages),
+        },
+    )
+
+
 @app.post("/api/v1/documents/anniston-hqi-packet", tags=["documents"])
 def generate_hqi_packet(
     payload: Annotated[dict[str, str], Body()],
@@ -221,11 +237,7 @@ def admin_summary() -> dict[str, object]:
         ]
         + [
             AdminUsageEvent("synthetic-teacher", "plan_generated", ASSIGNMENT_IDS["LET 1"]),
-            AdminUsageEvent(
-                "synthetic-teacher",
-                "friday_validation_completed",
-                ASSIGNMENT_IDS["LET 1"],
-            ),
+            AdminUsageEvent("synthetic-teacher", "friday_validation_completed", ASSIGNMENT_IDS["LET 1"]),
         ]
     )
     return {
