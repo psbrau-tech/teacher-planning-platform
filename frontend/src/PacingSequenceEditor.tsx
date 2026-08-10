@@ -18,7 +18,7 @@ function blankRow(id: number): PacingRow {
 function serialize(rows: PacingRow[]): string {
   return rows
     .filter((row) => row.unit.trim() || row.lesson.trim() || row.targets.trim() || row.assessment.trim() || row.minutes.trim())
-    .map((row) => [row.unit, row.lesson, "", row.targets, row.assessment, row.minutes].map((value) => value.trim()).join(" | "))
+    .map((row) => [row.unit, row.lesson, row.targets, row.assessment, row.minutes].map((value) => value.trim()).join(" | "))
     .join("\n");
 }
 
