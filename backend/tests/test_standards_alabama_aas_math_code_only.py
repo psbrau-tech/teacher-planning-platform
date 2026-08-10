@@ -85,3 +85,40 @@ def test_math_aas_preserves_qualified_code_only_high_school_rows() -> None:
         "Geometry alternate standard 2.",
         "Geometry alternate standard 4.",
     ]
+
+
+def test_math_aas_preserves_identifier_appended_to_general_text_line() -> None:
+    lines: list[str] = []
+    for grade in range(13):
+        token = "K" if grade == 0 else str(grade)
+        heading = "Kindergarten Mathematics" if grade == 0 else f"Grade {grade} Mathematics"
+        lines.append(heading)
+        if grade == 1:
+            lines.extend(
+                [
+                    "1. General standard wording. M.AAS.1.17",
+                    "Alternate standard seventeen wording.",
+                    "M.AAS.1.19",
+                    "Alternate standard nineteen wording.",
+                    "M.AAS.1.20",
+                    "Alternate standard twenty wording.",
+                ]
+            )
+            continue
+        for number in (1, 2, 3):
+            lines.extend(
+                [
+                    f"M.AAS.{token}.{number}",
+                    f"Alternate math standard {number}.",
+                ]
+            )
+
+    parsed = parse_alabama_aas_math_2019(_document(lines))
+    grade_one = next(course for course in parsed.courses if course.course_key == "grade_1")
+
+    assert [standard.code for standard in grade_one.standards] == [
+        "M.AAS.1.17",
+        "M.AAS.1.19",
+        "M.AAS.1.20",
+    ]
+    assert grade_one.standards[0].text == "Alternate standard seventeen wording."
