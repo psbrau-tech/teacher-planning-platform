@@ -6,6 +6,7 @@ from enum import StrEnum
 
 class StandardsFamily(StrEnum):
     ALABAMA_ACADEMIC = "alabama_academic"
+    ALABAMA_ALTERNATE = "alabama_alternate"
     ALABAMA_CTE = "alabama_cte"
     ARMY_JROTC = "army_jrotc"
 
@@ -20,6 +21,8 @@ class StandardsSource:
     authority: str
 
 
+_ALTERNATE_SOURCE_URL = "https://www.alabamaachieves.org/special-education/subject-resources/"
+
 INITIAL_STANDARDS_SOURCES = (
     StandardsSource(
         family=StandardsFamily.ALABAMA_ACADEMIC,
@@ -27,6 +30,38 @@ INITIAL_STANDARDS_SOURCES = (
         edition="2021 Alabama Course of Study: English Language Arts",
         effective_school_year="2022-2023",
         source_url="https://www.alabamaachieves.org/acad-stand/",
+        authority="Alabama State Department of Education",
+    ),
+    StandardsSource(
+        family=StandardsFamily.ALABAMA_ALTERNATE,
+        subject_or_cluster="English Language Arts",
+        edition="2021 Alternate Achievement Standards: English Language Arts",
+        effective_school_year=None,
+        source_url=_ALTERNATE_SOURCE_URL,
+        authority="Alabama State Department of Education",
+    ),
+    StandardsSource(
+        family=StandardsFamily.ALABAMA_ALTERNATE,
+        subject_or_cluster="Mathematics",
+        edition="2019 Alternate Achievement Standards: Mathematics",
+        effective_school_year=None,
+        source_url=_ALTERNATE_SOURCE_URL,
+        authority="Alabama State Department of Education",
+    ),
+    StandardsSource(
+        family=StandardsFamily.ALABAMA_ALTERNATE,
+        subject_or_cluster="Science",
+        edition="2017 Alternate Achievement Standards: Science",
+        effective_school_year=None,
+        source_url=_ALTERNATE_SOURCE_URL,
+        authority="Alabama State Department of Education",
+    ),
+    StandardsSource(
+        family=StandardsFamily.ALABAMA_ALTERNATE,
+        subject_or_cluster="Social Studies",
+        edition="2017 Alternate Achievement Standards: Social Studies",
+        effective_school_year=None,
+        source_url=_ALTERNATE_SOURCE_URL,
         authority="Alabama State Department of Education",
     ),
     StandardsSource(
