@@ -93,7 +93,9 @@ def test_pdf_field_ui_explains_ai_assistance_and_teacher_review() -> None:
 
 def test_friday_reflection_has_saved_pdf_preview_without_ai_generation() -> None:
     source = (FRONTEND / "AiReflectionPanel.tsx").read_text(encoding="utf-8")
-    assert "View saved reflection PDF" in source
+    assert "View reflection PDF" in source
+    assert 'createPortal(previewButton, closeoutActionsTarget)' in source
+    assert '.ai-reflection-panel + .review-section .button-row' in source
     assert "/api/v1/documents/anniston-hqi/weekly-reflection" in source
     assert "Save the Friday closeout before previewing" in source
     assert "pdf-modal-backdrop" in source
