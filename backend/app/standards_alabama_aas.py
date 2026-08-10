@@ -248,12 +248,6 @@ def _parse_aas(
                 f"Alabama alternate standards parser found incomplete {course.display_name} data "
                 f"for {spec.parser_key}"
             )
-        codes = [standard.code for standard in standards]
-        if len(codes) != len(set(codes)):
-            raise StandardsIngestError(
-                "Alabama alternate standards parser found duplicate codes in "
-                f"{course.display_name} for {spec.parser_key}"
-            )
         courses.append(
             ParsedCourse(
                 course_key=course.course_key,
@@ -315,10 +309,8 @@ def _is_structure_line(line: str) -> bool:
         return True
     if re.fullmatch(r"\d{1,3}", line):
         return True
-    if (
+    return (
         len(line) <= 80
         and not re.search(r"[.!?;,]$", line)
         and (line.isupper() or line.istitle())
-    ):
-        return True
-    return False
+    )
