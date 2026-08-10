@@ -16,13 +16,23 @@ from .standards_ingest import (
     StandardsIngestError,
 )
 
-# The official 2019 Math AAS PDF can place whitespace between the final period
-# and numeric identifier when text is extracted from its table layout, e.g.
-# ``M.AAS.K. 1`` or ``M.G.AAS.9. 1``. The printed authoritative identifier is
-# contiguous. Repair only this narrowly bounded source-extraction artifact.
+# Some Math AAS table extractions can place whitespace between the final period
+# and numeric identifier, e.g. ``M.AAS.K. 1``. Repair only that bounded layout
+# artifact. The current official PDF normally extracts these codes contiguously.
 _SPACED_MATH_FINAL_SEGMENT = re.compile(
     r"(?P<prefix>\bM(?:\.[A-Za-z0-9]+)*\.AAS\.(?:K|[0-9]+))\.\s+"
     r"(?P<tail>[0-9]+[A-Za-z]?)\b",
+    flags=re.IGNORECASE,
+)
+
+# The official 2019 Math AAS PDF commonly extracts the printed identifier on a
+# line by itself. The legacy shared cleaner interprets a terminal digit after a
+# period as a PDF page suffix, so mark only complete code-only lines with a
+# delimiter before handing them to that parser. The delimiter is consumed by
+# the existing AAS row grammar and never becomes part of the source code/text.
+_MATH_CODE_ONLY = re.compile(
+    r"^\s*(?P<code>M(?:\.[A-Za-z0-9]+)*\.AAS\."
+    r"(?:K|[0-9]+)\.[0-9]+[A-Za-z]?)\s*$",
     flags=re.IGNORECASE,
 )
 
@@ -66,7 +76,11 @@ def parse_alabama_aas_social_studies_2017(
 
 
 def _repair_math_line(line: str) -> str:
-    return _SPACED_MATH_FINAL_SEGMENT.sub(r"\g<prefix>.\g<tail>", line)
+    repaired = _SPACED_MATH_FINAL_SEGMENT.sub(r"\g<prefix>.\g<tail>", line)
+    code_only = _MATH_CODE_ONLY.fullmatch(repaired)
+    if code_only is not None:
+        return f"{code_only.group('code')} -"
+    return repaired
 
 
 def _harden(parsed: ParsedStandardsDocument) -> ParsedStandardsDocument:
