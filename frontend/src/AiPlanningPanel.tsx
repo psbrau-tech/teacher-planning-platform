@@ -68,15 +68,16 @@ const FIELD_LABELS: Record<PlanningFieldKey, string> = {
 };
 
 const FIELD_GROUPS: Array<{ label: string; fields: PlanningFieldKey[] }> = [
-  { label: "Standards alignment", fields: ["unit_topic", "literacy_standards", "act_preparation", "learning_targets", "know", "understand", "do_statement"] },
-  { label: "Instructional design", fields: ["activities", "assessments", "resources"] },
-  { label: "Daily plan", fields: ["monday", "tuesday", "wednesday", "thursday", "friday"] },
-  { label: "Instructional Planning Framework details", fields: ["plds", "misconceptions", "formative", "summative", "performance_task"] },
-  { label: "Monday — Week at a Glance", fields: ["clt_mon", "rrt_mon", "cfu_mon", "ri_mon", "sic_mon", "esl_mon"] },
-  { label: "Tuesday — Week at a Glance", fields: ["clt_tue", "rrt_tue", "cfu_tue", "ri_tue", "sic_tue", "esl_tue"] },
-  { label: "Wednesday — Week at a Glance", fields: ["clt_wed", "rrt_wed", "cfu_wed", "ri_wed", "sic_wed", "esl_wed"] },
-  { label: "Thursday — Week at a Glance", fields: ["clt_thu", "rrt_thu", "cfu_thu", "ri_thu", "sic_thu", "esl_thu"] },
-  { label: "Friday — Week at a Glance", fields: ["clt_fri", "rrt_fri", "cfu_fri", "ri_fri", "sic_fri", "esl_fri"] },
+  { label: "Required governed literacy recommendation", fields: ["literacy_standards"] },
+  { label: "Instructional Planning Framework", fields: ["unit_topic", "act_preparation", "learning_targets", "know", "understand", "do_statement", "plds", "misconceptions", "formative", "summative", "performance_task", "resources"] },
+  { label: "Supporting instructional design", fields: ["activities", "assessments"] },
+  { label: "Daily planning notes", fields: ["monday", "tuesday", "wednesday", "thursday", "friday"] },
+  { label: "Week at a Glance — Clear learning target & success criteria", fields: ["clt_mon", "clt_tue", "clt_wed", "clt_thu", "clt_fri"] },
+  { label: "Week at a Glance — Rigorous & relevant task", fields: ["rrt_mon", "rrt_tue", "rrt_wed", "rrt_thu", "rrt_fri"] },
+  { label: "Week at a Glance — Checks for understanding", fields: ["cfu_mon", "cfu_tue", "cfu_wed", "cfu_thu", "cfu_fri"] },
+  { label: "Week at a Glance — Responsive instruction", fields: ["ri_mon", "ri_tue", "ri_wed", "ri_thu", "ri_fri"] },
+  { label: "Week at a Glance — Strong instructional culture", fields: ["sic_mon", "sic_tue", "sic_wed", "sic_thu", "sic_fri"] },
+  { label: "Week at a Glance — Evidence of student learning", fields: ["esl_mon", "esl_tue", "esl_wed", "esl_thu", "esl_fri"] },
 ];
 const FIELD_ORDER = FIELD_GROUPS.flatMap((group) => group.fields);
 
@@ -86,6 +87,12 @@ async function readError(response: Response, fallback: string): Promise<string> 
     if (typeof body.detail === "string" && body.detail.trim()) return body.detail;
   } catch { /* bounded fallback */ }
   return fallback;
+}
+
+function requireGovernedLiteracySuggestion(suggestions: Record<string, string>): void {
+  if (!(suggestions.literacy_standards ?? "").trim()) {
+    throw new Error("TPP did not receive an approved Literacy Standards recommendation. Generate the planning draft again; the weekly plan will not silently continue with a blank governed literacy field.");
+  }
 }
 
 export function AiPlanningPanel({ accessToken, assignmentId, weekStart, currentFields, hasScheduledLessons, hasSavedStandards, onApplyField }: AiPlanningPanelProps) {
@@ -118,7 +125,9 @@ export function AiPlanningPanel({ accessToken, assignmentId, weekStart, currentF
       method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify(baseRequestFields(fieldToRegenerate)),
     });
     if (!response.ok) throw new Error(await readError(response, "AI planning suggestions are unavailable."));
-    return await response.json() as RawSuggestionResponse;
+    const body = await response.json() as RawSuggestionResponse;
+    requireGovernedLiteracySuggestion(body.suggestions);
+    return body;
   }, [accessToken, assignmentId, baseRequestFields, hasSavedStandards, hasScheduledLessons, weekStart]);
 
   const requestDistrictDraft = useCallback(async (): Promise<RawSuggestionResponse> => {
@@ -136,13 +145,14 @@ export function AiPlanningPanel({ accessToken, assignmentId, weekStart, currentF
     try {
       const [base, district] = await Promise.all([requestBaseDraft(), requestDistrictDraft()]);
       const suggestions = { ...base.suggestions, ...district.suggestions } as SuggestionSet;
+      requireGovernedLiteracySuggestion(suggestions);
       suggestions.alignment_summary = [base.suggestions.alignment_summary, district.suggestions.alignment_summary].filter(Boolean).join(" ");
       setResult({ ...base, suggestions }); setDecisions({}); setEdits({});
       setUsageEventByField(Object.fromEntries([
         ...BASE_FIELDS.map((field) => [field, base.usage_event_id]),
         ...DISTRICT_FIELDS.map((field) => [field, district.usage_event_id]),
       ]));
-      setMessage("Complete planning draft ready. Use the whole draft or review each field. Nothing is saved until you save your weekly plan.");
+      setMessage("Complete planning draft ready. The governed Literacy Standards recommendation appears first. Use the whole draft or review each field. Nothing is saved until you save your weekly plan.");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "AI planning suggestions are unavailable."); setMessage(null);
     } finally { setWorking(false); }
@@ -175,6 +185,7 @@ export function AiPlanningPanel({ accessToken, assignmentId, weekStart, currentF
     if (!result || refreshingField || working) return; setRefreshingField(field); setError(null);
     try {
       const body = BASE_FIELD_SET.has(field) ? await requestBaseDraft(field) : await requestDistrictDraft();
+      if (field === "literacy_standards") requireGovernedLiteracySuggestion(body.suggestions);
       setResult((current) => current ? { ...current, suggestions: { ...current.suggestions, [field]: body.suggestions[field] } } : current);
       setUsageEventByField((current) => ({ ...current, [field]: body.usage_event_id }));
       setDecisions((current) => { const next = { ...current }; delete next[field]; return next; });
@@ -206,7 +217,7 @@ export function AiPlanningPanel({ accessToken, assignmentId, weekStart, currentF
       <div className="guidance-card ai-guidance"><strong>Planning suggestions are drafts.</strong><p>Suggestions use this week&apos;s scheduled lessons, selected authoritative standards, approved Alabama literacy standards, and governed ACT references. Authoritative wording is never rewritten. District Framework and Week-at-a-Glance entries are instructional suggestions for teacher review.</p></div>
       <div className="guidance-card" role="note" aria-label="Student data restriction"><strong>Professional planning only.</strong><p>Do not enter student names, identifiers, grades, identifiable student work, IEP/504, health, discipline, or other student-specific information.</p></div>
       {error ? <p className="error-message" role="alert">{error}</p> : null}{message ? <p className="success-message" role="status" aria-live="polite">{message}</p> : null}
-      {result ? <><div className="ai-alignment-summary"><p className="example-label">Planning alignment note</p><p>{result.suggestions.alignment_summary}</p></div><div className="ai-full-draft-action"><div><strong>Use this draft as your starting point</strong><p>Edit any suggestion first if needed, then add all remaining nonblank fields in one action.</p></div><button type="button" className="primary" onClick={() => void applyFullDraft()} disabled={decisionWorking !== null || refreshingField !== null || pendingFields.length === 0}>{decisionWorking === "all" ? "Adding draft…" : "Use all remaining suggestions"}</button></div>{FIELD_GROUPS.map((group) => { const visibleFields = group.fields.filter((field) => (result.suggestions[field] ?? "").trim()); if (!visibleFields.length) return null; return <section className="ai-suggestion-group" key={group.label}><h3>{group.label}</h3><div className="ai-suggestion-list">{visibleFields.map((field) => { const decision = decisions[field]; const editingValue = edits[field] ?? result.suggestions[field]; return <article className="ai-suggestion-card" key={field}><div className="ai-suggestion-heading"><div><p className="example-label">Suggested text — not saved</p><h4>{FIELD_LABELS[field]}</h4></div>{decision ? <span className="decision-badge">{decision === "accepted" ? "Used" : decision === "edited" ? "Used with edits" : "Skipped"}</span> : null}</div>{decision ? <><p>{decision === "rejected" ? "This suggestion was skipped." : "This text was added to the working plan."}</p><button type="button" className="secondary" onClick={() => void refreshField(field)} disabled={decisionWorking !== null || refreshingField !== null}>{refreshingField === field ? "Generating another…" : "Generate another suggestion"}</button></> : <><textarea aria-label={`Suggested text for ${FIELD_LABELS[field]}`} value={editingValue} onChange={(event) => setEdits((current) => ({ ...current, [field]: event.target.value }))} rows={field === "literacy_standards" || field === "act_preparation" ? 6 : 4} /><div className="button-row"><button type="button" className="primary" onClick={() => void accept(field)} disabled={decisionWorking !== null || refreshingField !== null}>Use suggestion</button><button type="button" className="secondary" onClick={() => void applyEdit(field)} disabled={decisionWorking !== null || refreshingField !== null}>Use edited text</button><button type="button" className="secondary" onClick={() => void refreshField(field)} disabled={decisionWorking !== null || refreshingField !== null}>{refreshingField === field ? "Generating another…" : "Generate another"}</button><button type="button" className="link-button" onClick={() => void reject(field)} disabled={decisionWorking !== null || refreshingField !== null}>Skip suggestion</button></div></>}</article>; })}</div></section>; })}<p className="muted-text">{pendingFields.length} suggestion{pendingFields.length === 1 ? "" : "s"} still awaiting review.</p></> : null}
+      {result ? <><div className="ai-alignment-summary"><p className="example-label">Planning alignment note</p><p>{result.suggestions.alignment_summary}</p></div><div className="ai-full-draft-action"><div><strong>Use this draft as your starting point</strong><p>The governed Literacy Standards recommendation is shown first below. Edit any suggestion if needed, then add all remaining nonblank fields in one action.</p></div><button type="button" className="primary" onClick={() => void applyFullDraft()} disabled={decisionWorking !== null || refreshingField !== null || pendingFields.length === 0}>{decisionWorking === "all" ? "Adding draft…" : "Use all remaining suggestions"}</button></div>{FIELD_GROUPS.map((group) => { const visibleFields = group.fields.filter((field) => (result.suggestions[field] ?? "").trim()); if (!visibleFields.length) return null; return <section className={`ai-suggestion-group ${group.fields.includes("literacy_standards") ? "governed-literacy-group" : ""}`} key={group.label}><h3>{group.label}</h3>{group.fields.includes("literacy_standards") ? <p className="supporting">TPP resolves this recommendation to exact approved Alabama ELA wording. It is never fabricated or rewritten by AI.</p> : null}<div className="ai-suggestion-list">{visibleFields.map((field) => { const decision = decisions[field]; const editingValue = edits[field] ?? result.suggestions[field]; return <article className="ai-suggestion-card" key={field}><div className="ai-suggestion-heading"><div><p className="example-label">Suggested text — not saved</p><h4>{FIELD_LABELS[field]}</h4></div>{decision ? <span className="decision-badge">{decision === "accepted" ? "Used" : decision === "edited" ? "Used with edits" : "Skipped"}</span> : null}</div>{decision ? <><p>{decision === "rejected" ? "This suggestion was skipped." : "This text was added to the working plan."}</p><button type="button" className="secondary" onClick={() => void refreshField(field)} disabled={decisionWorking !== null || refreshingField !== null}>{refreshingField === field ? "Generating another…" : "Generate another suggestion"}</button></> : <><textarea aria-label={`Suggested text for ${FIELD_LABELS[field]}`} value={editingValue} onChange={(event) => setEdits((current) => ({ ...current, [field]: event.target.value }))} rows={field === "literacy_standards" || field === "act_preparation" ? 6 : 4} /><div className="button-row"><button type="button" className="primary" onClick={() => void accept(field)} disabled={decisionWorking !== null || refreshingField !== null}>{field === "literacy_standards" ? "Use governed literacy standard" : "Use suggestion"}</button><button type="button" className="secondary" onClick={() => void applyEdit(field)} disabled={decisionWorking !== null || refreshingField !== null}>Use edited text</button><button type="button" className="secondary" onClick={() => void refreshField(field)} disabled={decisionWorking !== null || refreshingField !== null}>{refreshingField === field ? "Generating another…" : "Generate another"}</button><button type="button" className="link-button" onClick={() => void reject(field)} disabled={decisionWorking !== null || refreshingField !== null}>Skip suggestion</button></div></>}</article>; })}</div></section>; })}<p className="muted-text">{pendingFields.length} suggestion{pendingFields.length === 1 ? "" : "s"} still awaiting review.</p></> : null}
     </section>
   );
 }
