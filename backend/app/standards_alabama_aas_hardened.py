@@ -25,13 +25,14 @@ _SPACED_MATH_FINAL_SEGMENT = re.compile(
     flags=re.IGNORECASE,
 )
 
-# The official 2019 Math AAS PDF commonly extracts the printed identifier on a
-# line by itself. The legacy shared cleaner interprets a terminal digit after a
-# period as a PDF page suffix, so mark only complete code-only lines with a
-# delimiter before handing them to that parser. The delimiter is consumed by
-# the existing AAS row grammar and never becomes part of the source code/text.
-_MATH_CODE_ONLY = re.compile(
-    r"^\s*(?P<code>M(?:\.[A-Za-z0-9]+)*\.AAS\."
+# The official 2019 Math AAS PDF commonly extracts a complete AAS identifier at
+# the end of a line: sometimes by itself, sometimes after general-standard text.
+# The legacy shared cleaner later interprets a terminal digit after a period as
+# a PDF page suffix. Add a structural delimiter after only a complete terminal
+# Math AAS identifier; the existing row grammar consumes the delimiter and it
+# never becomes part of the authoritative code or wording.
+_MATH_CODE_AT_END = re.compile(
+    r"(?P<code>\bM(?:\.[A-Za-z0-9]+)*\.AAS\."
     r"(?:K|[0-9]+)\.[0-9]+[A-Za-z]?)\s*$",
     flags=re.IGNORECASE,
 )
@@ -77,10 +78,10 @@ def parse_alabama_aas_social_studies_2017(
 
 def _repair_math_line(line: str) -> str:
     repaired = _SPACED_MATH_FINAL_SEGMENT.sub(r"\g<prefix>.\g<tail>", line)
-    code_only = _MATH_CODE_ONLY.fullmatch(repaired)
-    if code_only is not None:
-        return f"{code_only.group('code')} -"
-    return repaired
+    terminal_code = _MATH_CODE_AT_END.search(repaired)
+    if terminal_code is None:
+        return repaired
+    return f"{repaired[: terminal_code.end('code')]} -"
 
 
 def _harden(parsed: ParsedStandardsDocument) -> ParsedStandardsDocument:
