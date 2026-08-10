@@ -30,7 +30,7 @@ def _resolve_valid_literacy(candidates: list[dict[str, object]], requested: list
     valid_ids: list[str] = []
     for requested_value in requested:
         normalized = requested_value.strip()
-        candidate = by_id.get(normalized)
+        candidate: dict[str, object] | None = by_id.get(normalized)
         if candidate is None:
             code_matches = by_code.get(normalized.casefold(), [])
             if len(code_matches) == 1:
