@@ -247,8 +247,8 @@ def _parse_aas(
         codes = [standard.code for standard in standards]
         if len(codes) != len(set(codes)):
             raise StandardsIngestError(
-                f"Alabama alternate standards parser found duplicate codes in {course.display_name} "
-                f"for {spec.parser_key}"
+                "Alabama alternate standards parser found duplicate codes in "
+                f"{course.display_name} for {spec.parser_key}"
             )
         courses.append(
             ParsedCourse(
@@ -311,7 +311,10 @@ def _is_structure_line(line: str) -> bool:
         return True
     if re.fullmatch(r"\d{1,3}", line):
         return True
-    if len(line) <= 80 and not re.search(r"[.!?;,]$", line):
-        if line.isupper() or line.istitle():
-            return True
+    if (
+        len(line) <= 80
+        and not re.search(r"[.!?;,]$", line)
+        and (line.isupper() or line.istitle())
+    ):
+        return True
     return False
