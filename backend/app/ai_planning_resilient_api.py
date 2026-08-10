@@ -21,12 +21,36 @@ def _resolve_valid_literacy(candidates: list[dict[str, object]], requested: list
         core._required_text(candidate, "standard_entry_id"): candidate
         for candidate in candidates
     }
+    by_code: dict[str, list[dict[str, object]]] = {}
+    for candidate in candidates:
+        code = candidate.get("code")
+        if isinstance(code, str) and code.strip():
+            by_code.setdefault(code.strip().casefold(), []).append(candidate)
+
     valid_ids: list[str] = []
-    for requested_id in requested:
-        if requested_id in by_id and requested_id not in valid_ids:
-            valid_ids.append(requested_id)
+    for requested_value in requested:
+        normalized = requested_value.strip()
+        candidate = by_id.get(normalized)
+        if candidate is None:
+            code_matches = by_code.get(normalized.casefold(), [])
+            if len(code_matches) == 1:
+                candidate = code_matches[0]
+        if candidate is None:
+            continue
+        standard_id = core._required_text(candidate, "standard_entry_id")
+        if standard_id not in valid_ids:
+            valid_ids.append(standard_id)
+
     if not valid_ids:
-        return ""
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "TPP could not resolve the AI literacy recommendation to an approved Alabama "
+                "Literacy Standard. Generate the planning draft again; no unapproved or blank "
+                "literacy standard was added to the working plan."
+            ),
+        )
+
     lines: list[str] = []
     for standard_id in valid_ids:
         entry = by_id[standard_id]
@@ -170,11 +194,6 @@ def suggest_planning_resilient(
         act_preparation = model_suggestions.act_instructional_application
 
     alignment_note = model_suggestions.alignment_summary
-    if not literacy_standards:
-        alignment_note += (
-            " This Literacy Standards field needs teacher selection from the approved "
-            "Alabama candidates."
-        )
     if model_suggestions.recommended_act_reference_ids and not valid_act_ids:
         alignment_note += " ACT Preparation needs teacher selection from approved ACT references."
 
