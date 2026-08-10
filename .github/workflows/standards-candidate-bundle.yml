@@ -20,6 +20,8 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -28,7 +30,7 @@ jobs:
         run: python -m pip install -e '.[dev]'
       - name: Generate exact pending-candidate bundle read-only
         env:
-          BUNDLE_COMMIT: ${{ github.sha }}
+          BUNDLE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           python - <<'PY'
           from __future__ import annotations
