@@ -157,7 +157,8 @@ def _next_recurring_or_limit(
     limit: int,
 ) -> int:
     for index in range(start, limit):
-        if lines[index].startswith("RECURRING STANDARDS FOR"):
+        line = lines[index]
+        if line.startswith("RECURRING STANDARDS FOR") or line.casefold() == "bibliography":
             return index
     return limit
 
