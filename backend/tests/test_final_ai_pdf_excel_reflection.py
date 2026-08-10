@@ -32,9 +32,10 @@ def test_district_ai_schema_covers_all_framework_and_week_at_glance_fields() -> 
 def test_ai_planning_ui_integrates_district_suggestions_with_teacher_control() -> None:
     source = (FRONTEND / "AiPlanningPanel.tsx").read_text(encoding="utf-8")
     assert "/api/v1/ai/district-planning/" in source
-    assert "Instructional Planning Framework details" in source
-    assert "Monday — Week at a Glance" in source
-    assert "Friday — Week at a Glance" in source
+    assert "Required governed literacy recommendation" in source
+    assert 'label: "Instructional Planning Framework"' in source
+    assert "Week at a Glance — Clear learning target & success criteria" in source
+    assert "Week at a Glance — Evidence of student learning" in source
     assert "Use all remaining suggestions" in source
     assert "Use suggestion" in source
     assert "Use edited text" in source
@@ -81,8 +82,10 @@ def test_excel_pacing_round_trip_is_browser_side_and_populates_lesson_cards() ->
 
 def test_pdf_field_ui_explains_ai_assistance_and_teacher_review() -> None:
     source = (FRONTEND / "PlanningPdfFieldsPanel.tsx").read_text(encoding="utf-8")
-    assert "The AI planning draft can recommend each field" in source
-    assert "AI suggestions are limited to days with scheduled lessons" in source
+    assert "The fields below follow the same sequence as the Weekly Lesson Plan PDF" in source
+    assert "AI suggestions remain drafts until you use or edit them" in source
+    assert "AI recommends cells only for scheduled instructional days" in source
+    assert '<table className="week-at-glance-matrix">' in source
     assert "Performance-Level Descriptors / Proficiency Scale" in source
     assert "Strong instructional culture" in source
     assert "Evidence of student learning" in source
