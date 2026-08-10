@@ -266,8 +266,18 @@ def _ela_boundary(line: str) -> bool:
     return bool(line.isupper() and "LITERACY" in line and len(line) <= 80)
 
 
-def _ela_noise(line: str) -> bool:
+def _is_page_boilerplate(line: str) -> bool:
     if line.startswith("2021 Alabama Course of Study:"):
+        return True
+    if re.fullmatch(r"2021 Alabama(?: Course)?", line):
+        return True
+    if line.startswith("Course of Study: English Language Arts"):
+        return True
+    return False
+
+
+def _ela_noise(line: str) -> bool:
+    if _is_page_boilerplate(line):
         return True
     if line.startswith("RECURRING STANDARDS FOR"):
         return True
@@ -317,11 +327,7 @@ def _validate_grade_materialization(
 
 def _validate_standard_text(display_name: str, standard: ParsedStandard) -> None:
     text = standard.text
-    forbidden = (
-        "2021 Alabama Course of Study:",
-        "Each content standard completes the stem",
-    )
-    if any(token in text for token in forbidden):
+    if _is_page_boilerplate(text) or "Each content standard completes the stem" in text:
         raise StandardsIngestError(
             f"Alabama ELA {display_name} standard {standard.code} contains page boilerplate"
         )
