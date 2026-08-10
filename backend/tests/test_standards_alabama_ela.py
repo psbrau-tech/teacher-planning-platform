@@ -109,4 +109,5 @@ def test_ela_parser_treats_lane_heading_as_standard_boundary() -> None:
     ]
 
     assert [standard.code for standard in content] == ["1", "2", "3", "4", "5", "6"]
-    assert next(standard for standard in content if standard.code == "4").text == "Content standard 4."
+    standard_four = next(standard for standard in content if standard.code == "4")
+    assert standard_four.text == "Content standard 4."
