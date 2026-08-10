@@ -40,7 +40,10 @@ def test_aas_approval_projection_stays_distinct_from_general_academic_catalog() 
 
     assert "src.source_kind in ('course_of_study', 'alternate_achievement_standards')" in migration
     assert "then 'primary'" in migration
-    assert "projected_category_key := 'alternate_achievement_' || src.catalog_category_key" in migration
+    assert (
+        "projected_category_key := 'alternate_achievement_' || src.catalog_category_key"
+        in migration
+    )
     assert (
         "projected_category_name := src.catalog_category_name || "
         "' — Alternate Achievement Standards'"
