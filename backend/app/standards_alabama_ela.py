@@ -208,8 +208,6 @@ def _parse_standards(
                 current_parts = [match.group(2)]
                 continue
 
-            # A different standards family starts a new row. Flush the current
-            # standard and ignore that row rather than appending its wording.
             if pattern is _RECURRING and _CONTENT.match(line):
                 flush()
                 continue
@@ -217,9 +215,6 @@ def _parse_standards(
                 flush()
                 continue
 
-            # Major section and next-grade headings are structural boundaries.
-            # They end the preceding standard; following overview prose is then
-            # ignored until the next numbered row starts.
             if _ela_boundary(line):
                 flush()
                 continue
@@ -278,13 +273,11 @@ def _ela_noise(line: str) -> bool:
     if _LANE_LABEL.fullmatch(line):
         return True
     normalized = line.strip().casefold()
-    if normalized in {
+    return normalized in {
         "students will:",
         "each content standard completes the stem “ students will…”",
         "each content standard completes the stem “students will…”",
-    }:
-        return True
-    return False
+    }
 
 
 def _validate_grade_materialization(
