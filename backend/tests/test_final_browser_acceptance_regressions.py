@@ -105,13 +105,16 @@ def test_admin_bulk_review_supports_multiple_teachers_and_submitted_plans() -> N
     assert ".bulk-review-bar" in styles
 
 
-def test_help_page_covers_teacher_admin_and_data_boundary() -> None:
+def test_help_page_covers_first_week_friday_cycle_admin_and_data_boundary() -> None:
     help_source = (FRONTEND / "HelpPage.tsx").read_text(encoding="utf-8")
     main_source = (FRONTEND / "main.tsx").read_text(encoding="utf-8")
     assert '=== "/help"' in main_source
-    assert "Teacher weekly workflow" in help_source
+    assert "First week" in help_source
+    assert "Every Friday after the first week" in help_source
+    assert "The reflection belongs to the week that was just taught" in help_source
+    assert "Combined packet therefore represents one finished week" in help_source
+    assert "following week's lesson plan" in help_source
     assert "Administrator workflow" in help_source
     assert "Weekly Reflection / PLC Discussion" in help_source
     assert "Do not enter student names" in help_source
-    assert "AI does not replace teacher judgment" in help_source
     assert "Review selected PDFs" in help_source
