@@ -92,7 +92,9 @@ _MATH = _SubjectSpec(
                 f"grade {grade}",
                 f"grade {grade} mathematics",
                 f"grade {grade} geometry with data analysis",
+                f"grade {grade}- geometry with data analysis",
                 f"grade {grade} algebra with probability",
+                f"grade {grade}- algebra with probability",
             ),
         )
         for grade in range(13)
