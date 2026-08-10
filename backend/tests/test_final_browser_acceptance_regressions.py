@@ -88,6 +88,23 @@ def test_admin_submitted_plan_opens_combined_pdf_with_download_and_print() -> No
     assert "Object.entries(selectedPlan.source_data)" not in panel
 
 
+def test_admin_bulk_review_supports_multiple_teachers_and_submitted_plans() -> None:
+    api = (BACKEND / "administration_api.py").read_text(encoding="utf-8")
+    panel = (FRONTEND / "AdminSubmissionPanel.tsx").read_text(encoding="utf-8")
+    styles = (FRONTEND / "AdminSubmissionPanel.css").read_text(encoding="utf-8")
+    assert 'class BatchSubmissionPacketRequest(BaseModel)' in api
+    assert '@router.post("/submissions/batch-packet")' in api
+    assert "PdfWriter()" in api
+    assert "A maximum of 300 submitted plans" in api
+    assert "selectedTeacherIds" in panel
+    assert "Select all filtered submitted plans" in panel
+    assert "Review selected PDFs" in panel
+    assert "Download selected PDF" in panel
+    assert "/submissions/batch-packet" in panel
+    assert ".teacher-multi-filter" in styles
+    assert ".bulk-review-bar" in styles
+
+
 def test_help_page_covers_teacher_admin_and_data_boundary() -> None:
     help_source = (FRONTEND / "HelpPage.tsx").read_text(encoding="utf-8")
     main_source = (FRONTEND / "main.tsx").read_text(encoding="utf-8")
@@ -97,3 +114,4 @@ def test_help_page_covers_teacher_admin_and_data_boundary() -> None:
     assert "Weekly Reflection / PLC Discussion" in help_source
     assert "Do not enter student names" in help_source
     assert "AI does not replace teacher judgment" in help_source
+    assert "Review selected PDFs" in help_source
