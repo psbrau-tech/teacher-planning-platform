@@ -74,6 +74,9 @@ def _document() -> ExtractedDocument:
                     "2021 Alabama",
                     "Course of Study: English Language Arts 130",
                     "8. Content standard 8.",
+                    "Bibliography",
+                    "BIBLIOGRAPHY",
+                    "2016. Reference material that must not become a standard.",
                 ]
             )
         else:
@@ -128,7 +131,7 @@ def test_ela_parser_treats_lane_heading_as_standard_boundary() -> None:
     assert standard_four.text == "Content standard 4."
 
 
-def test_ela_parser_ignores_split_page_footer_fragments() -> None:
+def test_ela_parser_ignores_split_page_footer_fragments_and_bibliography() -> None:
     parsed = parse_alabama_ela_2021(_document())
     grade_twelve = next(course for course in parsed.courses if course.course_key == "grade_12")
     content = [
