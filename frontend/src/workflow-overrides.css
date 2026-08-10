@@ -19,6 +19,7 @@
 .pacing-row-list { display: grid; gap: .8rem; }
 .pacing-row-card { border: 1px solid #d7dfeb; border-radius: 12px; padding: .9rem; background: #f9fbfd; }
 .pacing-row-fields { margin-top: .65rem; }
+.working-plan-review { display: none !important; }
 .district-pdf-fields { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #dfe5ee; }
 .framework-continuation-grid { margin-top: .75rem; }
 .week-at-glance-editor { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .7rem; overflow-x: auto; }
