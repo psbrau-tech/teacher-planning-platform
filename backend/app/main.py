@@ -18,6 +18,7 @@ from .document_service import (
     generate_anniston_hqi,
     generate_anniston_hqi_document,
     generate_anniston_hqi_packet,
+    generate_anniston_lesson_plan_packet,
 )
 from .fixtures import (
     ASSIGNMENT_IDS,
@@ -182,6 +183,32 @@ def generate_hqi_section_document(
             "Content-Disposition": f'attachment; filename="{filename}"',
             "X-TPP-Page-Count": str(rendered.page_count),
             "X-TPP-Continuation-Pages": str(rendered.continuation_page_count),
+        },
+    )
+
+
+@app.post("/api/v1/documents/anniston-lesson-plan-packet", tags=["documents"])
+def generate_lesson_plan_packet(
+    payload: Annotated[dict[str, str], Body()],
+    flatten: Annotated[bool, Query()] = False,
+) -> StreamingResponse:
+    """Render the pre-instruction Framework + Week at a Glance as one PDF."""
+    _require_template()
+    try:
+        packet, documents = generate_anniston_lesson_plan_packet(payload, flatten=flatten)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+    continuation_pages = sum(item.continuation_page_count for item in documents)
+    suffix = "-flat" if flatten else ""
+    filename = f"anniston-weekly-lesson-plan{suffix}.pdf"
+    return StreamingResponse(
+        BytesIO(packet),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-TPP-Document-Count": str(len(documents)),
+            "X-TPP-Continuation-Pages": str(continuation_pages),
         },
     )
 

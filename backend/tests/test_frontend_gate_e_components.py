@@ -87,7 +87,10 @@ def test_course_setup_owns_schedule_pacing_and_primary_standards_mapping() -> No
     assert "Existing planning and submission history will be preserved" in setup
     assert "estimated_minutes: number | null" in parser
     assert "if (!value.trim()) return null" in parser
-    assert "previous pilot format" in parser
+    # Backward compatibility remains explicit for both earlier six-column and numeric-minute rows.
+    assert "earlierSixColumn" in parser
+    assert "legacyMinutes" in parser
+    assert "parts.length >= 6" in parser
 
 
 def test_weekly_plan_uses_live_standards_without_repeating_primary_mapping() -> None:
@@ -100,7 +103,6 @@ def test_weekly_plan_uses_live_standards_without_repeating_primary_mapping() -> 
     assert "standardsMappingVersion" in shell
     assert "StandardsCourseMappingPanel" not in shell
 
-    # Schedule adjustment is intentionally schedule-only.
     assert "StandardsCourseMappingPanel" not in schedule
     assert "CanonicalStandardsPanel" not in schedule
 

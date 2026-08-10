@@ -37,10 +37,10 @@ def test_standards_selection_stays_stable_and_filters_stale_catalog_ids() -> Non
     assert "}, [accessToken, assignmentId, weekStart]);" in source
 
 
-def test_pacing_template_is_a_valid_excel_package_and_redundant_family_is_hidden() -> None:
+def test_pacing_template_is_valid_and_standards_family_is_removed_from_pacing() -> None:
     course_setup = (FRONTEND / "CourseSetupPanel.tsx").read_text(encoding="utf-8")
     template = (FRONTEND / "pacingTemplate.ts").read_text(encoding="utf-8")
-    styles = (FRONTEND / "workflow-overrides.css").read_text(encoding="utf-8")
+    editor = (FRONTEND / "PacingSequenceEditor.tsx").read_text(encoding="utf-8")
     assert "Download Excel pacing template" in course_setup
     assert "tpp-curriculum-pacing-template.xlsx" in template
     assert "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" in template
@@ -48,12 +48,15 @@ def test_pacing_template_is_a_valid_excel_package_and_redundant_family_is_hidden
     assert encoded is not None
     workbook_bytes = base64.b64decode(encoded.group(1), validate=True)
     with zipfile.ZipFile(io.BytesIO(workbook_bytes)) as workbook:
+        assert workbook.testzip() is None
         names = set(workbook.namelist())
     assert "[Content_Types].xml" in names
     assert "xl/workbook.xml" in names
     assert "xl/worksheets/sheet1.xml" in names
-    assert 'label:has(select[name="standards_family"])' in styles
-    assert "Pacing sequence — Unit | Lesson | Standards | Learning targets" in styles
+    assert "Standards family" not in course_setup
+    assert 'name="standards_family"' not in course_setup
+    assert "PacingSequenceEditor" in course_setup
+    assert "Authoritative standards are selected later in Weekly Plan" in editor
 
 
 def test_platform_governance_shows_snapshot_date_not_uuid() -> None:
