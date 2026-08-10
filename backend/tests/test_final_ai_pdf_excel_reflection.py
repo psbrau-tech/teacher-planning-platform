@@ -82,7 +82,7 @@ def test_excel_pacing_round_trip_is_browser_side_and_populates_lesson_cards() ->
 
 def test_pdf_field_ui_explains_ai_assistance_and_teacher_review() -> None:
     source = (FRONTEND / "PlanningPdfFieldsPanel.tsx").read_text(encoding="utf-8")
-    assert "The fields below follow the same sequence as the Weekly Lesson Plan PDF" in source
+    assert "The Instructional Planning Framework is presented as one continuous section" in source
     assert "AI suggestions remain drafts until you use or edit them" in source
     assert "AI recommends cells only for scheduled instructional days" in source
     assert '<table className="week-at-glance-matrix">' in source
