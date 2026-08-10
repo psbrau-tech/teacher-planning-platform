@@ -16,14 +16,19 @@ _RECURRING = re.compile(r"^(R\d+)\.\s*(.+)$")
 _CONTENT = re.compile(r"^(\d+)\.\s*(.+)$")
 _CHILD = re.compile(r"^([a-z])\.\s*(.+)$")
 _PAGE_GRADE = re.compile(r"^Grade\s+(?:K|[1-9]|1[0-2])$", flags=re.IGNORECASE)
-_LANE_LABEL = re.compile(r"^(?:RECEPTION|EXPRESSION|READING|LISTENING|WRITING|SPEAKING)$")
+_LANE_LABEL = re.compile(
+    r"^(?:RECEPTION|EXPRESSION|READING|LISTENING|WRITING|SPEAKING)$",
+    flags=re.IGNORECASE,
+)
 _LANE_STANDARD_PREFIX = re.compile(
     r"^(?:(?:RECEPTION|EXPRESSION|READING|LISTENING|WRITING|SPEAKING)\s+){1,2}"
-    r"(?=(?:R\d+|\d+)\.)"
+    r"(?=(?:R\d+|\d+)\.)",
+    flags=re.IGNORECASE,
 )
 _INLINE_LANE_STANDARD = re.compile(
     r"(?=\b(?:(?:RECEPTION|EXPRESSION|READING|LISTENING|WRITING|SPEAKING)\s+){1,2}"
-    r"(?:R\d+|\d+)\.\s*)"
+    r"(?:R\d+|\d+)\.\s*)",
+    flags=re.IGNORECASE,
 )
 _EMBEDDED_STANDARD = re.compile(r"\b(?:R\d+|\d{1,2})\.\s+[A-Z]")
 _SECTION_BOUNDARIES = {
@@ -87,6 +92,7 @@ def parse_alabama_ela_2021(extracted: ExtractedDocument) -> ParsedStandardsDocum
             strand="Recurring Standards",
             noise=_ela_noise,
             strip_lane_prefix=True,
+            page_grade_label=display_name,
         )
         content = _parse_standards(
             extracted.lines[content_start + 1 : grade_end],
@@ -94,6 +100,7 @@ def parse_alabama_ela_2021(extracted: ExtractedDocument) -> ParsedStandardsDocum
             strand="Content Standards",
             noise=_ela_noise,
             strip_lane_prefix=True,
+            page_grade_label=display_name,
         )
         _validate_grade_materialization(
             display_name=display_name,
@@ -162,6 +169,7 @@ def _parse_standards(
     strand: str,
     noise: Callable[[str], bool],
     strip_lane_prefix: bool,
+    page_grade_label: str,
 ) -> tuple[ParsedStandard, ...]:
     standards: list[ParsedStandard] = []
     current_code: str | None = None
@@ -183,7 +191,10 @@ def _parse_standards(
         current_parts = []
 
     for raw_line in lines:
-        for raw_fragment in _ela_fragments(raw_line):
+        cleaned_raw_line = _strip_trailing_page_grade(raw_line, page_grade_label)
+        if not cleaned_raw_line:
+            continue
+        for raw_fragment in _ela_fragments(cleaned_raw_line):
             line = _strip_ela_lane_prefix(raw_fragment) if strip_lane_prefix else raw_fragment
             match = pattern.match(line)
             if match:
@@ -233,10 +244,20 @@ def _strip_ela_lane_prefix(line: str) -> str:
     return _LANE_STANDARD_PREFIX.sub("", line, count=1).strip()
 
 
+def _strip_trailing_page_grade(line: str, page_grade_label: str) -> str:
+    """Remove the repeated right-edge grade header when pypdf joins it to table text."""
+    suffix = f" {page_grade_label}"
+    if line.casefold().endswith(suffix.casefold()):
+        return line[: -len(suffix)].rstrip()
+    return line
+
+
 def _ela_boundary(line: str) -> bool:
     if line in _SECTION_BOUNDARIES:
         return True
-    if re.fullmatch(r"GRADE (?:[1-9]|1[0-2])", line):
+    if _LANE_LABEL.fullmatch(line):
+        return True
+    if re.fullmatch(r"GRADES? (?:[1-9]|1[0-2])(?:-[1-9]|-1[0-2])?(?: OVERVIEW)?", line):
         return True
     if line == "KINDERGARTEN":
         return True
@@ -304,7 +325,7 @@ def _validate_standard_text(display_name: str, standard: ParsedStandard) -> None
         raise StandardsIngestError(
             f"Alabama ELA {display_name} standard {standard.code} contains page boilerplate"
         )
-    if re.search(r"\bGrade\s+(?:K|[1-9]|1[0-2])\b", text):
+    if _PAGE_GRADE.fullmatch(text):
         raise StandardsIngestError(
             f"Alabama ELA {display_name} standard {standard.code} contains a page-grade header"
         )
