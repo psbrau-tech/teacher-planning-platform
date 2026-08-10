@@ -99,19 +99,28 @@ def test_science_aas_parser_keeps_high_school_courses_separate() -> None:
 
 def test_social_studies_aas_parser_keeps_grade_12_government_and_economics_separate() -> None:
     course_rows = [
-        ("Kindergarten Social Studies", "K"),
-        *[(f"Grade {grade} Social Studies", str(grade)) for grade in range(1, 12)],
-        ("Grade 12 United States Government", "12.USG"),
-        ("Grade 12 Economics", "12.ECON"),
+        ("Kindergarten Social Studies", "K", "K", "K"),
+        *[
+            (f"Grade {grade} Social Studies", str(grade), str(grade), str(grade))
+            for grade in range(1, 12)
+        ],
+        ("Grade 12 United States Government", "USG.12", "USG.AAS.12", "12"),
+        ("Grade 12 Economics", "E.12", "E.AAS.12", "12"),
     ]
     lines: list[str] = []
-    for heading, token in course_rows:
+    for heading, general_token, aas_token, _grade in course_rows:
         lines.append(heading)
         for number in range(1, 4):
+            general_code = f"SS.{general_token}.{number}"
+            aas_code = (
+                f"SS.AAS.{aas_token}.{number}"
+                if ".AAS." not in aas_token
+                else f"SS.{aas_token}.{number}"
+            )
             lines.extend(
                 [
-                    f"SS.{token}.{number}- General social studies standard.",
-                    f"SS.AAS.{token}.{number}- Alternate social studies standard {number}.",
+                    f"{general_code}- General social studies standard.",
+                    f"{aas_code}- Alternate social studies standard {number}.",
                 ]
             )
 
@@ -119,4 +128,6 @@ def test_social_studies_aas_parser_keeps_grade_12_government_and_economics_separ
 
     assert len(parsed.courses) == 14
     assert parsed.courses[-2].course_key == "grade_12_united_states_government"
+    assert parsed.courses[-2].standards[0].code == "SS.USG.AAS.12.1"
     assert parsed.courses[-1].course_key == "grade_12_economics"
+    assert parsed.courses[-1].standards[0].code == "SS.E.AAS.12.1"
