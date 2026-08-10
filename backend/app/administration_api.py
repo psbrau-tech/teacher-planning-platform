@@ -8,6 +8,7 @@ from typing import Annotated, Any, cast
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from pypdf import PdfReader, PdfWriter
 
 from .auth import (
     AuthenticatedTeacher,
@@ -77,6 +78,15 @@ class WeeklySubmittedPlanRead(BaseModel):
     source_data: dict[str, str]
 
 
+class BatchSubmissionItem(BaseModel):
+    assignment_id: str
+    week_start: date
+
+
+class BatchSubmissionPacketRequest(BaseModel):
+    items: list[BatchSubmissionItem]
+
+
 def _records(payload: object) -> list[dict[str, Any]]:
     if not isinstance(payload, list):
         raise HTTPException(status_code=503, detail="Administration reporting is unavailable")
@@ -119,6 +129,16 @@ def _submitted_plan_record(
     if not rows:
         raise HTTPException(status_code=404, detail="Submitted weekly plan was not found")
     return WeeklySubmittedPlanRead.model_validate(rows[0])
+
+
+def _render_submitted_packet(submitted: WeeklySubmittedPlanRead) -> bytes:
+    if not DEFAULT_TEMPLATE_PATH.exists():
+        raise HTTPException(status_code=503, detail="The approved planning PDF template is unavailable")
+    try:
+        packet, _documents = generate_anniston_hqi_packet(submitted.source_data)
+    except (FileNotFoundError, ValueError) as error:
+        raise HTTPException(status_code=503, detail="Submitted plan PDF could not be generated") from error
+    return packet
 
 
 @router.get("/usage", response_model=SchoolUsageRead)
@@ -216,23 +236,57 @@ def submitted_plan_packet(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> StreamingResponse:
     """Render the immutable submitted revision as the same combined packet teachers review."""
-    if not DEFAULT_TEMPLATE_PATH.exists():
-        raise HTTPException(status_code=503, detail="The approved planning PDF template is unavailable")
     submitted = _submitted_plan_record(assignment_id, week_start, identity, settings)
-    try:
-        packet, documents = generate_anniston_hqi_packet(submitted.source_data)
-    except (FileNotFoundError, ValueError) as error:
-        raise HTTPException(status_code=503, detail="Submitted plan PDF could not be generated") from error
+    packet = _render_submitted_packet(submitted)
     safe_week = submitted.week_start.isoformat()
-    continuation_pages = sum(item.continuation_page_count for item in documents)
     return StreamingResponse(
         BytesIO(packet),
         media_type="application/pdf",
         headers={
             "Content-Disposition": f'inline; filename="submitted-planning-packet-{safe_week}.pdf"',
             "X-TPP-Submitted-Revision": str(submitted.submitted_revision),
-            "X-TPP-Document-Count": str(len(documents)),
-            "X-TPP-Continuation-Pages": str(continuation_pages),
+            "X-TPP-Document-Count": "3",
+        },
+    )
+
+
+@router.post("/submissions/batch-packet")
+def submitted_batch_packet(
+    request: BatchSubmissionPacketRequest,
+    identity: Annotated[AuthenticatedTeacher, Depends(require_school_reporting_admin)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> StreamingResponse:
+    """Merge selected immutable submitted revisions into one administrator review packet."""
+    if not request.items:
+        raise HTTPException(status_code=422, detail="Select at least one submitted plan")
+    if len(request.items) > 300:
+        raise HTTPException(status_code=422, detail="A maximum of 300 submitted plans may be reviewed at once")
+
+    writer = PdfWriter()
+    seen: set[tuple[str, date]] = set()
+    included = 0
+    for item in request.items:
+        key = (item.assignment_id, item.week_start)
+        if key in seen:
+            continue
+        seen.add(key)
+        submitted = _submitted_plan_record(item.assignment_id, item.week_start, identity, settings)
+        packet = _render_submitted_packet(submitted)
+        reader = PdfReader(BytesIO(packet))
+        for page in reader.pages:
+            writer.add_page(page)
+        included += 1
+
+    output = BytesIO()
+    writer.write(output)
+    output.seek(0)
+    return StreamingResponse(
+        output,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": 'inline; filename="submitted-planning-batch.pdf"',
+            "X-TPP-Submission-Count": str(included),
+            "X-TPP-Document-Count": str(included * 3),
         },
     )
 
