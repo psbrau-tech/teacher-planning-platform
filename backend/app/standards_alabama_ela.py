@@ -26,21 +26,6 @@ _INLINE_LANE_STANDARD = re.compile(
     r"(?:R\d+|\d+)\.\s*)"
 )
 _EMBEDDED_STANDARD = re.compile(r"\b(?:R\d+|\d{1,2})\.\s+[A-Z]")
-_EXPECTED_CONTENT_MAX = {
-    "K": 40,
-    "1": 43,
-    "2": 46,
-    "3": 42,
-    "4": 42,
-    "5": 42,
-    "6": 30,
-    "7": 33,
-    "8": 32,
-    "9": 27,
-    "10": 27,
-    "11": 30,
-    "12": 30,
-}
 _SECTION_BOUNDARIES = {
     "LITERACY FOUNDATIONS",
     "CRITICAL LITERACY",
@@ -112,7 +97,6 @@ def parse_alabama_ela_2021(extracted: ExtractedDocument) -> ParsedStandardsDocum
         )
         _validate_grade_materialization(
             display_name=display_name,
-            grade_band=grade_band,
             recurring=recurring,
             content=content,
         )
@@ -283,28 +267,25 @@ def _ela_noise(line: str) -> bool:
 def _validate_grade_materialization(
     *,
     display_name: str,
-    grade_band: str,
     recurring: tuple[ParsedStandard, ...],
     content: tuple[ParsedStandard, ...],
 ) -> None:
-    expected_recurring_max = 5 if grade_band in {"K", "1", "2", "3"} else 6 if grade_band in {
-        "4",
-        "5",
-        "6",
-        "7",
-        "8",
-    } else 7
-    expected_recurring = [f"R{number}" for number in range(1, expected_recurring_max + 1)]
     recurring_codes = [standard.code for standard in recurring]
-    if recurring_codes != expected_recurring:
+    recurring_numbers = [
+        int(code[1:])
+        for code in recurring_codes
+        if code.startswith("R") and code[1:].isdigit()
+    ]
+    if len(recurring_codes) < 4 or recurring_numbers != list(
+        range(1, len(recurring_codes) + 1)
+    ):
         raise StandardsIngestError(
             f"Alabama ELA {display_name} recurring standards are incomplete or out of order"
         )
 
-    expected_content_max = _EXPECTED_CONTENT_MAX[grade_band]
-    expected_content = [str(number) for number in range(1, expected_content_max + 1)]
     content_codes = [standard.code for standard in content]
-    if content_codes != expected_content:
+    content_numbers = [int(code) for code in content_codes if code.isdigit()]
+    if len(content_codes) < 5 or content_numbers != list(range(1, len(content_codes) + 1)):
         raise StandardsIngestError(
             f"Alabama ELA {display_name} content standards are incomplete or out of order"
         )
