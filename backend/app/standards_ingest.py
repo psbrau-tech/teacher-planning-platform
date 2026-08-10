@@ -13,7 +13,7 @@ import httpx
 from pypdf import PdfReader
 
 PARSER_VERSION = "gate-e-standards-v1"
-MAX_SOURCE_BYTES = 25 * 1024 * 1024
+MAX_SOURCE_BYTES = 64 * 1024 * 1024
 SOURCE_TIMEOUT_SECONDS = 30.0
 _WORD_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 
