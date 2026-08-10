@@ -27,7 +27,8 @@ _INLINE_CODE = re.compile(
     flags=re.IGNORECASE,
 )
 _INLINE_GENERAL = re.compile(
-    rf"(?=(?:{_GENERAL_CODE_PATTERN}|(?:^|(?<=[.!?)]))\d+\.\s+[A-Z]))",
+    rf"(?=(?:(?<![A-Za-z0-9.]){_GENERAL_CODE_PATTERN}|"
+    rf"(?:^|(?<=[.!?)]))\d+\.\s+[A-Z]))",
     flags=re.IGNORECASE,
 )
 _PAGE_SUFFIX = re.compile(r"(?<=[.!?)])\d{1,3}$")
