@@ -62,6 +62,45 @@ jobs:
           path: backend/arts-extraction.txt
           if-no-files-found: warn
           retention-days: 1
+      - name: Extract Alabama ELA layout diagnostic
+        continue-on-error: true
+        run: |
+          python - <<'PY' > ela-layout-extraction.txt
+          from io import BytesIO
+
+          from pypdf import PdfReader
+
+          from app.standards_ingest import fetch_source
+
+          url = (
+              "https://www.alabamaachieves.org/wp-content/uploads/2023/06/"
+              "CAS_202353_2021-Alabama-Course-of-Study-English-Language-Arts_V1.0.pdf"
+          )
+          fetched = fetch_source(url, "pdf")
+          reader = PdfReader(BytesIO(fetched.content))
+          selected_pages = tuple(range(52, 57)) + tuple(range(96, 102)) + tuple(range(119, 125))
+          print(f"source_sha256={fetched.source_sha256}")
+          print(f"page_count={len(reader.pages)}")
+          for page_index in selected_pages:
+              if page_index >= len(reader.pages):
+                  continue
+              print(f"\n===== PDF PAGE INDEX {page_index} =====")
+              text = reader.pages[page_index].extract_text(
+                  extraction_mode="layout",
+                  layout_mode_space_vertically=False,
+              ) or ""
+              for line_number, line in enumerate(text.splitlines(), start=1):
+                  if line.strip():
+                      print(f"{line_number:04d}\t{line.rstrip()}")
+          PY
+      - name: Upload Alabama ELA layout diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: alabama-ela-layout-diagnostic
+          path: backend/ela-layout-extraction.txt
+          if-no-files-found: warn
+          retention-days: 1
       - name: Generate HQI acceptance samples
         run: python scripts/generate_hqi_acceptance_samples.py
       - name: Upload HQI acceptance samples
