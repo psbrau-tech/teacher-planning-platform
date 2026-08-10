@@ -97,7 +97,7 @@ def test_science_aas_parser_keeps_high_school_courses_separate() -> None:
     assert parsed.courses[-1].display_name == "Grade 12 Environmental Science"
 
 
-def test_social_studies_aas_parser_keeps_grade_12_government_and_economics_separate() -> None:
+def test_social_studies_aas_parser_preserves_courses_and_duplicate_source_codes() -> None:
     course_rows = [
         ("Kindergarten Social Studies", "K", "K", "K"),
         *[
@@ -108,7 +108,7 @@ def test_social_studies_aas_parser_keeps_grade_12_government_and_economics_separ
         ("Grade 12 Economics", "E.12", "E.AAS.12", "12"),
     ]
     lines: list[str] = []
-    for heading, general_token, aas_token, _grade in course_rows:
+    for heading, general_token, aas_token, grade in course_rows:
         lines.append(heading)
         for number in range(1, 4):
             general_code = f"SS.{general_token}.{number}"
@@ -123,6 +123,13 @@ def test_social_studies_aas_parser_keeps_grade_12_government_and_economics_separ
                     f"{aas_code}- Alternate social studies standard {number}.",
                 ]
             )
+        if grade == "7":
+            lines.extend(
+                [
+                    "SS.AAS.7.11- First official statement using the duplicate source code.",
+                    "SS.AAS.7.11- Second official statement using the duplicate source code.",
+                ]
+            )
 
     parsed = parse_alabama_aas_social_studies_2017(_document(lines))
 
@@ -131,3 +138,10 @@ def test_social_studies_aas_parser_keeps_grade_12_government_and_economics_separ
     assert parsed.courses[-2].standards[0].code == "SS.USG.AAS.12.1"
     assert parsed.courses[-1].course_key == "grade_12_economics"
     assert parsed.courses[-1].standards[0].code == "SS.E.AAS.12.1"
+
+    grade_seven = next(course for course in parsed.courses if course.course_key == "grade_7")
+    duplicate_rows = [standard for standard in grade_seven.standards if standard.code == "SS.AAS.7.11"]
+    assert [standard.text for standard in duplicate_rows] == [
+        "First official statement using the duplicate source code.",
+        "Second official statement using the duplicate source code.",
+    ]
