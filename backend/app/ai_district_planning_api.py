@@ -24,6 +24,8 @@ from .standards_api import get_assignment_standards
 router = APIRouter(prefix="/api/v1/ai", tags=["ai-planning"])
 JsonRecord = dict[str, Any]
 _AI_FIELD_MAX_LENGTH = 4_000
+_DAY_SUFFIXES = {0: "mon", 1: "tue", 2: "wed", 3: "thu", 4: "fri"}
+_WAG_PREFIXES = ("clt", "rrt", "cfu", "ri", "sic", "esl")
 
 DISTRICT_FIELD_KEYS = (
     "plds",
@@ -158,6 +160,36 @@ individual performance. Suggestions are drafts only and are not saved unless the
 accepts or edits them. Return only the requested structured fields."""
 
 
+def _scheduled_day_suffixes(scheduled_rows: list[JsonRecord]) -> set[str]:
+    suffixes: set[str] = set()
+    for row in scheduled_rows:
+        raw_date = row.get("school_date")
+        if not isinstance(raw_date, str):
+            continue
+        try:
+            weekday = date.fromisoformat(raw_date).weekday()
+        except ValueError:
+            continue
+        suffix = _DAY_SUFFIXES.get(weekday)
+        if suffix is not None:
+            suffixes.add(suffix)
+    return suffixes
+
+
+def _clear_unscheduled_weekdays(
+    suggestions: DistrictPlanningSuggestion,
+    scheduled_rows: list[JsonRecord],
+) -> DistrictPlanningSuggestion:
+    scheduled_suffixes = _scheduled_day_suffixes(scheduled_rows)
+    updates: dict[str, str] = {}
+    for suffix in _DAY_SUFFIXES.values():
+        if suffix in scheduled_suffixes:
+            continue
+        for prefix in _WAG_PREFIXES:
+            updates[f"{prefix}_{suffix}"] = ""
+    return suggestions.model_copy(update=updates)
+
+
 @router.post(
     "/district-planning/{assignment_id}/week/{week_start}",
     response_model=DistrictPlanningSuggestionRead,
@@ -233,6 +265,7 @@ def suggest_district_planning(
             detail="AI district planning assistance returned invalid structured data",
         ) from error
 
+    suggestions = _clear_unscheduled_weekdays(suggestions, scheduled_rows)
     usage_event_id = _record_usage(
         client,
         identity=identity,

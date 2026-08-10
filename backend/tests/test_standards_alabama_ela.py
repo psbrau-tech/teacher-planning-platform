@@ -26,6 +26,22 @@ def _document() -> ExtractedDocument:
                     "R5. Grade 2 recurring standard five after the content heading.",
                 ]
             )
+        elif grade >= 9:
+            lines.extend(
+                [
+                    "Reception",
+                    "R1. Read a workplace document.",
+                    "R2. Read and comprehend literary texts.",
+                    (
+                        "R3. Utilize active listening skills in formal and informal "
+                        "conversations, following predetermined norms."
+                    ),
+                    "Expression",
+                    "R4. Use digital and electronic tools appropriately, safely, and ethically.",
+                    "R5. Utilize a writing process.",
+                    marker,
+                ]
+            )
         else:
             lines.extend(
                 [
@@ -58,3 +74,15 @@ def test_ela_parser_collects_grade_2_recurring_rows_across_content_heading() -> 
     assert recurring[-1].text == "Grade 2 recurring standard five after the content heading."
     assert [standard.code for standard in content] == ["1", "2", "3", "4", "5", "6"]
     assert all(not standard.code.startswith("R") for standard in content)
+
+
+def test_ela_parser_does_not_append_title_case_lane_header_to_grade_9_r3() -> None:
+    parsed = parse_alabama_ela_2021(_document())
+    grade_nine = next(course for course in parsed.courses if course.course_key == "grade_9")
+    r3 = next(standard for standard in grade_nine.standards if standard.code == "R3")
+
+    assert r3.text == (
+        "Utilize active listening skills in formal and informal conversations, "
+        "following predetermined norms."
+    )
+    assert "Expression" not in r3.text
