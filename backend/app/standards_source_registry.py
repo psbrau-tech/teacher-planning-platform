@@ -33,6 +33,27 @@ def source_ingest_plan(source: DiscoveredStandardsSource) -> SourceIngestPlan:
             readiness_detail="Generic Alabama CTE Course of Study standards parser",
         )
 
+    if source.family == "alabama_alternate":
+        parser_key = _ALTERNATE_PARSERS.get(source.source_key)
+        if parser_key is not None:
+            return SourceIngestPlan(
+                parser_key=parser_key,
+                source_kind="alternate_achievement_standards",
+                provides_standard_entries=True,
+                parser_ready=True,
+                readiness_detail="Verified source-specific Alabama alternate achievement parser",
+            )
+        return SourceIngestPlan(
+            parser_key="alabama_alternate_parser_pending",
+            source_kind="alternate_achievement_standards",
+            provides_standard_entries=True,
+            parser_ready=False,
+            readiness_detail=(
+                "Alternate achievement source discovered and governed, but deterministic "
+                "parser verification is pending"
+            ),
+        )
+
     if source.family == "alabama_academic":
         parser_key = _ACADEMIC_PARSERS.get(source.source_key)
         if parser_key is not None:
@@ -61,6 +82,13 @@ def source_ingest_plan(source: DiscoveredStandardsSource) -> SourceIngestPlan:
         readiness_detail="Source family requires explicit parser/source-role review",
     )
 
+
+_ALTERNATE_PARSERS = {
+    "alabama_alternate_english_language_arts": "alabama_aas_ela_2021",
+    "alabama_alternate_mathematics": "alabama_aas_math_2019",
+    "alabama_alternate_science": "alabama_aas_science_2017",
+    "alabama_alternate_social_studies": "alabama_aas_social_studies_2017",
+}
 
 _ACADEMIC_PARSERS = {
     "alabama_academic_arts_education": "alabama_arts_2024",
