@@ -140,7 +140,9 @@ def test_social_studies_aas_parser_preserves_courses_and_duplicate_source_codes(
     assert parsed.courses[-1].standards[0].code == "SS.E.AAS.12.1"
 
     grade_seven = next(course for course in parsed.courses if course.course_key == "grade_7")
-    duplicate_rows = [standard for standard in grade_seven.standards if standard.code == "SS.AAS.7.11"]
+    duplicate_rows = [
+        standard for standard in grade_seven.standards if standard.code == "SS.AAS.7.11"
+    ]
     assert [standard.text for standard in duplicate_rows] == [
         "First official statement using the duplicate source code.",
         "Second official statement using the duplicate source code.",
