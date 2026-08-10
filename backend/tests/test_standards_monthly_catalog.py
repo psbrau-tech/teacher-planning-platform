@@ -65,13 +65,20 @@ class FakeHttpClient:
         return self.pages[url]
 
 
-def test_catalog_fetch_reads_academic_cte_cos_and_program_roots(monkeypatch) -> None:
+def test_catalog_fetch_reads_academic_alternate_cte_cos_and_program_roots(monkeypatch) -> None:
     pages = {
         standards_catalog_fetch.ACADEMIC_CATALOG_URL: FakeHttpResponse(
             standards_catalog_fetch.ACADEMIC_CATALOG_URL,
             """
             <h3>Science</h3><h4>Title</h4>
             <a href="/files/science.pdf">2024 Alabama Course of Study: Science</a>
+            """,
+        ),
+        standards_catalog_fetch.ALTERNATE_STANDARDS_CATALOG_URL: FakeHttpResponse(
+            standards_catalog_fetch.ALTERNATE_STANDARDS_CATALOG_URL,
+            """
+            <h3>Standards and Courses of Study</h3><h4>Title</h4>
+            <a href="/files/aas-science.pdf">Science – Alternative Achievement Standards</a>
             """,
         ),
         standards_catalog_fetch.CTE_COS_CATALOG_URL: FakeHttpResponse(
@@ -101,6 +108,7 @@ def test_catalog_fetch_reads_academic_cte_cos_and_program_roots(monkeypatch) -> 
     assert set(fake.requested) == set(pages)
     assert {source.source_key for source in sources} == {
         "alabama_academic_science",
+        "alabama_alternate_science",
         "alabama_cte_cos_finance",
         "alabama_cte_program_government_public_administration",
     }

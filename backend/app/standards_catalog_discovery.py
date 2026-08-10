@@ -6,6 +6,9 @@ from html.parser import HTMLParser
 from urllib.parse import urljoin, urlparse
 
 ACADEMIC_CATALOG_URL = "https://www.alabamaachieves.org/acad-stand/"
+ALTERNATE_STANDARDS_CATALOG_URL = (
+    "https://www.alabamaachieves.org/special-education/subject-resources/"
+)
 CTE_COS_CATALOG_URL = "https://www.alabamaachieves.org/cte/cte-course-of-study/"
 CTE_PROGRAM_CATALOG_URL = "https://www.alabamaachieves.org/cte/"
 ALABAMA_AUTHORITY = "Alabama State Department of Education"
@@ -34,6 +37,56 @@ _CATEGORY_ALIASES = {
     "law_public_safety_corrections_and_security": "law_public_safety_corrections_security",
     "science_technology_engineering_and_mathematics": "stem",
     "transportation_distribution_and_logistics": "transportation_distribution_logistics",
+}
+_ALTERNATE_SPECS = {
+    "english language arts – alternate achievement standards 2021": (
+        "english_language_arts",
+        "English Language Arts",
+        "2021",
+        "alabama_aas_ela_2021",
+    ),
+    "english language arts - alternate achievement standards 2021": (
+        "english_language_arts",
+        "English Language Arts",
+        "2021",
+        "alabama_aas_ela_2021",
+    ),
+    "math – alternate achievement standards": (
+        "mathematics",
+        "Mathematics",
+        "2019",
+        "alabama_aas_math_2019",
+    ),
+    "math - alternate achievement standards": (
+        "mathematics",
+        "Mathematics",
+        "2019",
+        "alabama_aas_math_2019",
+    ),
+    "science – alternative achievement standards": (
+        "science",
+        "Science",
+        "2017",
+        "alabama_aas_science_2017",
+    ),
+    "science - alternative achievement standards": (
+        "science",
+        "Science",
+        "2017",
+        "alabama_aas_science_2017",
+    ),
+    "social studies – alternate achievement standards": (
+        "social_studies",
+        "Social Studies",
+        "2017",
+        "alabama_aas_social_studies_2017",
+    ),
+    "social studies - alternate achievement standards": (
+        "social_studies",
+        "Social Studies",
+        "2017",
+        "alabama_aas_social_studies_2017",
+    ),
 }
 
 
@@ -125,11 +178,13 @@ class _CatalogParser(HTMLParser):
 def discover_alabama_catalogs(
     *,
     academic_html: str,
+    alternate_html: str,
     cte_cos_html: str,
     cte_program_html: str,
 ) -> tuple[DiscoveredStandardsSource, ...]:
     sources = (
         *discover_academic_sources(academic_html),
+        *discover_alternate_sources(alternate_html),
         *discover_cte_cos_sources(cte_cos_html),
         *discover_cte_program_sources(cte_program_html),
     )
@@ -175,6 +230,34 @@ def discover_academic_sources(html: str) -> tuple[DiscoveredStandardsSource, ...
             )
         )
     return _latest_logical_sources(candidates)
+
+
+def discover_alternate_sources(html: str) -> tuple[DiscoveredStandardsSource, ...]:
+    links = _parse_links(html)
+    discovered: dict[str, DiscoveredStandardsSource] = {}
+    for link in links:
+        if _clean(link.h3 or "").casefold() != "standards and courses of study":
+            continue
+        normalized_title = _clean(link.text).casefold()
+        spec = _ALTERNATE_SPECS.get(normalized_title)
+        if spec is None:
+            continue
+        category_key, category_name, edition, parser_key = spec
+        source_key = f"alabama_alternate_{category_key}"
+        discovered[source_key] = _source(
+            source_key=source_key,
+            family="alabama_alternate",
+            category_key=category_key,
+            category_name=category_name,
+            category_type="alternate_achievement_subject",
+            title=link.text,
+            edition=edition,
+            landing_url=ALTERNATE_STANDARDS_CATALOG_URL,
+            href=link.href,
+            parser_key_hint=parser_key,
+            source_kind="alternate_achievement_standards",
+        )
+    return tuple(sorted(discovered.values(), key=lambda item: item.source_key))
 
 
 def discover_cte_cos_sources(html: str) -> tuple[DiscoveredStandardsSource, ...]:

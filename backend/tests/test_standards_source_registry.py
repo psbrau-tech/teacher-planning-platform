@@ -46,6 +46,22 @@ def test_verified_academic_sources_have_source_specific_parsers() -> None:
         assert plan.provides_standard_entries is True
 
 
+def test_verified_alternate_sources_have_source_specific_parsers() -> None:
+    expected = {
+        "alabama_alternate_english_language_arts": "alabama_aas_ela_2021",
+        "alabama_alternate_mathematics": "alabama_aas_math_2019",
+        "alabama_alternate_science": "alabama_aas_science_2017",
+        "alabama_alternate_social_studies": "alabama_aas_social_studies_2017",
+    }
+
+    for source_key, parser_key in expected.items():
+        plan = source_ingest_plan(_source(source_key, "alabama_alternate"))
+        assert plan.parser_ready is True
+        assert plan.parser_key == parser_key
+        assert plan.source_kind == "alternate_achievement_standards"
+        assert plan.provides_standard_entries is True
+
+
 def test_unverified_academic_source_is_governed_but_not_approvable_yet() -> None:
     plan = source_ingest_plan(
         _source("alabama_academic_future_subject", "alabama_academic")

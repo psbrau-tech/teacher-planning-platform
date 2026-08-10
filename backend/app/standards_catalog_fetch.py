@@ -6,6 +6,7 @@ import httpx
 
 from .standards_catalog_discovery import (
     ACADEMIC_CATALOG_URL,
+    ALTERNATE_STANDARDS_CATALOG_URL,
     CTE_COS_CATALOG_URL,
     CTE_PROGRAM_CATALOG_URL,
     DiscoveredStandardsSource,
@@ -24,6 +25,7 @@ def fetch_current_alabama_catalog(
 ) -> tuple[DiscoveredStandardsSource, ...]:
     urls = (
         ACADEMIC_CATALOG_URL,
+        ALTERNATE_STANDARDS_CATALOG_URL,
         CTE_COS_CATALOG_URL,
         CTE_PROGRAM_CATALOG_URL,
     )
@@ -52,6 +54,7 @@ def fetch_current_alabama_catalog(
 
     return discover_alabama_catalogs(
         academic_html=html_by_url[ACADEMIC_CATALOG_URL],
+        alternate_html=html_by_url[ALTERNATE_STANDARDS_CATALOG_URL],
         cte_cos_html=html_by_url[CTE_COS_CATALOG_URL],
         cte_program_html=html_by_url[CTE_PROGRAM_CATALOG_URL],
     )
