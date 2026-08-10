@@ -30,14 +30,14 @@ def _resolve_valid_literacy(candidates: list[dict[str, object]], requested: list
     valid_ids: list[str] = []
     for requested_value in requested:
         normalized = requested_value.strip()
-        candidate: dict[str, object] | None = by_id.get(normalized)
-        if candidate is None:
+        resolved_candidate: dict[str, object] | None = by_id.get(normalized)
+        if resolved_candidate is None:
             code_matches = by_code.get(normalized.casefold(), [])
             if len(code_matches) == 1:
-                candidate = code_matches[0]
-        if candidate is None:
+                resolved_candidate = code_matches[0]
+        if resolved_candidate is None:
             continue
-        standard_id = core._required_text(candidate, "standard_entry_id")
+        standard_id = core._required_text(resolved_candidate, "standard_entry_id")
         if standard_id not in valid_ids:
             valid_ids.append(standard_id)
 
