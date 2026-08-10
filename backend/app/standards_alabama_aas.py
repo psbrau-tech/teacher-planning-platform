@@ -11,20 +11,24 @@ from .standards_ingest import (
     StandardsIngestError,
 )
 
+_AAS_CODE_PATTERN = (
+    r"(?:ELA21|ELA|M|SCI|SS)(?:\.(?!AAS\b)[A-Za-z0-9]+)*\.AAS\.[A-Za-z0-9.]+"
+)
+_GENERAL_CODE_PATTERN = (
+    r"(?:ELA21|ELA|SCI|SS)(?:\.(?!AAS\b)[A-Za-z0-9]+)+\s*[-–]\s*"
+)
 _AAS_STANDARD = re.compile(
-    r"^(?P<code>(?:ELA21|ELA|M|SCI|SS)\.AAS\.[A-Za-z0-9.]+)\s*(?:[-–]\s*)?(?P<text>.*)$",
+    rf"^(?P<code>{_AAS_CODE_PATTERN})\s*(?:[-–]\s*)?(?P<text>.*)$",
     flags=re.IGNORECASE,
 )
-_GENERAL_PREFIX = re.compile(
-    r"^(?:(?:ELA21|ELA|SCI|SS)\.(?!AAS\.)[A-Za-z0-9.]+\s*[-–]|\d+\.\s+)"
-)
+_GENERAL_PREFIX = re.compile(rf"^(?:{_GENERAL_CODE_PATTERN}|\d+\.\s+)", flags=re.IGNORECASE)
 _INLINE_CODE = re.compile(
-    r"(?=(?:ELA21|ELA|M|SCI|SS)\.AAS\.[A-Za-z0-9.]+\s*(?:[-–]\s*)?)",
+    rf"(?={_AAS_CODE_PATTERN}\s*(?:[-–]\s*)?)",
     flags=re.IGNORECASE,
 )
 _INLINE_GENERAL = re.compile(
-    r"(?=(?:(?:ELA21|ELA|SCI|SS)\.(?!AAS\.)[A-Za-z0-9.]+\s*[-–]|"
-    r"(?<=[.!?)])\d+\.\s+[A-Z]))"
+    rf"(?=(?:{_GENERAL_CODE_PATTERN}|(?:^|(?<=[.!?)]))\d+\.\s+[A-Z]))",
+    flags=re.IGNORECASE,
 )
 _PAGE_SUFFIX = re.compile(r"(?<=[.!?)])\d{1,3}$")
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
@@ -49,7 +53,7 @@ class _SubjectSpec:
 _ELA = _SubjectSpec(
     parser_key="alabama_aas_ela_2021",
     parser_version="gate-e-alabama-aas-ela-2021-v1",
-    code_prefixes=("ELA21.AAS.", "ELA.AAS."),
+    code_prefixes=("ELA21.", "ELA."),
     courses=tuple(
         _CourseSpec(
             course_key="kindergarten" if grade == 0 else f"grade_{grade}",
@@ -72,7 +76,7 @@ _ELA = _SubjectSpec(
 _MATH = _SubjectSpec(
     parser_key="alabama_aas_math_2019",
     parser_version="gate-e-alabama-aas-math-2019-v1",
-    code_prefixes=("M.AAS.",),
+    code_prefixes=("M.",),
     courses=tuple(
         _CourseSpec(
             course_key="kindergarten" if grade == 0 else f"grade_{grade}",
@@ -97,7 +101,7 @@ _MATH = _SubjectSpec(
 _SCIENCE = _SubjectSpec(
     parser_key="alabama_aas_science_2017",
     parser_version="gate-e-alabama-aas-science-2017-v1",
-    code_prefixes=("SCI.AAS.",),
+    code_prefixes=("SCI.",),
     courses=(
         _CourseSpec("kindergarten", "Kindergarten", "K", ("kindergarten science",)),
         *tuple(
@@ -124,7 +128,7 @@ _SCIENCE = _SubjectSpec(
 _SOCIAL_STUDIES = _SubjectSpec(
     parser_key="alabama_aas_social_studies_2017",
     parser_version="gate-e-alabama-aas-social-studies-2017-v1",
-    code_prefixes=("SS.AAS.",),
+    code_prefixes=("SS.",),
     courses=(
         _CourseSpec("kindergarten", "Kindergarten", "K", ("kindergarten social studies",)),
         *tuple(
