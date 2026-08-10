@@ -111,6 +111,11 @@ def reconcile_and_record_catalog(
                 prefer="return=minimal",
             )
         except SupabaseRestError as error:
+            _mark_catalog_run_error(
+                client,
+                run_id,
+                "Standards catalog discovery items could not be recorded",
+            )
             raise StandardsCatalogReconcileError(
                 "Standards catalog discovery items could not be recorded"
             ) from error
@@ -120,6 +125,26 @@ def reconcile_and_record_catalog(
         catalog_sha256=catalog_hash,
         items=items,
     )
+
+
+def _mark_catalog_run_error(
+    client: SupabaseRestClient,
+    run_id: UUID,
+    detail: str,
+) -> None:
+    """Best-effort correction when a run header exists but its evidence batch fails."""
+    try:
+        client.request(
+            "PATCH",
+            "standard_catalog_discovery_runs",
+            params={"id": f"eq.{run_id}"},
+            payload={"status": "error", "error_summary": detail},
+            prefer="return=minimal",
+        )
+    except SupabaseRestError:
+        # Preserve the original reconciliation failure as the primary error. A later governed
+        # audit repair can identify a completed run with no item evidence deterministically.
+        return
 
 
 def compare_catalog(

@@ -1,11 +1,15 @@
 from uuid import UUID, uuid4
 
+import pytest
+
 from app.standards_catalog_discovery import DiscoveredStandardsSource
 from app.standards_catalog_reconcile import (
+    StandardsCatalogReconcileError,
     catalog_sha256,
     compare_catalog,
     reconcile_and_record_catalog,
 )
+from app.supabase_rest import SupabaseRestError
 
 RUN_ID = uuid4()
 ELA_ID = uuid4()
@@ -93,7 +97,35 @@ class FakeClient:
             return [{"id": str(RUN_ID)}]
         if method == "POST" and resource == "standard_catalog_discovery_items":
             return None
+        if method == "PATCH" and resource == "standard_catalog_discovery_runs":
+            return None
         raise AssertionError(f"Unexpected catalog reconciliation request: {method} {resource}")
+
+
+class FailingItemClient(FakeClient):
+    def request(
+        self,
+        method: str,
+        resource: str,
+        *,
+        params=None,
+        payload=None,
+        prefer=None,
+    ) -> object:
+        if method == "POST" and resource == "standard_catalog_discovery_items":
+            self.calls.append((method, resource, params, payload, prefer))
+            raise SupabaseRestError(
+                "catalog evidence constraint rejected the batch",
+                status_code=400,
+                code="23514",
+            )
+        return super().request(
+            method,
+            resource,
+            params=params,
+            payload=payload,
+            prefer=prefer,
+        )
 
 
 def test_compare_catalog_classifies_unchanged_changed_new_and_missing() -> None:
@@ -244,3 +276,32 @@ def test_reconciliation_records_evidence_without_mutating_standard_sources() -> 
         call[0] == "POST" and call[1] == "standard_sources"
         for call in fake.calls
     )
+
+
+def test_reconciliation_marks_run_error_when_item_evidence_write_fails() -> None:
+    science = _discovered(
+        "alabama_academic_science",
+        category_key="science",
+        category_name="Science",
+        title="2024 Alabama Course of Study: Science",
+        edition="2024",
+        document_url="https://www.alabamaachieves.org/files/science-2024.pdf",
+    )
+    fake = FailingItemClient([])
+
+    with pytest.raises(
+        StandardsCatalogReconcileError,
+        match="discovery items could not be recorded",
+    ):
+        reconcile_and_record_catalog(fake, (science,))
+
+    patch_call = next(
+        call
+        for call in fake.calls
+        if call[0] == "PATCH" and call[1] == "standard_catalog_discovery_runs"
+    )
+    assert patch_call[2] == {"id": f"eq.{RUN_ID}"}
+    assert patch_call[3] == {
+        "status": "error",
+        "error_summary": "Standards catalog discovery items could not be recorded",
+    }

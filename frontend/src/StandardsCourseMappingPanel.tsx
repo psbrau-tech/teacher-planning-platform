@@ -4,7 +4,11 @@ type CatalogCategory = {
   id: string;
   category_key: string;
   display_name: string;
-  category_type: "academic_subject" | "career_cluster" | "general";
+  category_type:
+    | "academic_subject"
+    | "alternate_achievement_subject"
+    | "career_cluster"
+    | "general";
   sort_order: number;
 };
 
