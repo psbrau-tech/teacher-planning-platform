@@ -42,15 +42,16 @@ export function PlanningPdfFieldsPanel({ draft, disabled = false, onChange }: Pr
     <section className="district-pdf-fields">
       <div className="section-heading compact">
         <div>
-          <p className="eyebrow">Continue the working plan</p>
-          <h3>District fields that complete the Weekly Lesson Plan PDF</h3>
-          <p className="supporting">These are part of the same weekly plan you reviewed above. The AI planning draft can recommend each field; accepted or edited suggestions appear here for your final review before saving.</p>
+          <p className="eyebrow">Weekly Lesson Plan document</p>
+          <h3>Complete the planning document in PDF order</h3>
+          <p className="supporting">The fields below follow the same sequence as the Weekly Lesson Plan PDF: finish the Instructional Planning Framework first, then review the Week at a Glance matrix. AI suggestions remain drafts until you use or edit them.</p>
         </div>
       </div>
 
       <details className="setup-section" open>
-        <summary>Instructional Planning Framework details</summary>
-        <div className="form-grid">
+        <summary>Instructional Planning Framework — remaining fields</summary>
+        <p className="supporting">These fields continue directly from the Framework fields above and appear before the Week at a Glance in the PDF.</p>
+        <div className="form-grid framework-continuation-grid">
           <label className="full-width">Performance-Level Descriptors / Proficiency Scale<textarea rows={3} value={draft.plds ?? ""} disabled={disabled} onChange={(event) => setField("plds", event.target.value)} /></label>
           <label className="full-width">Likely Misconceptions<textarea rows={3} value={draft.misconceptions ?? ""} disabled={disabled} onChange={(event) => setField("misconceptions", event.target.value)} /></label>
           <label>Formative Assessments<textarea rows={3} value={draft.formative ?? ""} disabled={disabled} onChange={(event) => setField("formative", event.target.value)} /></label>
@@ -62,19 +63,39 @@ export function PlanningPdfFieldsPanel({ draft, disabled = false, onChange }: Pr
       <details className="setup-section" open>
         <summary>Week at a Glance</summary>
         <div className="section-heading compact">
-          <p className="supporting">AI suggestions are limited to days with scheduled lessons. You can also use the prefill button to copy semantically equivalent content already present in the working plan without making another AI request.</p>
+          <p className="supporting">Rows match the district matrix and columns represent Monday through Friday. AI recommends cells only for scheduled instructional days. Use Prefill matching fields only when you want to copy equivalent content already present in the working plan without another AI request.</p>
           <button type="button" className="secondary" disabled={disabled} onClick={prefillMatchingFields}>Prefill matching fields</button>
         </div>
-        <div className="week-at-glance-editor">
-          {DAYS.map(([suffix, _dayKey, dayLabel]) => (
-            <article className="week-at-glance-day" key={suffix}>
-              <h4>{dayLabel}</h4>
-              {COMPONENTS.map(([prefix, label]) => {
-                const key = `${prefix}_${suffix}`;
-                return <label key={key}>{label}<textarea rows={2} value={draft[key] ?? ""} disabled={disabled} onChange={(event) => setField(key, event.target.value)} /></label>;
-              })}
-            </article>
-          ))}
+        <div className="week-at-glance-matrix-wrap">
+          <table className="week-at-glance-matrix">
+            <thead>
+              <tr>
+                <th scope="col">Instructional component</th>
+                {DAYS.map(([_suffix, _dayKey, dayLabel]) => <th scope="col" key={dayLabel}>{dayLabel}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {COMPONENTS.map(([prefix, label]) => (
+                <tr key={prefix}>
+                  <th scope="row">{label}</th>
+                  {DAYS.map(([suffix, _dayKey, dayLabel]) => {
+                    const key = `${prefix}_${suffix}`;
+                    return (
+                      <td key={key}>
+                        <textarea
+                          aria-label={`${dayLabel} — ${label}`}
+                          rows={4}
+                          value={draft[key] ?? ""}
+                          disabled={disabled}
+                          onChange={(event) => setField(key, event.target.value)}
+                        />
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </details>
     </section>

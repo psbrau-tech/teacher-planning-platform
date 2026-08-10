@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 
 type AiReflectionPanelProps = {
   accessToken: string;
@@ -70,6 +71,7 @@ export function AiReflectionPanel({
   const [previewWorking, setPreviewWorking] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [closeoutActionsTarget, setCloseoutActionsTarget] = useState<Element | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -99,6 +101,17 @@ export function AiReflectionPanel({
   useEffect(() => () => {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
   }, [previewUrl]);
+
+  useEffect(() => {
+    if (disabled) {
+      setCloseoutActionsTarget(null);
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      setCloseoutActionsTarget(document.querySelector(".ai-reflection-panel + .review-section .button-row"));
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [disabled, assignmentId, weekStart]);
 
   const answeredCount = useMemo(
     () => REFLECTION_PROMPTS.filter((_prompt, index) => (responses[`reflect_${index + 1}`] ?? "").length > 0).length,
@@ -146,6 +159,12 @@ export function AiReflectionPanel({
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(null);
   }
+
+  const previewButton = (
+    <button type="button" className="secondary" disabled={previewWorking} onClick={() => void viewSavedReflection()}>
+      {previewWorking ? "Preparing reflection…" : "View reflection PDF"}
+    </button>
+  );
 
   return (
     <section className="panel ai-reflection-panel" aria-labelledby="weekly-reflection-heading">
@@ -196,17 +215,11 @@ export function AiReflectionPanel({
       {disabled ? (
         <p className="guidance-text">Complete Friday validation before entering the required weekly reflection.</p>
       ) : (
-        <>
-          <p className="guidance-text">
-            All 12 district prompts are required for the normal weekly closeout. TPP does not evaluate the substance of your response.
-          </p>
-          <div className="button-row">
-            <button type="button" className="secondary" disabled={previewWorking} onClick={() => void viewSavedReflection()}>
-              {previewWorking ? "Preparing reflection…" : "View saved reflection PDF"}
-            </button>
-          </div>
-        </>
+        <p className="guidance-text">
+          All 12 district prompts are required for the normal weekly closeout. TPP does not evaluate the substance of your response.
+        </p>
       )}
+      {!disabled && closeoutActionsTarget ? createPortal(previewButton, closeoutActionsTarget) : null}
       {previewError ? <p className="error-message" role="alert">{previewError}</p> : null}
       {message ? <p className="success-message" role="status">{message}</p> : null}
       {previewUrl ? (
