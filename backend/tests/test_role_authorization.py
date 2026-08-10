@@ -29,10 +29,8 @@ def _identity(*roles: str) -> AuthenticatedTeacher:
 
 def test_teacher_role_is_required_for_teacher_workflows() -> None:
     assert require_teacher(_identity("teacher")).roles == frozenset({"teacher"})
-
     with pytest.raises(HTTPException) as error:
         require_teacher(_identity("school_admin"))
-
     assert error.value.status_code == 403
 
 
@@ -40,16 +38,13 @@ def test_reporting_allows_school_district_or_platform_administrator() -> None:
     assert require_school_reporting_admin(_identity("school_admin"))
     assert require_school_reporting_admin(_identity("district_admin"))
     assert require_school_reporting_admin(_identity("platform_admin"))
-
     with pytest.raises(HTTPException) as error:
         require_school_reporting_admin(_identity("teacher"))
-
     assert error.value.status_code == 403
 
 
 def test_cost_reporting_requires_platform_administrator() -> None:
     assert require_platform_admin(_identity("platform_admin"))
-
     for denied_role in ("school_admin", "district_admin", "teacher"):
         with pytest.raises(HTTPException) as error:
             require_platform_admin(_identity(denied_role))
@@ -94,80 +89,76 @@ class _FakeReportingClient:
     ) -> object:
         del method, params, prefer
         if resource == "school_admin_usage_summary":
-            return [
-                {
-                    "school_id": "school-1",
-                    "teachers_configured": 4,
-                    "teachers_with_assignments": 3,
-                    "assignments_configured": 7,
-                    "weekly_plans_created": 6,
-                    "weekly_plans_approved": 5,
-                    "instruction_records_validated": 24,
-                    "lessons_carried_forward": 2,
-                    "documents_requested": 8,
-                    "documents_generated": 8,
-                    "document_generation_failures": 0,
-                }
-            ]
+            return [{
+                "school_id": "school-1",
+                "teachers_configured": 4,
+                "teachers_with_assignments": 3,
+                "assignments_configured": 7,
+                "weekly_plans_created": 6,
+                "weekly_plans_approved": 5,
+                "instruction_records_validated": 24,
+                "lessons_carried_forward": 2,
+                "documents_requested": 8,
+                "documents_generated": 8,
+                "document_generation_failures": 0,
+            }]
         if resource == "school_ai_cost_summary":
-            return [
-                {
-                    "school_id": "school-1",
-                    "usage_month": "2026-08-01T00:00:00+00:00",
-                    "request_count": 5,
-                    "successful_requests": 5,
-                    "failed_requests": 0,
-                    "input_tokens": 1000,
-                    "output_tokens": 400,
-                    "cached_tokens": 100,
-                    "estimated_cost_usd": 0.25,
-                    "accepted_outputs": 4,
-                    "discarded_outputs": 1,
-                }
-            ]
-        if resource == "rpc/admin_weekly_submission_status":
+            return [{
+                "school_id": "school-1",
+                "usage_month": "2026-08-01T00:00:00+00:00",
+                "request_count": 5,
+                "successful_requests": 5,
+                "failed_requests": 0,
+                "input_tokens": 1000,
+                "output_tokens": 400,
+                "cached_tokens": 100,
+                "estimated_cost_usd": 0.25,
+                "accepted_outputs": 4,
+                "discarded_outputs": 1,
+            }]
+        if resource == "rpc/admin_weekly_submission_status_v2":
             assert payload == {
                 "target_week_start": "2026-08-10",
                 "target_school_id": None,
             }
-            return [
-                {
-                    "school_id": "school-1",
-                    "school_name": "Anniston High School",
-                    "teacher_id": "teacher-1",
-                    "teacher_name": "Teacher One",
-                    "assignment_id": "assignment-1",
-                    "course_name": "Pilot English 10",
-                    "week_start": "2026-08-10",
-                    "revision": 4,
-                    "submitted_revision": 3,
-                    "submission_status": "revised_after_submission",
-                    "submitted_at": "2026-08-08T23:00:00+00:00",
-                }
-            ]
-        if resource == "rpc/admin_weekly_submission_document":
+            return [{
+                "school_id": "school-1",
+                "school_name": "Anniston High School",
+                "teacher_id": "teacher-1",
+                "teacher_name": "Teacher One",
+                "assignment_id": "assignment-1",
+                "course_name": "Pilot English 10",
+                "week_start": "2026-08-10",
+                "revision": 4,
+                "lesson_plan_revision": 3,
+                "lesson_plan_submitted_at": "2026-08-08T23:00:00+00:00",
+                "completed_packet_revision": 4,
+                "completed_packet_submitted_at": "2026-08-14T22:00:00+00:00",
+            }]
+        if resource == "rpc/admin_weekly_submission_document_by_kind":
             assert payload == {
                 "target_assignment_id": "assignment-1",
                 "target_week_start": "2026-08-10",
+                "target_submission_kind": "completed_packet",
             }
-            return [
-                {
-                    "school_id": "school-1",
-                    "school_name": "Anniston High School",
-                    "teacher_id": "teacher-1",
-                    "teacher_name": "Teacher One",
-                    "assignment_id": "assignment-1",
-                    "course_name": "Pilot English 10",
-                    "week_start": "2026-08-10",
-                    "submitted_revision": 3,
-                    "submitted_at": "2026-08-08T23:00:00+00:00",
-                    "source_data": {
-                        "unit_topic": "Synthetic unit",
-                        "literacy_standards": "Synthetic literacy standard",
-                        "act_preparation": "Synthetic ACT preparation",
-                    },
-                }
-            ]
+            return [{
+                "school_id": "school-1",
+                "school_name": "Anniston High School",
+                "teacher_id": "teacher-1",
+                "teacher_name": "Teacher One",
+                "assignment_id": "assignment-1",
+                "course_name": "Pilot English 10",
+                "week_start": "2026-08-10",
+                "submitted_revision": 4,
+                "submitted_at": "2026-08-14T22:00:00+00:00",
+                "submission_kind": "completed_packet",
+                "source_data": {
+                    "unit_topic": "Synthetic unit",
+                    "literacy_standards": "Synthetic literacy standard",
+                    "act_preparation": "Synthetic ACT preparation",
+                    "reflection": '{"reflect_1":"Synthetic reflection"}',
+                },
+            }]
         raise AssertionError(f"Unexpected resource: {resource}")
 
 
@@ -193,6 +184,7 @@ def test_governed_reporting_views_are_normalized(monkeypatch: pytest.MonkeyPatch
     submitted_plan = administration_api.submitted_plan(
         "assignment-1",
         date(2026, 8, 10),
+        "completed_packet",
         _identity("school_admin"),
         Settings(),
     )
@@ -202,9 +194,12 @@ def test_governed_reporting_views_are_normalized(monkeypatch: pytest.MonkeyPatch
     assert usage.data_boundary == "teacher-and-curriculum-only"
     assert len(submissions) == 1
     assert submissions[0].teacher_name == "Teacher One"
-    assert submissions[0].submission_status == "revised_after_submission"
+    assert submissions[0].submission_status == "submitted"
+    assert submissions[0].lesson_plan_revision == 3
+    assert submissions[0].completed_packet_revision == 4
     assert submissions[0].submitted_revision == 3
-    assert submitted_plan.submitted_revision == 3
+    assert submitted_plan.submitted_revision == 4
+    assert submitted_plan.submission_kind == "completed_packet"
     assert submitted_plan.source_data["unit_topic"] == "Synthetic unit"
     assert len(costs) == 1
     assert str(costs[0].estimated_cost_usd) == "0.25"
