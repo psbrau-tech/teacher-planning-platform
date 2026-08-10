@@ -4,6 +4,7 @@ from app.standards_catalog_discovery import (
     StandardsCatalogDiscoveryError,
     discover_academic_sources,
     discover_alabama_catalogs,
+    discover_alternate_sources,
     discover_cte_cos_sources,
     discover_cte_program_sources,
 )
@@ -33,6 +34,19 @@ and Computer Science</a>
 <a href="/files/2024-social.pdf">2024 Alabama Course of Study: Social Studies</a>
 <h3>Supporting Documents</h3><h4>Title</h4>
 <a href="/files/support.pdf">2026 Supporting Course of Study Notes</a>
+</body></html>
+"""
+
+ALTERNATE_HTML = """
+<html><body>
+<h3>Standards and Courses of Study</h3><h4>Title</h4>
+<a href="/files/2021-aas-ela.pdf">English Language Arts – Alternate Achievement Standards 2021</a>
+<a href="/files/2017-aas-ela.pdf">English Language Arts – Alternate Achievement Standards</a>
+<a href="/files/2019-aas-math.pdf">Math – Alternate Achievement Standards</a>
+<a href="/files/2017-aas-science.pdf">Science – Alternative Achievement Standards</a>
+<a href="/files/2017-aas-social.pdf">Social Studies – Alternate Achievement Standards</a>
+<h3>Assistive Technology</h3><h4>Title</h4>
+<a href="/files/unrelated.pdf">Alternate Format Textbooks</a>
 </body></html>
 """
 
@@ -88,6 +102,27 @@ def test_academic_discovery_keeps_current_course_studies_and_distinct_math_cours
     assert all(source.category_name != "Supporting Documents" for source in sources)
 
 
+def test_alternate_discovery_keeps_four_current_aas_subjects_and_ignores_retired_ela() -> None:
+    sources = discover_alternate_sources(ALTERNATE_HTML)
+    by_key = {source.source_key: source for source in sources}
+
+    assert set(by_key) == {
+        "alabama_alternate_english_language_arts",
+        "alabama_alternate_mathematics",
+        "alabama_alternate_science",
+        "alabama_alternate_social_studies",
+    }
+    assert by_key["alabama_alternate_english_language_arts"].edition == "2021"
+    assert by_key["alabama_alternate_english_language_arts"].parser_key_hint == (
+        "alabama_aas_ela_2021"
+    )
+    assert by_key["alabama_alternate_mathematics"].edition == "2019"
+    assert by_key["alabama_alternate_science"].edition == "2017"
+    assert by_key["alabama_alternate_social_studies"].edition == "2017"
+    assert all(source.family == "alabama_alternate" for source in sources)
+    assert all(source.source_kind == "alternate_achievement_standards" for source in sources)
+
+
 def test_cte_cos_discovery_keeps_distinct_general_and_human_services_sources() -> None:
     sources = discover_cte_cos_sources(CTE_COS_HTML)
     by_key = {source.source_key: source for source in sources}
@@ -124,6 +159,7 @@ def test_cte_program_discovery_uses_latest_guide_and_keeps_distinct_program_fami
 def test_combined_catalog_deduplicates_by_stable_logical_source_key() -> None:
     sources = discover_alabama_catalogs(
         academic_html=ACADEMIC_HTML,
+        alternate_html=ALTERNATE_HTML,
         cte_cos_html=CTE_COS_HTML,
         cte_program_html=CTE_PROGRAM_HTML,
     )
@@ -131,6 +167,7 @@ def test_combined_catalog_deduplicates_by_stable_logical_source_key() -> None:
     keys = [source.source_key for source in sources]
     assert len(keys) == len(set(keys))
     assert any(source.family == "alabama_academic" for source in sources)
+    assert any(source.family == "alabama_alternate" for source in sources)
     assert any(source.family == "alabama_cte" for source in sources)
     assert any(source.family == "alabama_cte_program" for source in sources)
 
