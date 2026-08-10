@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+from io import BytesIO
 from pathlib import Path
+
+from pypdf import PdfReader, PdfWriter
 
 from .document_sections import HqiDocument
 from .hqi_document_renderer import RenderedHqiDocument, render_hqi_document, render_hqi_packet
@@ -37,7 +40,6 @@ def normalize_planning_payload(payload: dict[str, str]) -> dict[str, str]:
         if isinstance(value, str) and (field not in normalized or not normalized.get(field)):
             normalized[field] = value
 
-    # These integrated planning fields have direct equivalents in the approved document contract.
     set_if_blank("teacher", payload.get("teacher"))
     set_if_blank("course", payload.get("course"))
     set_if_blank("grade", payload.get("grade"))
@@ -51,10 +53,6 @@ def normalize_planning_payload(payload: dict[str, str]) -> dict[str, str]:
     set_if_blank("do", payload.get("do"))
     set_if_blank("resources", payload.get("resources"))
 
-    # The integrated weekly plan contains a teacher-approved learning target and an explicit
-    # teacher-approved narrative for each scheduled weekday. Those have defensible counterparts in
-    # the Week at a Glance. Unscheduled weekdays remain blank. More specialized rows are not
-    # inferred from generic assessments or activities.
     learning_targets = payload.get("learning_targets", "")
     for day_name, suffix in _DAY_ALIASES:
         daily_text = payload.get(day_name, "")
@@ -62,13 +60,6 @@ def normalize_planning_payload(payload: dict[str, str]) -> dict[str, str]:
             continue
         set_if_blank(f"clt_{suffix}", learning_targets)
         set_if_blank(f"rrt_{suffix}", daily_text)
-
-    # Do not coerce broad planning fields into more specific district-document concepts. In
-    # particular, learning targets are not proficiency descriptors; generic activities are not
-    # necessarily a performance task; and generic assessments are not automatically formative,
-    # summative, checks for understanding, or evidence of learning. Exact teacher-authored PDF
-    # fields (including cfu_mon, formative, performance_task, etc.) remain supported through the
-    # exact-field pass above.
 
     reflection_value = payload.get("reflection")
     if isinstance(reflection_value, str) and reflection_value:
@@ -116,12 +107,38 @@ def generate_anniston_hqi_document(
     )
 
 
+def generate_anniston_lesson_plan_packet(
+    payload: dict[str, str],
+    *,
+    flatten: bool = False,
+    template_path: Path = DEFAULT_TEMPLATE_PATH,
+) -> tuple[bytes, tuple[RenderedHqiDocument, ...]]:
+    """Render the pre-instruction weekly submission: framework + Week at a Glance only."""
+    normalized = normalize_planning_payload(payload)
+    documents = tuple(
+        render_hqi_document(template_path, normalized, document, flatten=flatten)
+        for document in (
+            HqiDocument.INSTRUCTIONAL_FRAMEWORK,
+            HqiDocument.WEEK_AT_A_GLANCE,
+        )
+    )
+    writer = PdfWriter()
+    for rendered in documents:
+        reader = PdfReader(BytesIO(rendered.pdf_bytes))
+        for page in reader.pages:
+            writer.add_page(page)
+    output = BytesIO()
+    writer.write(output)
+    return output.getvalue(), documents
+
+
 def generate_anniston_hqi_packet(
     payload: dict[str, str],
     *,
     flatten: bool = False,
     template_path: Path = DEFAULT_TEMPLATE_PATH,
 ) -> tuple[bytes, tuple[RenderedHqiDocument, ...]]:
+    """Render the completed-week packet: lesson plan/grid plus teacher reflection."""
     return render_hqi_packet(
         template_path,
         normalize_planning_payload(payload),
