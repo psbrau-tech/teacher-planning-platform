@@ -97,6 +97,9 @@ declare
   canonical_course_id uuid;
   source_relationship text;
   source_priority integer;
+  projected_category_key text;
+  projected_category_name text;
+  projected_category_type text;
 begin
   select
     id,
@@ -143,15 +146,25 @@ begin
     else 50
   end;
 
+  if src.source_kind = 'alternate_achievement_standards' then
+    projected_category_key := 'alternate_achievement_' || src.catalog_category_key;
+    projected_category_name := src.catalog_category_name || ' — Alternate Achievement Standards';
+    projected_category_type := 'alternate_achievement_subject';
+  else
+    projected_category_key := src.catalog_category_key;
+    projected_category_name := src.catalog_category_name;
+    projected_category_type := src.catalog_category_type;
+  end if;
+
   insert into public.standard_catalog_categories (
     category_key,
     display_name,
     category_type,
     is_active
   ) values (
-    src.catalog_category_key,
-    src.catalog_category_name,
-    src.catalog_category_type,
+    projected_category_key,
+    projected_category_name,
+    projected_category_type,
     true
   )
   on conflict (category_key) do update set
