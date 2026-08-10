@@ -117,8 +117,10 @@ def test_ai_planning_remains_teacher_reviewed_and_recoverable() -> None:
     assert "Generate another suggestion" in planning
     assert "Use all remaining suggestions" in planning
     assert "fieldToRegenerate?: PlanningFieldKey" in planning
-    assert '{ ...currentFields, [fieldToRegenerate]: "" }' in planning
-    assert "requestDraft(field)" in planning
+    assert "BASE_FIELD_SET.has(fieldToRegenerate)" in planning
+    assert 'request[fieldToRegenerate] = ""' in planning
+    assert "requestBaseDraft(field)" in planning
+    assert "requestDistrictDraft()" in planning
     assert 'Authorization: `Bearer ${accessToken}`' in planning
     assert "Nothing is saved until you save your weekly plan" in planning
     assert "hasScheduledLessons" in planning

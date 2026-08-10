@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 
 from .act_reference_admin_api import router as act_reference_admin_router
 from .administration_api import router as administration_router
+from .ai_district_planning_api import router as ai_district_planning_router
 from .ai_planning_api import router as ai_planning_router
 from .ai_planning_resilient_api import router as ai_planning_resilient_router
 from .ai_reflection_api import router as ai_reflection_router
@@ -76,6 +77,7 @@ app.include_router(standards_admin_router)
 # fail-closed governed references while retaining the rest of a valid teacher planning draft.
 app.include_router(ai_planning_resilient_router)
 app.include_router(ai_planning_router)
+app.include_router(ai_district_planning_router)
 app.include_router(ai_reflection_router)
 app.include_router(weekly_draft_router)
 app.include_router(friday_validation_router)

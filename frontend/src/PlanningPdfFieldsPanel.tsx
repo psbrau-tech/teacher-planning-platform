@@ -42,9 +42,9 @@ export function PlanningPdfFieldsPanel({ draft, disabled = false, onChange }: Pr
     <section className="district-pdf-fields">
       <div className="section-heading compact">
         <div>
-          <p className="eyebrow">District planning document details</p>
-          <h3>Complete the fields that feed the official weekly lesson plan PDF</h3>
-          <p className="supporting">These fields map directly to the Instructional Planning Framework and Week at a Glance. TPP never invents missing district-required content.</p>
+          <p className="eyebrow">Continue the working plan</p>
+          <h3>District fields that complete the Weekly Lesson Plan PDF</h3>
+          <p className="supporting">These are part of the same weekly plan you reviewed above. The AI planning draft can recommend each field; accepted or edited suggestions appear here for your final review before saving.</p>
         </div>
       </div>
 
@@ -62,7 +62,7 @@ export function PlanningPdfFieldsPanel({ draft, disabled = false, onChange }: Pr
       <details className="setup-section" open>
         <summary>Week at a Glance</summary>
         <div className="section-heading compact">
-          <p className="supporting">Complete the six instructional components for each scheduled day. Use the prefill button to copy only content that already has an equivalent in the working plan.</p>
+          <p className="supporting">AI suggestions are limited to days with scheduled lessons. You can also use the prefill button to copy semantically equivalent content already present in the working plan without making another AI request.</p>
           <button type="button" className="secondary" disabled={disabled} onClick={prefillMatchingFields}>Prefill matching fields</button>
         </div>
         <div className="week-at-glance-editor">

@@ -48,6 +48,15 @@ function parseReflection(value: string | undefined): ReflectionFields {
   }
 }
 
+async function responseDetail(response: Response, fallback: string): Promise<string> {
+  try {
+    const body = await response.json() as { detail?: unknown };
+    return typeof body.detail === "string" && body.detail.trim() ? body.detail : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export function AiReflectionPanel({
   accessToken,
   assignmentId,
@@ -58,6 +67,9 @@ export function AiReflectionPanel({
   const [responses, setResponses] = useState<ReflectionFields>(emptyReflection);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [previewWorking, setPreviewWorking] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -84,6 +96,10 @@ export function AiReflectionPanel({
     return () => { active = false; };
   }, [accessToken, assignmentId, weekStart]);
 
+  useEffect(() => () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
+
   const answeredCount = useMemo(
     () => REFLECTION_PROMPTS.filter((_prompt, index) => (responses[`reflect_${index + 1}`] ?? "").length > 0).length,
     [responses],
@@ -95,8 +111,41 @@ export function AiReflectionPanel({
       onApplyReflection(JSON.stringify(next));
       return next;
     });
-    setMessage("Reflection updated in the working plan. Save the weekly draft to keep your changes.");
+    setMessage("Reflection updated in the working plan. Save the Friday closeout to keep your changes.");
   };
+
+  async function viewSavedReflection() {
+    if (!assignmentId || !accessToken) return;
+    setPreviewWorking(true);
+    setPreviewError(null);
+    try {
+      const draftResponse = await fetch(
+        `/api/v1/weekly-drafts?assignment_id=${encodeURIComponent(assignmentId)}&week_start=${encodeURIComponent(weekStart)}`,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      );
+      if (!draftResponse.ok) throw new Error(await responseDetail(draftResponse, "Save the Friday closeout before previewing the reflection PDF."));
+      const saved = await draftResponse.json() as WeeklyDraftRead;
+      if (!saved.content.reflection?.trim()) throw new Error("Save the Friday closeout before previewing the reflection PDF.");
+      const pdfResponse = await fetch("/api/v1/documents/anniston-hqi/weekly-reflection", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify(saved.content),
+      });
+      if (!pdfResponse.ok) throw new Error(await responseDetail(pdfResponse, "The reflection PDF could not be generated."));
+      const blob = await pdfResponse.blob();
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(URL.createObjectURL(blob));
+    } catch (caught) {
+      setPreviewError(caught instanceof Error ? caught.message : "The reflection PDF could not be generated.");
+    } finally {
+      setPreviewWorking(false);
+    }
+  }
+
+  function closePreview() {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(null);
+  }
 
   return (
     <section className="panel ai-reflection-panel" aria-labelledby="weekly-reflection-heading">
@@ -147,11 +196,27 @@ export function AiReflectionPanel({
       {disabled ? (
         <p className="guidance-text">Complete Friday validation before entering the required weekly reflection.</p>
       ) : (
-        <p className="guidance-text">
-          All 12 district prompts are required for the normal weekly closeout. TPP does not evaluate the substance of your response.
-        </p>
+        <>
+          <p className="guidance-text">
+            All 12 district prompts are required for the normal weekly closeout. TPP does not evaluate the substance of your response.
+          </p>
+          <div className="button-row">
+            <button type="button" className="secondary" disabled={previewWorking} onClick={() => void viewSavedReflection()}>
+              {previewWorking ? "Preparing reflection…" : "View saved reflection PDF"}
+            </button>
+          </div>
+        </>
       )}
+      {previewError ? <p className="error-message" role="alert">{previewError}</p> : null}
       {message ? <p className="success-message" role="status">{message}</p> : null}
+      {previewUrl ? (
+        <div className="pdf-modal-backdrop" role="presentation">
+          <section className="pdf-modal" role="dialog" aria-modal="true" aria-label="Weekly Reflection PDF preview">
+            <div className="pdf-modal-header"><h3>Weekly Reflection / PLC Discussion</h3><button type="button" className="secondary" onClick={closePreview}>Close preview</button></div>
+            <iframe className="pdf-preview-frame" src={previewUrl} title="Weekly Reflection / PLC Discussion PDF" />
+          </section>
+        </div>
+      ) : null}
     </section>
   );
 }
