@@ -17,17 +17,22 @@ _AAS_CODE_PATTERN = (
 _GENERAL_CODE_PATTERN = (
     r"(?:ELA21|ELA|SCI|SS)(?:\.(?!AAS\b)[A-Za-z0-9]+)+\s*[-–]\s*"
 )
+_ELA_GENERAL_CODE_PATTERN = r"(?:K|[1-9]|1[0-2])\.\d+[a-z]?\s+"
 _AAS_STANDARD = re.compile(
     rf"^(?P<code>{_AAS_CODE_PATTERN})\s*(?:[-–]\s*)?(?P<text>.*)$",
     flags=re.IGNORECASE,
 )
-_GENERAL_PREFIX = re.compile(rf"^(?:{_GENERAL_CODE_PATTERN}|\d+\.\s+)", flags=re.IGNORECASE)
+_GENERAL_PREFIX = re.compile(
+    rf"^(?:{_GENERAL_CODE_PATTERN}|{_ELA_GENERAL_CODE_PATTERN}|\d+\.\s+)",
+    flags=re.IGNORECASE,
+)
 _INLINE_CODE = re.compile(
     rf"(?={_AAS_CODE_PATTERN}\s*(?:[-–]\s*)?)",
     flags=re.IGNORECASE,
 )
 _INLINE_GENERAL = re.compile(
     rf"(?=(?:(?<![A-Za-z0-9.]){_GENERAL_CODE_PATTERN}|"
+    rf"(?<![A-Za-z0-9.]){_ELA_GENERAL_CODE_PATTERN}|"
     rf"(?:^|(?<=[.!?)]))\d+\.\s+[A-Z]))",
     flags=re.IGNORECASE,
 )
@@ -62,11 +67,13 @@ _ELA = _SubjectSpec(
             grade_band="K" if grade == 0 else str(grade),
             headings=(
                 "kindergarten",
+                "kindergarten ela",
                 "kindergarten english language arts",
             )
             if grade == 0
             else (
                 f"grade {grade}",
+                f"grade {grade} ela",
                 f"grade {grade} english language arts",
             ),
         )
