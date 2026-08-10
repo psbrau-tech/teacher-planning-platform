@@ -6,12 +6,17 @@ import sys
 from datetime import date
 
 from app.settings import Settings
-from app.standards_maintenance import MaintenanceResult, service_role_client
+from app.standards_maintenance import (
+    MaintenanceResult,
+    StandardsMaintenanceError,
+    service_role_client,
+)
 from app.standards_monthly_run import (
     StandardsReconciliationRunError,
     StandardsReconciliationRunResult,
     run_standards_reconciliation,
 )
+from app.standards_parser_rematerialization import stage_parser_rematerialization_if_needed
 from app.standards_schedule import scheduled_reconciliation_kind
 
 
@@ -143,6 +148,18 @@ def run(argv: list[str] | None = None) -> int:
         source_keys=tuple(args.sources) if args.sources else None,
     )
 
+    parser_rematerializations: list[MaintenanceResult] = []
+    for source_result in result.source_results:
+        rematerialization = stage_parser_rematerialization_if_needed(
+            client,
+            source_result.source_key,
+            check_date=check_date,
+        )
+        if rematerialization is not None:
+            parser_rematerializations.append(rematerialization)
+
+    requires_review = result.requires_review or bool(parser_rematerializations)
+
     print(
         json.dumps(
             {
@@ -151,7 +168,10 @@ def run(argv: list[str] | None = None) -> int:
                 "reconciliation_kind": reconciliation_kind,
                 "catalog": _catalog_payload(result),
                 "sources": [_result_payload(item) for item in result.source_results],
-                "requires_review": result.requires_review,
+                "parser_rematerializations": [
+                    _result_payload(item) for item in parser_rematerializations
+                ],
+                "requires_review": requires_review,
                 "has_unavailable_error": result.has_unavailable_error,
             },
             sort_keys=True,
@@ -160,7 +180,7 @@ def run(argv: list[str] | None = None) -> int:
 
     if result.has_unavailable_error:
         return 2
-    if result.requires_review:
+    if requires_review:
         return 3
     return 0
 
@@ -168,7 +188,7 @@ def run(argv: list[str] | None = None) -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(run())
-    except StandardsReconciliationRunError as error:
+    except (StandardsReconciliationRunError, StandardsMaintenanceError) as error:
         print(
             json.dumps(
                 {
