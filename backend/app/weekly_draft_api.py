@@ -1,12 +1,20 @@
+from __future__ import annotations
+
+import json
 from datetime import date, timedelta
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from .auth import AuthenticatedTeacher, require_teacher
 from .settings import Settings, get_settings
-from .supabase_persistence import PersistenceError, SupabaseWeeklyDraftStore
+from .supabase_persistence import (
+    PersistenceError,
+    SupabaseFridayValidationStore,
+    SupabaseWeeklyDraftStore,
+)
 from .supabase_rest import SupabaseRestClient, SupabaseRestError
 from .weekly_drafts import WeeklyDraft, WeeklyDraftStore, weekly_draft_store
 
@@ -47,7 +55,27 @@ def _status(is_draft: bool, submitted_at: str | None) -> str:
     return "not_submitted"
 
 
-def _store_for(teacher: AuthenticatedTeacher, settings: Settings) -> WeeklyDraftStore | SupabaseWeeklyDraftStore:
+def _reflection_complete(content: dict[str, str]) -> bool:
+    raw = content.get("reflection", "")
+    if not raw:
+        return False
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(parsed, dict):
+        return False
+    return all(
+        isinstance(parsed.get(f"reflect_{index}"), str)
+        and bool(parsed[f"reflect_{index}"].strip())
+        for index in range(1, 13)
+    )
+
+
+def _store_for(
+    teacher: AuthenticatedTeacher,
+    settings: Settings,
+) -> WeeklyDraftStore | SupabaseWeeklyDraftStore:
     if teacher.access_token is None:
         return weekly_draft_store
     return SupabaseWeeklyDraftStore(
@@ -56,12 +84,24 @@ def _store_for(teacher: AuthenticatedTeacher, settings: Settings) -> WeeklyDraft
     )
 
 
-def _submission_state(draft: WeeklyDraft, teacher: AuthenticatedTeacher, settings: Settings) -> tuple[bool, str | None]:
+def _submission_state(
+    draft: WeeklyDraft,
+    teacher: AuthenticatedTeacher,
+    settings: Settings,
+) -> tuple[bool, str | None]:
     if teacher.access_token is None:
         return draft.is_draft, draft.submitted_at.isoformat() if draft.submitted_at else None
     try:
-        payload = SupabaseRestClient.from_settings(settings, access_token=teacher.access_token).request(
-            "GET", "weekly_plan_snapshots", params={"id": f"eq.{draft.id}", "select": "is_draft,approved_at", "limit": "1"},
+        payload = SupabaseRestClient.from_settings(
+            settings, access_token=teacher.access_token
+        ).request(
+            "GET",
+            "weekly_plan_snapshots",
+            params={
+                "id": f"eq.{draft.id}",
+                "select": "is_draft,approved_at",
+                "limit": "1",
+            },
         )
     except SupabaseRestError as error:
         if error.status_code in {401, 403}:
@@ -78,19 +118,61 @@ def _submission_state(draft: WeeklyDraft, teacher: AuthenticatedTeacher, setting
     return is_draft, submitted_at
 
 
-def _to_read_model(draft: WeeklyDraft, teacher: AuthenticatedTeacher, settings: Settings) -> WeeklyDraftRead:
+def _to_read_model(
+    draft: WeeklyDraft,
+    teacher: AuthenticatedTeacher,
+    settings: Settings,
+) -> WeeklyDraftRead:
     is_draft, submitted_at = _submission_state(draft, teacher, settings)
     return WeeklyDraftRead(
-        id=draft.id, teacher_id=draft.teacher_id, assignment_id=draft.assignment_id,
-        week_start=draft.week_start, content=draft.content, revision=draft.revision,
-        updated_at=draft.updated_at.isoformat(), is_draft=is_draft,
-        submission_status=_status(is_draft, submitted_at), submitted_at=submitted_at,
+        id=draft.id,
+        teacher_id=draft.teacher_id,
+        assignment_id=draft.assignment_id,
+        week_start=draft.week_start,
+        content=draft.content,
+        revision=draft.revision,
+        updated_at=draft.updated_at.isoformat(),
+        is_draft=is_draft,
+        submission_status=_status(is_draft, submitted_at),
+        submitted_at=submitted_at,
     )
+
+
+def _submission_kind(
+    current: WeeklyDraft,
+    teacher: AuthenticatedTeacher,
+    settings: Settings,
+) -> str:
+    """Classify the explicit submit action from governed workflow state.
+
+    A lesson-plan submission occurs before Friday closeout. A completed packet requires both
+    a saved Friday validation and all 12 teacher-authored reflection prompts. This avoids
+    guessing from date/time while preserving the already separate teacher UI actions.
+    """
+    if teacher.access_token is None or not _reflection_complete(current.content):
+        return "lesson_plan"
+    try:
+        validation = SupabaseFridayValidationStore(
+            client=SupabaseRestClient.from_settings(
+                settings, access_token=teacher.access_token
+            ),
+            authenticated_teacher_id=teacher.subject,
+        ).get(
+            teacher.subject,
+            UUID(current.assignment_id),
+            current.week_start,
+        )
+    except (PersistenceError, ValueError) as error:
+        if isinstance(error, PersistenceError):
+            raise HTTPException(status_code=error.status_code, detail=str(error)) from error
+        raise HTTPException(status_code=409, detail="Friday closeout context is invalid") from error
+    return "completed_packet" if validation is not None else "lesson_plan"
 
 
 @router.get("", response_model=WeeklyDraftRead)
 def get_weekly_draft(
-    assignment_id: Annotated[str, Query(min_length=1)], week_start: date,
+    assignment_id: Annotated[str, Query(min_length=1)],
+    week_start: date,
     teacher: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> WeeklyDraftRead:
@@ -112,11 +194,17 @@ def save_weekly_draft(
     store = _store_for(teacher, settings)
     try:
         current = store.get(teacher.subject, payload.assignment_id, payload.week_start)
-        if current is not None and payload.expected_revision == current.revision and current.content == payload.content:
+        if (
+            current is not None
+            and payload.expected_revision == current.revision
+            and current.content == payload.content
+        ):
             return _to_read_model(current, teacher, settings)
         draft = store.save(
-            teacher_id=teacher.subject, assignment_id=payload.assignment_id,
-            week_start=payload.week_start, content=payload.content,
+            teacher_id=teacher.subject,
+            assignment_id=payload.assignment_id,
+            week_start=payload.week_start,
+            content=payload.content,
             expected_revision=payload.expected_revision,
         )
     except PersistenceError as error:
@@ -136,9 +224,12 @@ def save_friday_closeout(
     if teacher.access_token is None:
         try:
             draft = weekly_draft_store.save(
-                teacher_id=teacher.subject, assignment_id=payload.assignment_id,
-                week_start=payload.week_start, content=payload.content,
-                expected_revision=payload.expected_revision, require_planning_fields=False,
+                teacher_id=teacher.subject,
+                assignment_id=payload.assignment_id,
+                week_start=payload.week_start,
+                content=payload.content,
+                expected_revision=payload.expected_revision,
+                require_planning_fields=False,
             )
         except ValueError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
@@ -160,7 +251,8 @@ def save_friday_closeout(
     try:
         if current is None:
             rows = client.request(
-                "POST", "weekly_plan_snapshots",
+                "POST",
+                "weekly_plan_snapshots",
                 payload={
                     "teaching_assignment_id": payload.assignment_id,
                     "week_start": payload.week_start.isoformat(),
@@ -173,9 +265,14 @@ def save_friday_closeout(
             )
         else:
             rows = client.request(
-                "PATCH", "weekly_plan_snapshots",
+                "PATCH",
+                "weekly_plan_snapshots",
                 params={"id": f"eq.{current.id}", "revision": f"eq.{current.revision}"},
-                payload={"source_data": dict(payload.content), "updated_by": teacher.subject, "is_draft": True},
+                payload={
+                    "source_data": dict(payload.content),
+                    "updated_by": teacher.subject,
+                    "is_draft": True,
+                },
                 prefer="return=representation",
             )
     except SupabaseRestError as error:
@@ -202,8 +299,10 @@ def submit_weekly_draft(
     if teacher.access_token is None:
         try:
             draft = weekly_draft_store.submit(
-                teacher_id=teacher.subject, assignment_id=payload.assignment_id,
-                week_start=payload.week_start, expected_revision=payload.expected_revision,
+                teacher_id=teacher.subject,
+                assignment_id=payload.assignment_id,
+                week_start=payload.week_start,
+                expected_revision=payload.expected_revision,
             )
         except ValueError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
@@ -215,15 +314,22 @@ def submit_weekly_draft(
         raise HTTPException(status_code=error.status_code, detail=str(error)) from error
     if current is None:
         raise HTTPException(status_code=404, detail="Weekly draft not found")
+
+    submission_kind = _submission_kind(current, teacher, settings)
     try:
         SupabaseRestClient.from_settings(settings, access_token=teacher.access_token).request(
-            "POST", "rpc/submit_weekly_plan",
-            payload={"target_snapshot_id": current.id, "expected_revision": payload.expected_revision},
+            "POST",
+            "rpc/submit_weekly_plan_typed",
+            payload={
+                "target_snapshot_id": current.id,
+                "expected_revision": payload.expected_revision,
+                "target_submission_kind": submission_kind,
+            },
         )
     except SupabaseRestError as error:
         if error.status_code in {401, 403}:
             raise HTTPException(status_code=403, detail="Weekly plan submission is not authorized") from error
-        if error.status_code in {400, 409}:
+        if error.status_code in {400, 409, 422}:
             raise HTTPException(status_code=409, detail="Weekly plan revision conflict") from error
         raise HTTPException(status_code=503, detail="Weekly plan submission is unavailable") from error
     refreshed = store.get(teacher.subject, payload.assignment_id, payload.week_start)
