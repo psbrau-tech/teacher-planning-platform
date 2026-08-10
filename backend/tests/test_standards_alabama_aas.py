@@ -17,29 +17,31 @@ def _document(lines: list[str]) -> ExtractedDocument:
     )
 
 
-def test_ela_aas_parser_materializes_k_12_by_grade() -> None:
+def test_ela_aas_parser_materializes_official_k_12_pdf_pattern() -> None:
     lines: list[str] = []
     for grade in range(13):
         token = "K" if grade == 0 else str(grade)
-        heading = (
-            "Kindergarten English Language Arts"
-            if grade == 0
-            else f"Grade {grade} English Language Arts"
-        )
+        heading = "KINDERGARTEN ELA" if grade == 0 else f"Grade {grade} ELA"
         lines.append(heading)
         for number in range(1, 4):
-            lines.extend(
-                [
-                    f"ELA21.{token}.{number}- General standard {number}.",
-                    f"ELA21.AAS.{token}.{number}- Alternate ELA standard {number}.",
-                ]
+            lines.append(
+                f"{token}.{number} General standard {number}. "
+                f"ELA.AAS.{token}.{number} Alternate ELA standard {number}."
             )
 
     parsed = parse_alabama_aas_ela_2021(_document(lines))
 
     assert len(parsed.courses) == 13
-    assert parsed.courses[0].standards[0].code == "ELA21.AAS.K.1"
-    assert parsed.courses[-1].standards[-1].code == "ELA21.AAS.12.3"
+    assert parsed.courses[0].standards[0].code == "ELA.AAS.K.1"
+    assert parsed.courses[-1].standards[-1].code == "ELA.AAS.12.3"
+
+    kindergarten = parsed.courses[0]
+    assert [standard.text for standard in kindergarten.standards] == [
+        "Alternate ELA standard 1.",
+        "Alternate ELA standard 2.",
+        "Alternate ELA standard 3.",
+    ]
+    assert all("General standard" not in standard.text for standard in kindergarten.standards)
 
 
 def test_math_aas_parser_ignores_general_rows_and_page_boundary_join() -> None:
