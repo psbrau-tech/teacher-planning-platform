@@ -15,151 +15,61 @@ type WeeklySubmission = {
   submitted_at: string | null;
 };
 
-type SubmittedPlan = {
-  school_id: string;
-  school_name: string;
-  teacher_id: string;
-  teacher_name: string;
-  assignment_id: string;
-  course_name: string;
-  week_start: string;
-  submitted_revision: number;
-  submitted_at: string;
-  source_data: Record<string, string>;
-};
-
-type Props = {
-  accessToken: string;
-  roles: string[];
-  disabled?: boolean;
-};
+type Props = { accessToken: string; roles: string[]; disabled?: boolean };
 
 function mondayFor(dateValue = new Date()): string {
-  const date = new Date(dateValue);
-  const day = date.getDay();
-  const offset = day === 0 ? -6 : 1 - day;
-  date.setDate(date.getDate() + offset);
-  return date.toISOString().slice(0, 10);
+  const date = new Date(dateValue); const day = date.getDay(); const offset = day === 0 ? -6 : 1 - day;
+  date.setDate(date.getDate() + offset); return date.toISOString().slice(0, 10);
 }
-
-function labelFor(status: string): string {
-  return {
-    submitted: "Submitted",
-    revised_after_submission: "Revised after submission",
-    draft: "Draft — not submitted",
-    not_started: "Not started",
-    no_course: "No active course",
-  }[status] ?? status;
-}
-
-function fieldLabel(key: string): string {
-  return key
-    .split("_")
-    .map((part) => part ? part[0].toUpperCase() + part.slice(1) : part)
-    .join(" ");
-}
+function labelFor(status: string): string { return { submitted: "Submitted", revised_after_submission: "Revised after submission", draft: "Draft — not submitted", not_started: "Not started", no_course: "No active course" }[status] ?? status; }
+function rowKey(row: WeeklySubmission): string { return `${row.assignment_id ?? "none"}:${row.week_start}`; }
+function downloadBlob(blob: Blob, filename: string) { const url = URL.createObjectURL(blob); const anchor = window.document.createElement("a"); anchor.href = url; anchor.download = filename; window.document.body.appendChild(anchor); anchor.click(); anchor.remove(); URL.revokeObjectURL(url); }
 
 export function AdminSubmissionPanel({ accessToken, roles, disabled = false }: Props) {
   const [weekStart, setWeekStart] = useState(mondayFor());
   const [schoolFilter, setSchoolFilter] = useState("");
-  const [teacherFilter, setTeacherFilter] = useState("");
+  const [selectedTeacherIds, setSelectedTeacherIds] = useState<Set<string>>(new Set());
+  const [courseFilter, setCourseFilter] = useState("");
+  const [selectedPlanKeys, setSelectedPlanKeys] = useState<Set<string>>(new Set());
   const [rows, setRows] = useState<WeeklySubmission[]>([]);
-  const [selectedPlan, setSelectedPlan] = useState<SubmittedPlan | null>(null);
+  const [selectedRow, setSelectedRow] = useState<WeeklySubmission | null>(null);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfPreviewBlob, setPdfPreviewBlob] = useState<Blob | null>(null);
+  const [pdfPreviewTitle, setPdfPreviewTitle] = useState("");
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState("");
-
-  const isPlatformAdmin = roles.includes("platform_admin");
-  const isDistrictAdmin = roles.includes("district_admin");
-  const isSchoolAdmin = roles.includes("school_admin");
+  const isPlatformAdmin = roles.includes("platform_admin"); const isDistrictAdmin = roles.includes("district_admin"); const isSchoolAdmin = roles.includes("school_admin");
   const scopeLabel = isDistrictAdmin ? "District Administrator" : isSchoolAdmin ? "School Administrator" : isPlatformAdmin ? "Planning Administration" : "Administration";
   const canFilterSchools = isPlatformAdmin || isDistrictAdmin;
+  const schools = useMemo(() => Array.from(new Map(rows.map((row) => [row.school_id, row.school_name])).entries()).sort((left, right) => left[1].localeCompare(right[1])), [rows]);
+  const teachers = useMemo(() => Array.from(new Map(rows.filter((row) => !schoolFilter || row.school_id === schoolFilter).map((row) => [row.teacher_id, row.teacher_name])).entries()).sort((left, right) => left[1].localeCompare(right[1])), [rows, schoolFilter]);
+  const filteredRows = useMemo(() => { const courseSearch = courseFilter.trim().toLowerCase(); return rows.filter((row) => { if (schoolFilter && row.school_id !== schoolFilter) return false; if (selectedTeacherIds.size && !selectedTeacherIds.has(row.teacher_id)) return false; if (courseSearch && !(row.course_name ?? "").toLowerCase().includes(courseSearch)) return false; return true; }); }, [rows, schoolFilter, selectedTeacherIds, courseFilter]);
+  const selectableFilteredRows = useMemo(() => filteredRows.filter((row) => Boolean(row.assignment_id && row.submitted_revision)), [filteredRows]);
+  const selectedRows = useMemo(() => rows.filter((row) => selectedPlanKeys.has(rowKey(row)) && row.assignment_id && row.submitted_revision), [rows, selectedPlanKeys]);
+  const allFilteredSelected = selectableFilteredRows.length > 0 && selectableFilteredRows.every((row) => selectedPlanKeys.has(rowKey(row)));
+  const summary = useMemo(() => ({ submitted: filteredRows.filter((row) => row.submission_status === "submitted").length, revised: filteredRows.filter((row) => row.submission_status === "revised_after_submission").length, pending: filteredRows.filter((row) => ["draft", "not_started"].includes(row.submission_status)).length }), [filteredRows]);
 
-  const schools = useMemo(
-    () => Array.from(new Map(rows.map((row) => [row.school_id, row.school_name])).entries()).sort((left, right) => left[1].localeCompare(right[1])),
-    [rows],
-  );
-
-  const filteredRows = useMemo(() => {
-    const search = teacherFilter.trim().toLowerCase();
-    return rows.filter((row) => {
-      if (schoolFilter && row.school_id !== schoolFilter) return false;
-      if (!search) return true;
-      return row.teacher_name.toLowerCase().includes(search) || (row.course_name ?? "").toLowerCase().includes(search);
-    });
-  }, [rows, schoolFilter, teacherFilter]);
-
-  const summary = useMemo(() => ({
-    submitted: filteredRows.filter((row) => row.submission_status === "submitted").length,
-    revised: filteredRows.filter((row) => row.submission_status === "revised_after_submission").length,
-    pending: filteredRows.filter((row) => ["draft", "not_started"].includes(row.submission_status)).length,
-  }), [filteredRows]);
-
-  async function responseMessage(response: Response, fallback: string): Promise<string> {
-    try {
-      const payload = await response.json() as { detail?: string };
-      return payload.detail ?? fallback;
-    } catch {
-      return fallback;
-    }
-  }
-
-  async function load() {
-    setLoading(true);
-    setError("");
-    setSelectedPlan(null);
-    try {
-      const response = await fetch(`/api/v1/administration/submissions?week_start=${encodeURIComponent(weekStart)}`, { headers: { Authorization: `Bearer ${accessToken}` } });
-      if (!response.ok) throw new Error(await responseMessage(response, "Weekly submission reporting could not be loaded."));
-      setRows(await response.json() as WeeklySubmission[]);
-    } catch (caught) {
-      setRows([]);
-      setError(caught instanceof Error ? caught.message : "Weekly submission reporting could not be loaded.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function loadSubmittedPlan(assignmentId: string) {
-    setDetailLoading(true);
-    setError("");
-    try {
-      const response = await fetch(`/api/v1/administration/submissions/${encodeURIComponent(assignmentId)}?week_start=${encodeURIComponent(weekStart)}`, { headers: { Authorization: `Bearer ${accessToken}` } });
-      if (!response.ok) throw new Error(await responseMessage(response, "Submitted weekly plan could not be loaded."));
-      setSelectedPlan(await response.json() as SubmittedPlan);
-    } catch (caught) {
-      setSelectedPlan(null);
-      setError(caught instanceof Error ? caught.message : "Submitted weekly plan could not be loaded.");
-    } finally {
-      setDetailLoading(false);
-    }
-  }
+  async function responseMessage(response: Response, fallback: string): Promise<string> { try { const payload = await response.json() as { detail?: string }; return payload.detail ?? fallback; } catch { return fallback; } }
+  function closePreview() { if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl); setPdfPreviewUrl(null); setPdfPreviewBlob(null); setPdfPreviewTitle(""); setSelectedRow(null); }
+  function setPreview(blob: Blob, title: string, row: WeeklySubmission | null = null) { if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl); setPdfPreviewBlob(blob); setPdfPreviewUrl(URL.createObjectURL(blob)); setPdfPreviewTitle(title); setSelectedRow(row); }
+  function toggleTeacher(teacherId: string) { setSelectedTeacherIds((current) => { const next = new Set(current); if (next.has(teacherId)) next.delete(teacherId); else next.add(teacherId); return next; }); }
+  function togglePlan(row: WeeklySubmission) { const key = rowKey(row); setSelectedPlanKeys((current) => { const next = new Set(current); if (next.has(key)) next.delete(key); else next.add(key); return next; }); }
+  function toggleAllFiltered() { setSelectedPlanKeys((current) => { const next = new Set(current); if (allFilteredSelected) selectableFilteredRows.forEach((row) => next.delete(rowKey(row))); else selectableFilteredRows.forEach((row) => next.add(rowKey(row))); return next; }); }
+  async function load() { setLoading(true); setError(""); closePreview(); setSelectedPlanKeys(new Set()); try { const response = await fetch(`/api/v1/administration/submissions?week_start=${encodeURIComponent(weekStart)}`, { headers: { Authorization: `Bearer ${accessToken}` } }); if (!response.ok) throw new Error(await responseMessage(response, "Weekly submission reporting could not be loaded.")); setRows(await response.json() as WeeklySubmission[]); } catch (caught) { setRows([]); setError(caught instanceof Error ? caught.message : "Weekly submission reporting could not be loaded."); } finally { setLoading(false); } }
+  async function packetBlob(row: WeeklySubmission): Promise<Blob> { if (!row.assignment_id) throw new Error("Submitted plan is unavailable."); const response = await fetch(`/api/v1/administration/submissions/${encodeURIComponent(row.assignment_id)}/packet?week_start=${encodeURIComponent(row.week_start)}`, { headers: { Authorization: `Bearer ${accessToken}` } }); if (!response.ok) throw new Error(await responseMessage(response, "Submitted combined packet could not be loaded.")); return await response.blob(); }
+  async function batchPacketBlob(): Promise<Blob> { if (!selectedRows.length) throw new Error("Select at least one submitted plan."); const response = await fetch("/api/v1/administration/submissions/batch-packet", { method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ items: selectedRows.map((row) => ({ assignment_id: row.assignment_id, week_start: row.week_start })) }) }); if (!response.ok) throw new Error(await responseMessage(response, "Selected submitted plans could not be prepared.")); return await response.blob(); }
+  async function viewSubmittedPlan(row: WeeklySubmission) { setDetailLoading(true); setError(""); try { const blob = await packetBlob(row); setPreview(blob, `${row.teacher_name} · ${row.course_name ?? "Submitted plan"}`, row); } catch (caught) { closePreview(); setError(caught instanceof Error ? caught.message : "Submitted combined packet could not be loaded."); } finally { setDetailLoading(false); } }
+  async function reviewSelectedPlans() { setDetailLoading(true); setError(""); try { const blob = await batchPacketBlob(); setPreview(blob, `${selectedRows.length} selected submitted plan${selectedRows.length === 1 ? "" : "s"}`); } catch (caught) { closePreview(); setError(caught instanceof Error ? caught.message : "Selected submitted plans could not be prepared."); } finally { setDetailLoading(false); } }
+  async function downloadSelectedPlans() { setDetailLoading(true); setError(""); try { const blob = await batchPacketBlob(); downloadBlob(blob, `submitted-planning-batch-${weekStart}.pdf`); } catch (caught) { setError(caught instanceof Error ? caught.message : "Selected submitted plans could not be downloaded."); } finally { setDetailLoading(false); } }
+  function downloadPreview() { if (!pdfPreviewBlob) return; downloadBlob(pdfPreviewBlob, selectedRow ? `submitted-planning-packet-${selectedRow.week_start}.pdf` : `submitted-planning-batch-${weekStart}.pdf`); }
+  function printPreview() { if (!pdfPreviewUrl) return; const frame = window.document.createElement("iframe"); frame.style.position = "fixed"; frame.style.width = "0"; frame.style.height = "0"; frame.style.border = "0"; frame.src = pdfPreviewUrl; frame.onload = () => window.setTimeout(() => { frame.contentWindow?.focus(); frame.contentWindow?.print(); frame.remove(); }, 500); window.document.body.appendChild(frame); }
 
   useEffect(() => { void load(); }, [weekStart, accessToken]);
+  useEffect(() => { setSelectedTeacherIds((current) => new Set([...current].filter((id) => teachers.some(([teacherId]) => teacherId === id)))); }, [teachers]);
+  useEffect(() => () => { if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl); }, [pdfPreviewUrl]);
 
-  return (
-    <section>
-      <div className="section-heading compact">
-        <div>
-          <p className="eyebrow">{scopeLabel}</p>
-          <h2>Weekly plan submissions</h2>
-          <p className="supporting">Verify professional planning submissions by week and course, then inspect the exact immutable submitted revision.</p>
-        </div>
-      </div>
-      <div className="toolbar">
-        <label>Week of<input type="date" value={weekStart} disabled={disabled || loading} onChange={(event) => setWeekStart(event.target.value)} /></label>
-        {canFilterSchools && <label>School<select value={schoolFilter} onChange={(event) => setSchoolFilter(event.target.value)}><option value="">All governed schools</option>{schools.map(([schoolId, schoolName]) => <option value={schoolId} key={schoolId}>{schoolName}</option>)}</select></label>}
-        <label>Teacher or course<input type="search" value={teacherFilter} placeholder="Filter results" onChange={(event) => setTeacherFilter(event.target.value)} /></label>
-        <button className="secondary" disabled={disabled || loading} onClick={() => void load()}>Refresh submissions</button>
-      </div>
-      {error && <p className="error-message" role="alert">{error}</p>}
-      <section className="summary" aria-label="Weekly submission summary"><div><strong>{summary.submitted}</strong><span>submitted</span></div><div><strong>{summary.revised}</strong><span>revised after submission</span></div><div><strong>{summary.pending}</strong><span>not submitted</span></div><div><strong>{filteredRows.length}</strong><span>teacher-course records</span></div></section>
-      {filteredRows.length === 0 && !loading ? <div className="empty-state"><p>No governed teacher-course records match the selected week and filters.</p></div> : (
-        <div className="submission-table" role="region" aria-label="Weekly plan submission status" tabIndex={0}>
-          <table><thead><tr><th>School</th><th>Teacher</th><th>Course</th><th>Status</th><th>Submitted</th><th>Revision</th><th>Plan</th></tr></thead><tbody>{filteredRows.map((row) => <tr key={`${row.school_id}-${row.teacher_id}-${row.assignment_id ?? "none"}`}><td>{row.school_name}</td><td>{row.teacher_name}</td><td>{row.course_name ?? "—"}</td><td><span className={row.submission_status === "submitted" ? "status" : "badge"}>{labelFor(row.submission_status)}</span></td><td>{row.submitted_at ? new Date(row.submitted_at).toLocaleString() : "—"}</td><td>{row.submitted_revision ?? "—"}</td><td><button className="link-button" disabled={!row.assignment_id || !row.submitted_revision || disabled || detailLoading} onClick={() => row.assignment_id && void loadSubmittedPlan(row.assignment_id)}>View submitted plan</button></td></tr>)}</tbody></table>
-        </div>
-      )}
-      {selectedPlan && <article className="card submitted-plan-detail" aria-label="Submitted weekly plan detail"><div className="card-row"><div><span className="badge">Submitted revision {selectedPlan.submitted_revision}</span><h3>{selectedPlan.teacher_name} · {selectedPlan.course_name}</h3><p>{selectedPlan.school_name} · Week of {selectedPlan.week_start}</p><small>Submitted {new Date(selectedPlan.submitted_at).toLocaleString()}</small></div><button className="link-button" onClick={() => setSelectedPlan(null)}>Close</button></div><dl className="submitted-plan-fields">{Object.entries(selectedPlan.source_data).filter(([, value]) => value.trim()).map(([key, value]) => <div key={key}><dt>{fieldLabel(key)}</dt><dd>{value}</dd></div>)}</dl></article>}
-    </section>
-  );
+  return <section><div className="section-heading compact"><div><p className="eyebrow">{scopeLabel}</p><h2>Weekly plan submissions</h2><p className="supporting">Filter teachers and courses, select one or many immutable submitted revisions, then review, download, or print the Combined packet PDF.</p></div></div><div className="toolbar admin-submission-filters"><label>Week of<input type="date" value={weekStart} disabled={disabled || loading} onChange={(event) => setWeekStart(event.target.value)} /></label>{canFilterSchools && <label>School<select value={schoolFilter} onChange={(event) => { setSchoolFilter(event.target.value); setSelectedTeacherIds(new Set()); }}><option value="">All governed schools</option>{schools.map(([schoolId, schoolName]) => <option value={schoolId} key={schoolId}>{schoolName}</option>)}</select></label>}<details className="teacher-multi-filter"><summary>{selectedTeacherIds.size ? `${selectedTeacherIds.size} teacher${selectedTeacherIds.size === 1 ? "" : "s"} selected` : "All teachers"}</summary><div className="teacher-filter-options"><div className="teacher-filter-actions"><button type="button" className="link-button" onClick={() => setSelectedTeacherIds(new Set(teachers.map(([id]) => id)))}>Select all</button><button type="button" className="link-button" onClick={() => setSelectedTeacherIds(new Set())}>Clear</button></div>{teachers.map(([teacherId, teacherName]) => <label className="check" key={teacherId}><input type="checkbox" checked={selectedTeacherIds.has(teacherId)} onChange={() => toggleTeacher(teacherId)} />{teacherName}</label>)}</div></details><label>Course search<input type="search" value={courseFilter} placeholder="Filter courses" onChange={(event) => setCourseFilter(event.target.value)} /></label><button className="secondary" disabled={disabled || loading} onClick={() => void load()}>Refresh submissions</button></div>{error && <p className="error-message" role="alert">{error}</p>}<section className="summary" aria-label="Weekly submission summary"><div><strong>{summary.submitted}</strong><span>submitted</span></div><div><strong>{summary.revised}</strong><span>revised after submission</span></div><div><strong>{summary.pending}</strong><span>not submitted</span></div><div><strong>{filteredRows.length}</strong><span>teacher-course records</span></div></section>{selectedRows.length > 0 && <div className="bulk-review-bar" role="region" aria-label="Selected submitted plans"><strong>{selectedRows.length} submitted plan{selectedRows.length === 1 ? "" : "s"} selected</strong><div className="button-row"><button className="secondary" disabled={disabled || detailLoading} onClick={() => void reviewSelectedPlans()}>{detailLoading ? "Preparing selected plans…" : "Review selected PDFs"}</button><button className="secondary" disabled={disabled || detailLoading} onClick={() => void downloadSelectedPlans()}>Download selected PDF</button><button className="link-button" onClick={() => setSelectedPlanKeys(new Set())}>Clear selection</button></div></div>}{filteredRows.length === 0 && !loading ? <div className="empty-state"><p>No governed teacher-course records match the selected week and filters.</p></div> : <div className="submission-table" role="region" aria-label="Weekly plan submission status" tabIndex={0}><table><thead><tr><th className="selection-column"><label className="sr-only" htmlFor="select-all-submitted">Select all filtered submitted plans</label><input id="select-all-submitted" type="checkbox" checked={allFilteredSelected} disabled={!selectableFilteredRows.length} onChange={toggleAllFiltered} /></th><th>School</th><th>Teacher</th><th>Course</th><th>Status</th><th>Submitted</th><th>Revision</th><th>Plan</th></tr></thead><tbody>{filteredRows.map((row) => { const selectable = Boolean(row.assignment_id && row.submitted_revision); return <tr key={`${row.school_id}-${row.teacher_id}-${row.assignment_id ?? "none"}`}><td className="selection-column"><input type="checkbox" aria-label={`Select ${row.teacher_name} ${row.course_name ?? "plan"}`} checked={selectedPlanKeys.has(rowKey(row))} disabled={!selectable} onChange={() => togglePlan(row)} /></td><td>{row.school_name}</td><td>{row.teacher_name}</td><td>{row.course_name ?? "—"}</td><td><span className={row.submission_status === "submitted" ? "status" : "badge"}>{labelFor(row.submission_status)}</span></td><td>{row.submitted_at ? new Date(row.submitted_at).toLocaleString() : "—"}</td><td>{row.submitted_revision ?? "—"}</td><td><button className="link-button" disabled={!selectable || disabled || detailLoading} onClick={() => void viewSubmittedPlan(row)}>View submitted plan</button></td></tr>; })}</tbody></table></div>}
+    {pdfPreviewUrl && <div className="admin-pdf-backdrop" role="dialog" aria-modal="true" aria-label="Submitted combined packet preview"><section className="admin-pdf-modal"><div className="admin-pdf-heading"><div>{selectedRow && <span className="badge">Submitted revision {selectedRow.submitted_revision}</span>}<h3>{pdfPreviewTitle}</h3><p>{selectedRow ? `${selectedRow.school_name} · Week of ${selectedRow.week_start}` : `Week of ${weekStart} · immutable submitted revisions`}</p></div><div className="button-row"><button className="secondary" onClick={downloadPreview}>Download PDF</button><button className="secondary" onClick={printPreview}>Print</button><button className="secondary" onClick={closePreview}>Close</button></div></div><iframe src={pdfPreviewUrl} title="Submitted Combined packet PDF" /></section></div>}
+  </section>;
 }
