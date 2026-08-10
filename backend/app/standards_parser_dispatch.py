@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .standards_alabama_aas import (
+from .standards_alabama_aas_hardened import (
     parse_alabama_aas_ela_2021,
     parse_alabama_aas_math_2019,
     parse_alabama_aas_science_2017,
