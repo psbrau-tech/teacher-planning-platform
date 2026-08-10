@@ -31,8 +31,6 @@ from .friday_validation_api import router as friday_validation_router
 from .hqi_document_renderer import DOCUMENT_TITLES
 from .identity_api import router as identity_router
 from .live_planning_api import router as live_planning_router
-from .models import PlannedLesson
-from .pdf_fields import ALL_HQI_FIELDS
 from .planned_lesson_api import router as planned_lesson_router
 from .planner import build_weekly_plan
 from .readiness_api import router as readiness_router
@@ -78,7 +76,10 @@ app.include_router(friday_validation_router)
 
 def _require_template() -> None:
     if not DEFAULT_TEMPLATE_PATH.exists():
-        raise HTTPException(status_code=503, detail="The approved planning PDF template is unavailable")
+        raise HTTPException(
+            status_code=503,
+            detail="The approved planning PDF template is unavailable",
+        )
 
 
 @app.get("/health", tags=["operations"])
@@ -191,11 +192,12 @@ def generate_lesson_plan_packet(
         raise HTTPException(status_code=422, detail=str(error)) from error
     continuation_pages = sum(item.continuation_page_count for item in documents)
     suffix = "-flat" if flatten else ""
+    filename = f'anniston-weekly-lesson-plan{suffix}.pdf'
     return StreamingResponse(
         BytesIO(packet),
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f'attachment; filename="anniston-weekly-lesson-plan{suffix}.pdf"',
+            "Content-Disposition": f'attachment; filename="{filename}"',
             "X-TPP-Document-Count": str(len(documents)),
             "X-TPP-Continuation-Pages": str(continuation_pages),
         },
@@ -237,7 +239,11 @@ def admin_summary() -> dict[str, object]:
         ]
         + [
             AdminUsageEvent("synthetic-teacher", "plan_generated", ASSIGNMENT_IDS["LET 1"]),
-            AdminUsageEvent("synthetic-teacher", "friday_validation_completed", ASSIGNMENT_IDS["LET 1"]),
+            AdminUsageEvent(
+                "synthetic-teacher",
+                "friday_validation_completed",
+                ASSIGNMENT_IDS["LET 1"],
+            ),
         ]
     )
     return {
