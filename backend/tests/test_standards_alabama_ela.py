@@ -32,7 +32,10 @@ def _document() -> ExtractedDocument:
                     "Reception",
                     "R1. Read a workplace document.",
                     "R2. Read and comprehend literary texts.",
-                    "R3. Utilize active listening skills in formal and informal conversations, following predetermined norms.",
+                    (
+                        "R3. Utilize active listening skills in formal and informal "
+                        "conversations, following predetermined norms."
+                    ),
                     "Expression",
                     "R4. Use digital and electronic tools appropriately, safely, and ethically.",
                     "R5. Utilize a writing process.",
