@@ -11,7 +11,7 @@ from .standards_ingest import (
     StandardsIngestError,
 )
 
-ELA_PARSER_VERSION = "gate-e-alabama-ela-2021-v2"
+ELA_PARSER_VERSION = "gate-e-alabama-ela-2021-v3"
 _RECURRING = re.compile(r"^(R\d+)\.\s*(.+)$")
 _CONTENT = re.compile(r"^(\d+)\.\s*(.+)$")
 _CHILD = re.compile(r"^([a-z])\.\s*(.+)$")
@@ -228,16 +228,17 @@ def _ela_noise(line: str) -> bool:
         return True
     if line.startswith("Standard ") and "continued" in line:
         return True
-    if line in {
-        "RECEPTION",
-        "EXPRESSION",
-        "READING",
-        "LISTENING",
-        "WRITING",
-        "SPEAKING",
-        "Students will:",
-        "Each content standard completes the stem “ Students will…”",
-        "Each content standard completes the stem “Students will…”",
+    normalized = line.strip().casefold()
+    if normalized in {
+        "reception",
+        "expression",
+        "reading",
+        "listening",
+        "writing",
+        "speaking",
+        "students will:",
+        "each content standard completes the stem “ students will…”",
+        "each content standard completes the stem “students will…”",
     }:
         return True
     return bool(line.isupper() and len(line) <= 70)
