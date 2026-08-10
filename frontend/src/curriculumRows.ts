@@ -36,19 +36,21 @@ export function parseCurriculumRows(value: string): CurriculumLessonPayload[] {
       const unit = parts[0] ?? "";
       const lesson = parts[1] ?? "";
       if (!unit || !lesson) {
-        throw new Error(`Curriculum row ${rowNumber} must include a unit and lesson.`);
+        throw new Error(`Curriculum row ${rowNumber} must include a unit/topic and lesson/focus.`);
       }
 
-      // Current format:
-      // Unit | Lesson | Standards | Learning targets | Assessment | Optional minutes override
+      // Teacher-facing pilot format:
+      // Unit / Topic | Lesson / Focus | Learning targets | Assessment / Evidence | Optional minutes override
       //
-      // The previous pilot format put required minutes in the third column. Keep
-      // accepting it so existing teacher-prepared import text does not break.
+      // Continue accepting both earlier pilot formats so existing pacing content remains usable:
+      // Unit | Lesson | Standards | Learning targets | Assessment | Optional minutes override
+      // Unit | Lesson | Minutes | Standards | Learning targets | Assessment
       const legacyMinutes = parts.length >= 6 && /^\d+$/.test(parts[2] ?? "");
-      const standards = legacyMinutes ? parts[3] ?? "" : parts[2] ?? "";
-      const targets = legacyMinutes ? parts[4] ?? "" : parts[3] ?? "";
-      const assessment = legacyMinutes ? parts[5] ?? "" : parts[4] ?? "";
-      const minutesOverride = legacyMinutes ? parts[2] ?? "" : parts[5] ?? "";
+      const earlierSixColumn = parts.length >= 6 && !legacyMinutes;
+      const standards = legacyMinutes ? parts[3] ?? "" : earlierSixColumn ? parts[2] ?? "" : "";
+      const targets = legacyMinutes ? parts[4] ?? "" : earlierSixColumn ? parts[3] ?? "" : parts[2] ?? "";
+      const assessment = legacyMinutes ? parts[5] ?? "" : earlierSixColumn ? parts[4] ?? "" : parts[3] ?? "";
+      const minutesOverride = legacyMinutes ? parts[2] ?? "" : earlierSixColumn ? parts[5] ?? "" : parts[4] ?? "";
 
       return {
         sequence: rowNumber,
@@ -58,7 +60,7 @@ export function parseCurriculumRows(value: string): CurriculumLessonPayload[] {
         standards: standards ? splitList(standards) : [],
         learning_targets: targets ? splitList(targets) : [],
         assessment,
-        can_split: true,
+        can_split: false,
       };
     });
 }
