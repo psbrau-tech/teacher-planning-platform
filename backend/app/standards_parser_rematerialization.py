@@ -210,7 +210,8 @@ def _stage_parser_version_candidate(
         candidate_id = UUID(_required_text(existing[0], "id"))
         if status != "pending":
             raise StandardsMaintenanceError(
-                f"Parser version {parser_version} already has a non-pending snapshot for {source_key}"
+                f"Parser version {parser_version} already has a non-pending "
+                f"snapshot for {source_key}"
             )
         try:
             client.request(
