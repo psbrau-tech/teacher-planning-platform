@@ -1,6 +1,13 @@
 import json
+from io import BytesIO
 
-from app.document_service import normalize_planning_payload
+from pypdf import PdfReader
+
+from app.document_sections import HqiDocument
+from app.document_service import (
+    generate_anniston_lesson_plan_packet,
+    normalize_planning_payload,
+)
 
 
 def test_integrated_weekly_plan_maps_only_defensible_pdf_equivalents() -> None:
@@ -73,3 +80,30 @@ def test_exact_pdf_fields_are_preserved_when_teacher_supplies_them() -> None:
     assert normalized["clt_mon"] == "Teacher-authored Monday learning target"
     assert normalized["rrt_mon"] == "Teacher-authored Monday task"
     assert normalized["cfu_mon"] == "Teacher-authored Monday check for understanding"
+
+
+def test_lesson_plan_packet_contains_framework_and_grid_but_not_reflection_document() -> None:
+    packet, documents = generate_anniston_lesson_plan_packet(
+        {
+            "teacher": "Synthetic Teacher",
+            "course": "Army JROTC LET 1",
+            "grade": "9-12",
+            "week_of": "2026-08-17",
+            "unit_topic": "Drill and Ceremony",
+            "standards": "U1C3L2",
+            "literacy_standards": "Synthetic literacy",
+            "act_preparation": "N/A",
+            "learning_targets": "Demonstrate attention and rest positions.",
+            "monday": "Model and rehearse attention.",
+        }
+    )
+
+    assert tuple(item.document for item in documents) == (
+        HqiDocument.INSTRUCTIONAL_FRAMEWORK,
+        HqiDocument.WEEK_AT_A_GLANCE,
+    )
+    reader = PdfReader(BytesIO(packet))
+    text = "\n".join(page.extract_text() or "" for page in reader.pages)
+    assert "Instructional Planning Framework" in text
+    assert "Week at a Glance" in text
+    assert "Weekly Reflection / PLC Discussion" not in text
