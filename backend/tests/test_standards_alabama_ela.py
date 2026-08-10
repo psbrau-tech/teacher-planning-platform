@@ -49,9 +49,40 @@ def _document() -> ExtractedDocument:
                     marker,
                 ]
             )
-        lines.extend(
-            [f"{number}. Content standard {number}." for number in range(1, 7)]
-        )
+        if grade == 3:
+            lines.extend(
+                [
+                    "1. Content standard 1.",
+                    "2. Content standard 2.",
+                    "3. Content standard 3.",
+                    "4. Content standard 4.",
+                    "SPEAKING",
+                    "5. Content standard 5.",
+                    "6. Content standard 6.",
+                ]
+            )
+        elif grade == 12:
+            lines.extend(
+                [
+                    "1. Content standard 1.",
+                    "2. Content standard 2.",
+                    "3. Content standard 3.",
+                    "4. Content standard 4.",
+                    "5. Content standard 5.",
+                    "6. Content standard 6.",
+                    "7. Content standard 7.",
+                    "2021 Alabama",
+                    "Course of Study: English Language Arts 130",
+                    "8. Content standard 8.",
+                    "Bibliography",
+                    "BIBLIOGRAPHY",
+                    "2016. Reference material that must not become a standard.",
+                ]
+            )
+        else:
+            lines.extend(
+                [f"{number}. Content standard {number}." for number in range(1, 7)]
+            )
     normalized = "\n".join(lines)
     return ExtractedDocument(
         lines=tuple(lines),
@@ -86,3 +117,27 @@ def test_ela_parser_does_not_append_title_case_lane_header_to_grade_9_r3() -> No
         "following predetermined norms."
     )
     assert "Expression" not in r3.text
+
+
+def test_ela_parser_treats_lane_heading_as_standard_boundary() -> None:
+    parsed = parse_alabama_ela_2021(_document())
+    grade_three = next(course for course in parsed.courses if course.course_key == "grade_3")
+    content = [
+        standard for standard in grade_three.standards if standard.strand == "Content Standards"
+    ]
+
+    assert [standard.code for standard in content] == ["1", "2", "3", "4", "5", "6"]
+    standard_four = next(standard for standard in content if standard.code == "4")
+    assert standard_four.text == "Content standard 4."
+
+
+def test_ela_parser_ignores_split_page_footer_fragments_and_bibliography() -> None:
+    parsed = parse_alabama_ela_2021(_document())
+    grade_twelve = next(course for course in parsed.courses if course.course_key == "grade_12")
+    content = [
+        standard for standard in grade_twelve.standards if standard.strand == "Content Standards"
+    ]
+
+    assert [standard.code for standard in content] == [str(number) for number in range(1, 9)]
+    standard_seven = next(standard for standard in content if standard.code == "7")
+    assert standard_seven.text == "Content standard 7."

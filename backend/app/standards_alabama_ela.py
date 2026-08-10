@@ -11,10 +11,41 @@ from .standards_ingest import (
     StandardsIngestError,
 )
 
-ELA_PARSER_VERSION = "gate-e-alabama-ela-2021-v3"
+ELA_PARSER_VERSION = "gate-e-alabama-ela-2021-v4"
 _RECURRING = re.compile(r"^(R\d+)\.\s*(.+)$")
 _CONTENT = re.compile(r"^(\d+)\.\s*(.+)$")
 _CHILD = re.compile(r"^([a-z])\.\s*(.+)$")
+_PAGE_GRADE = re.compile(r"^Grade\s+(?:K|[1-9]|1[0-2])$", flags=re.IGNORECASE)
+_LANE_LABEL = re.compile(
+    r"^(?:RECEPTION|EXPRESSION|READING|LISTENING|WRITING|SPEAKING)$",
+    flags=re.IGNORECASE,
+)
+_LANE_STANDARD_PREFIX = re.compile(
+    r"^(?:(?:RECEPTION|EXPRESSION|READING|LISTENING|WRITING|SPEAKING)\s+){1,2}"
+    r"(?=(?:R\d+|\d+)\.)",
+    flags=re.IGNORECASE,
+)
+_INLINE_LANE_STANDARD = re.compile(
+    r"(?=\b(?:(?:RECEPTION|EXPRESSION|READING|LISTENING|WRITING|SPEAKING)\s+){1,2}"
+    r"(?:R\d+|\d+)\.\s*)",
+    flags=re.IGNORECASE,
+)
+_EMBEDDED_STANDARD = re.compile(r"\b(?:R\d+|\d{1,2})\.\s+[A-Z]")
+_SECTION_BOUNDARIES = {
+    "LITERACY FOUNDATIONS",
+    "CRITICAL LITERACY",
+    "DIGITAL LITERACY",
+    "LANGUAGE LITERACY",
+    "RESEARCH LITERACY",
+    "VOCABULARY LITERACY",
+    "Oral Language",
+    "Phonological Awareness/Phonemic Awareness",
+    "Phonics",
+    "Fluency",
+    "Vocabulary",
+    "Comprehension",
+    "Written Expression",
+}
 
 
 def parse_alabama_ela_2021(extracted: ExtractedDocument) -> ParsedStandardsDocument:
@@ -55,39 +86,27 @@ def parse_alabama_ela_2021(extracted: ExtractedDocument) -> ParsedStandardsDocum
             next_content,
         )
 
-        # The authoritative 2021 PDF can split the recurring-standards table
-        # across a page boundary. In Grade 2, R1-R3 occur before the content
-        # heading while R4-R5 occur immediately after it. Collect only R-coded
-        # rows across the whole bounded grade section; numeric content rows are
-        # parsed independently below.
         recurring = _parse_standards(
             extracted.lines[recurring_start + 1 : grade_end],
             pattern=_RECURRING,
             strand="Recurring Standards",
             noise=_ela_noise,
             strip_lane_prefix=True,
+            page_grade_label=display_name,
         )
         content = _parse_standards(
             extracted.lines[content_start + 1 : grade_end],
             pattern=_CONTENT,
             strand="Content Standards",
             noise=_ela_noise,
-            strip_lane_prefix=False,
+            strip_lane_prefix=True,
+            page_grade_label=display_name,
         )
-        if len(recurring) < 4 or len(content) < 5:
-            raise StandardsIngestError(
-                f"Alabama ELA {display_name} standards structure changed unexpectedly"
-            )
-        recurring_codes = [standard.code for standard in recurring]
-        if len(recurring_codes) != len(set(recurring_codes)):
-            raise StandardsIngestError(
-                f"Alabama ELA {display_name} produced duplicate recurring standards identifiers"
-            )
-        content_codes = [standard.code for standard in content]
-        if len(content_codes) != len(set(content_codes)):
-            raise StandardsIngestError(
-                f"Alabama ELA {display_name} produced duplicate content standards identifiers"
-            )
+        _validate_grade_materialization(
+            display_name=display_name,
+            recurring=recurring,
+            content=content,
+        )
         courses.append(
             ParsedCourse(
                 course_key=course_key,
@@ -138,7 +157,8 @@ def _next_recurring_or_limit(
     limit: int,
 ) -> int:
     for index in range(start, limit):
-        if lines[index].startswith("RECURRING STANDARDS FOR"):
+        line = lines[index]
+        if line.startswith("RECURRING STANDARDS FOR") or line.casefold() == "bibliography":
             return index
     return limit
 
@@ -150,6 +170,7 @@ def _parse_standards(
     strand: str,
     noise: Callable[[str], bool],
     strip_lane_prefix: bool,
+    page_grade_label: str,
 ) -> tuple[ParsedStandard, ...]:
     standards: list[ParsedStandard] = []
     current_code: str | None = None
@@ -171,74 +192,149 @@ def _parse_standards(
         current_parts = []
 
     for raw_line in lines:
-        line = _strip_ela_lane_prefix(raw_line) if strip_lane_prefix else raw_line
-        match = pattern.match(line)
-        if match:
-            flush()
-            current_code = match.group(1)
-            current_parts = [match.group(2)]
+        cleaned_raw_line = _strip_trailing_page_grade(raw_line, page_grade_label)
+        if not cleaned_raw_line:
             continue
+        for raw_fragment in _ela_fragments(cleaned_raw_line):
+            line = _strip_ela_lane_prefix(raw_fragment) if strip_lane_prefix else raw_fragment
+            match = pattern.match(line)
+            if match:
+                flush()
+                current_code = match.group(1)
+                current_parts = [match.group(2)]
+                continue
 
-        # A different standards family starts a new row. Flush the current
-        # standard and ignore that row rather than appending its wording.
-        if pattern is _RECURRING and _CONTENT.match(line):
-            flush()
-            continue
-        if pattern is _CONTENT and _RECURRING.match(line):
-            flush()
-            continue
+            if pattern is _RECURRING and _CONTENT.match(line):
+                flush()
+                continue
+            if pattern is _CONTENT and _RECURRING.match(line):
+                flush()
+                continue
 
-        if current_code is None or noise(line):
-            continue
-        child = _CHILD.match(line)
-        if child:
-            current_parts.append(f"{child.group(1)}. {child.group(2)}")
-        elif not re.fullmatch(r"\d+(?:\.\d+)?", line):
-            current_parts.append(line)
+            if _ela_boundary(line):
+                flush()
+                continue
+
+            if current_code is None or noise(line):
+                continue
+            child = _CHILD.match(line)
+            if child:
+                current_parts.append(f"{child.group(1)}. {child.group(2)}")
+            elif not re.fullmatch(r"\d+(?:\.\d+)?", line):
+                current_parts.append(line)
 
     flush()
     return tuple(standards)
 
 
-def _strip_ela_lane_prefix(line: str) -> str:
-    prefixes = (
-        "RECEPTION READING ",
-        "EXPRESSION WRITING ",
-        "RECEPTION LISTENING ",
-        "EXPRESSION SPEAKING ",
-        "READING ",
-        "LISTENING ",
-        "WRITING ",
-        "SPEAKING ",
+def _ela_fragments(line: str) -> tuple[str, ...]:
+    """Split table-lane numbered rows that pypdf places inside neighboring lines."""
+    starts = [match.start() for match in _INLINE_LANE_STANDARD.finditer(line)]
+    if not starts:
+        return (line,)
+    boundaries = sorted({0, *starts, len(line)})
+    fragments = tuple(
+        line[boundaries[index] : boundaries[index + 1]].strip()
+        for index in range(len(boundaries) - 1)
+        if line[boundaries[index] : boundaries[index + 1]].strip()
     )
-    for prefix in prefixes:
-        if line.startswith(prefix):
-            candidate = line[len(prefix) :].strip()
-            if re.match(r"^(?:R\d+|\d+)\.", candidate):
-                return candidate
+    return fragments or (line,)
+
+
+def _strip_ela_lane_prefix(line: str) -> str:
+    return _LANE_STANDARD_PREFIX.sub("", line, count=1).strip()
+
+
+def _strip_trailing_page_grade(line: str, page_grade_label: str) -> str:
+    """Remove the repeated right-edge grade header when pypdf joins it to table text."""
+    suffix = f" {page_grade_label}"
+    if line.casefold().endswith(suffix.casefold()):
+        return line[: -len(suffix)].rstrip()
     return line
 
 
-def _ela_noise(line: str) -> bool:
-    if line.startswith("2021 Alabama Course of Study:"):
+def _ela_boundary(line: str) -> bool:
+    if line in _SECTION_BOUNDARIES:
         return True
-    if line.startswith("RECURRING STANDARDS FOR"):
+    if _LANE_LABEL.fullmatch(line):
+        return True
+    if re.fullmatch(r"GRADES? (?:[1-9]|1[0-2])(?:-[1-9]|-1[0-2])?(?: OVERVIEW)?", line):
+        return True
+    if line == "KINDERGARTEN":
         return True
     if line.endswith("CONTENT STANDARDS"):
         return True
+    return bool(line.isupper() and "LITERACY" in line and len(line) <= 80)
+
+
+def _is_page_boilerplate(line: str) -> bool:
+    if line.startswith("2021 Alabama Course of Study:"):
+        return True
+    if re.fullmatch(r"2021 Alabama(?: Course)?", line):
+        return True
+    return line.startswith("Course of Study: English Language Arts")
+
+
+def _ela_noise(line: str) -> bool:
+    if _is_page_boilerplate(line):
+        return True
+    if line.startswith("RECURRING STANDARDS FOR"):
+        return True
     if line.startswith("Standard ") and "continued" in line:
         return True
+    if _PAGE_GRADE.fullmatch(line):
+        return True
+    if _LANE_LABEL.fullmatch(line):
+        return True
     normalized = line.strip().casefold()
-    if normalized in {
-        "reception",
-        "expression",
-        "reading",
-        "listening",
-        "writing",
-        "speaking",
+    return normalized in {
         "students will:",
         "each content standard completes the stem “ students will…”",
         "each content standard completes the stem “students will…”",
-    }:
-        return True
-    return bool(line.isupper() and len(line) <= 70)
+    }
+
+
+def _validate_grade_materialization(
+    *,
+    display_name: str,
+    recurring: tuple[ParsedStandard, ...],
+    content: tuple[ParsedStandard, ...],
+) -> None:
+    recurring_codes = [standard.code for standard in recurring]
+    recurring_numbers = [
+        int(code[1:])
+        for code in recurring_codes
+        if code.startswith("R") and code[1:].isdigit()
+    ]
+    if len(recurring_codes) < 4 or recurring_numbers != list(
+        range(1, len(recurring_codes) + 1)
+    ):
+        raise StandardsIngestError(
+            f"Alabama ELA {display_name} recurring standards are incomplete or out of order"
+        )
+
+    content_codes = [standard.code for standard in content]
+    content_numbers = [int(code) for code in content_codes if code.isdigit()]
+    if len(content_codes) < 5 or content_numbers != list(range(1, len(content_codes) + 1)):
+        raise StandardsIngestError(
+            f"Alabama ELA {display_name} content standards are incomplete or out of order"
+        )
+
+    for standard in recurring + content:
+        _validate_standard_text(display_name, standard)
+
+
+def _validate_standard_text(display_name: str, standard: ParsedStandard) -> None:
+    text = standard.text
+    if _is_page_boilerplate(text) or "Each content standard completes the stem" in text:
+        raise StandardsIngestError(
+            f"Alabama ELA {display_name} standard {standard.code} contains page boilerplate"
+        )
+    if _PAGE_GRADE.fullmatch(text):
+        raise StandardsIngestError(
+            f"Alabama ELA {display_name} standard {standard.code} contains a page-grade header"
+        )
+    if _INLINE_LANE_STANDARD.search(text) or _EMBEDDED_STANDARD.search(text):
+        raise StandardsIngestError(
+            f"Alabama ELA {display_name} standard {standard.code} contains another standard row"
+        )
