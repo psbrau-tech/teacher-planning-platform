@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from io import BytesIO
 from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from .auth import (
@@ -12,6 +14,7 @@ from .auth import (
     require_platform_admin,
     require_school_reporting_admin,
 )
+from .document_service import DEFAULT_TEMPLATE_PATH, generate_anniston_hqi_packet
 from .settings import Settings, get_settings
 from .supabase_rest import SupabaseRestClient, SupabaseRestError
 
@@ -90,6 +93,32 @@ def _reporting_error(error: SupabaseRestError) -> HTTPException:
     if error.status_code in {401, 403}:
         return HTTPException(status_code=403, detail="Administration reporting is not authorized")
     return HTTPException(status_code=503, detail="Administration reporting is unavailable")
+
+
+def _submitted_plan_record(
+    assignment_id: str,
+    week_start: date,
+    identity: AuthenticatedTeacher,
+    settings: Settings,
+) -> WeeklySubmittedPlanRead:
+    try:
+        payload = _client(identity, settings).request(
+            "POST",
+            "rpc/admin_weekly_submission_document",
+            payload={
+                "target_assignment_id": assignment_id,
+                "target_week_start": week_start.isoformat(),
+            },
+        )
+    except (RuntimeError, SupabaseRestError) as error:
+        if isinstance(error, SupabaseRestError):
+            raise _reporting_error(error) from error
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+    rows = _records(payload)
+    if not rows:
+        raise HTTPException(status_code=404, detail="Submitted weekly plan was not found")
+    return WeeklySubmittedPlanRead.model_validate(rows[0])
 
 
 @router.get("/usage", response_model=SchoolUsageRead)
@@ -176,24 +205,36 @@ def submitted_plan(
     identity: Annotated[AuthenticatedTeacher, Depends(require_school_reporting_admin)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> WeeklySubmittedPlanRead:
-    try:
-        payload = _client(identity, settings).request(
-            "POST",
-            "rpc/admin_weekly_submission_document",
-            payload={
-                "target_assignment_id": assignment_id,
-                "target_week_start": week_start.isoformat(),
-            },
-        )
-    except (RuntimeError, SupabaseRestError) as error:
-        if isinstance(error, SupabaseRestError):
-            raise _reporting_error(error) from error
-        raise HTTPException(status_code=503, detail=str(error)) from error
+    return _submitted_plan_record(assignment_id, week_start, identity, settings)
 
-    rows = _records(payload)
-    if not rows:
-        raise HTTPException(status_code=404, detail="Submitted weekly plan was not found")
-    return WeeklySubmittedPlanRead.model_validate(rows[0])
+
+@router.get("/submissions/{assignment_id}/packet")
+def submitted_plan_packet(
+    assignment_id: str,
+    week_start: date,
+    identity: Annotated[AuthenticatedTeacher, Depends(require_school_reporting_admin)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> StreamingResponse:
+    """Render the immutable submitted revision as the same combined packet teachers review."""
+    if not DEFAULT_TEMPLATE_PATH.exists():
+        raise HTTPException(status_code=503, detail="The approved planning PDF template is unavailable")
+    submitted = _submitted_plan_record(assignment_id, week_start, identity, settings)
+    try:
+        packet, documents = generate_anniston_hqi_packet(submitted.source_data)
+    except (FileNotFoundError, ValueError) as error:
+        raise HTTPException(status_code=503, detail="Submitted plan PDF could not be generated") from error
+    safe_week = submitted.week_start.isoformat()
+    continuation_pages = sum(item.continuation_page_count for item in documents)
+    return StreamingResponse(
+        BytesIO(packet),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="submitted-planning-packet-{safe_week}.pdf"',
+            "X-TPP-Submitted-Revision": str(submitted.submitted_revision),
+            "X-TPP-Document-Count": str(len(documents)),
+            "X-TPP-Continuation-Pages": str(continuation_pages),
+        },
+    )
 
 
 @router.get("/costs", response_model=list[SchoolCostRead])
