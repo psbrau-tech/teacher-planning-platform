@@ -77,6 +77,7 @@ export function PacingSequenceEditor({ disabled = false }: Props) {
               type="file"
               accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               disabled={disabled || importing}
+              style={{ display: "none" }}
               onChange={(event) => {
                 const file = event.currentTarget.files?.[0] ?? null;
                 void importWorkbook(file);
