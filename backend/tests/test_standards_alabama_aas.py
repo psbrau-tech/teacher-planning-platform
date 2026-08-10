@@ -21,7 +21,11 @@ def test_ela_aas_parser_materializes_k_12_by_grade() -> None:
     lines: list[str] = []
     for grade in range(13):
         token = "K" if grade == 0 else str(grade)
-        heading = "Kindergarten English Language Arts" if grade == 0 else f"Grade {grade} English Language Arts"
+        heading = (
+            "Kindergarten English Language Arts"
+            if grade == 0
+            else f"Grade {grade} English Language Arts"
+        )
         lines.append(heading)
         for number in range(1, 4):
             lines.extend(
