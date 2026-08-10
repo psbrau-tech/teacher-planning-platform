@@ -17,9 +17,11 @@ def test_week_at_a_glance_uses_matrix_layout() -> None:
 
 def test_framework_is_one_continuous_section_before_week_at_a_glance() -> None:
     source = Path("../frontend/src/PlanningPdfFieldsPanel.tsx").read_text(encoding="utf-8")
-    assert '<summary>Instructional Planning Framework</summary>' in source
+    framework_summary = '<summary>Instructional Planning Framework</summary>'
+    week_summary = '<summary>Week at a Glance</summary>'
+    assert framework_summary in source
     assert 'Instructional Planning Framework — remaining fields' not in source
-    assert source.index('<summary>Instructional Planning Framework</summary>') < source.index('<summary>Week at a Glance</summary>')
+    assert source.index(framework_summary) < source.index(week_summary)
     for label in (
         "Unit / topic",
         "Selected authoritative standards",
