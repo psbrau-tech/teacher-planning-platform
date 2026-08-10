@@ -1,0 +1,159 @@
+name: Temporary Standards Candidate Bundle
+
+on:
+  push:
+    branches:
+      - feature/gate-e-standards-ai
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install backend
+        run: python -m pip install -e '.[dev]'
+      - name: Generate exact pending-candidate bundle read-only
+        env:
+          BUNDLE_COMMIT: ${{ github.sha }}
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import os
+          from pathlib import Path
+
+          from app.standards_catalog_fetch import fetch_current_alabama_catalog
+          from app.standards_ingest import extract_document, fetch_source
+          from app.standards_parser_dispatch import parse_governed_standards_document
+          from app.standards_source_registry import source_ingest_plan
+          from app.standards_sources import resolve_authoritative_document
+
+          aas_keys = (
+              "alabama_alternate_english_language_arts",
+              "alabama_alternate_mathematics",
+              "alabama_alternate_science",
+              "alabama_alternate_social_studies",
+          )
+
+          def parsed_payload(parsed):
+              return {
+                  "parser_key": parsed.parser_key,
+                  "parser_version": parsed.parser_version,
+                  "normalized_sha256": parsed.normalized_sha256,
+                  "courses": [
+                      {
+                          "course_key": course.course_key,
+                          "display_name": course.display_name,
+                          "source_course_code": course.source_course_code,
+                          "grade_band": course.grade_band,
+                          "standards": [
+                              {
+                                  "code": standard.code,
+                                  "text": standard.text,
+                                  "parent_code": standard.parent_code,
+                                  "strand": standard.strand,
+                              }
+                              for standard in course.standards
+                          ],
+                      }
+                      for course in parsed.courses
+                  ],
+              }
+
+          discovered = {item.source_key: item for item in fetch_current_alabama_catalog()}
+          aas = []
+          for source_key in aas_keys:
+              source = discovered[source_key]
+              plan = source_ingest_plan(source)
+              if not plan.parser_ready or not plan.provides_standard_entries:
+                  raise RuntimeError(f"AAS source is not materialization-ready: {source_key}")
+              fetched = fetch_source(source.document_url, source.document_format)
+              extracted = extract_document(fetched)
+              parsed = parse_governed_standards_document(plan.parser_key, extracted)
+              aas.append(
+                  {
+                      "source": {
+                          "source_key": source.source_key,
+                          "family": source.family,
+                          "category_key": source.category_key,
+                          "category_name": source.category_name,
+                          "category_type": source.category_type,
+                          "authority": source.authority,
+                          "title": source.title,
+                          "edition": source.edition,
+                          "landing_url": source.landing_url,
+                          "document_url": source.document_url,
+                          "document_format": source.document_format,
+                          "resolver_key": "catalog_discovered_direct",
+                          "parser_key": plan.parser_key,
+                          "source_kind": plan.source_kind,
+                          "provides_standard_entries": plan.provides_standard_entries,
+                      },
+                      "fetched": {
+                          "source_sha256": fetched.source_sha256,
+                          "resolved_document_url": fetched.resolved_url,
+                          "normalized_sha256": extracted.normalized_sha256,
+                      },
+                      "parsed": parsed_payload(parsed),
+                  }
+              )
+
+          ela_landing = "https://www.alabamaachieves.org/content-areas-specialty/english-language-arts/"
+          ela_resolved = resolve_authoritative_document("alabama_ela_current", ela_landing)
+          ela_fetched = fetch_source(ela_resolved.document_url, "pdf")
+          ela_extracted = extract_document(ela_fetched)
+          ela_parsed = parse_governed_standards_document("alabama_ela_2021", ela_extracted)
+
+          bundle = {
+              "schema_version": 1,
+              "generated_from_commit": os.environ["BUNDLE_COMMIT"],
+              "database_writes": 0,
+              "general_ela": {
+                  "source_key": "alabama_academic_english_language_arts",
+                  "landing_url": ela_resolved.landing_url,
+                  "requested_document_url": ela_resolved.document_url,
+                  "observed_version": ela_resolved.observed_version,
+                  "anchor_text": ela_resolved.anchor_text,
+                  "fetched": {
+                      "source_sha256": ela_fetched.source_sha256,
+                      "resolved_document_url": ela_fetched.resolved_url,
+                      "normalized_sha256": ela_extracted.normalized_sha256,
+                  },
+                  "parsed": parsed_payload(ela_parsed),
+              },
+              "alternate_sources": aas,
+          }
+          output = Path("../standards-candidate-bundle.json")
+          output.write_text(json.dumps(bundle, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+          print(f"bundle={output}")
+          print(f"generated_from_commit={bundle['generated_from_commit']}")
+          print("database_writes=0")
+          print(f"ela_courses={len(ela_parsed.courses)}")
+          print(f"ela_entries={sum(len(course.standards) for course in ela_parsed.courses)}")
+          for item in aas:
+              parsed = item["parsed"]
+              print(
+                  "aas="
+                  f"{item['source']['source_key']}|{parsed['parser_version']}|"
+                  f"{len(parsed['courses'])}|"
+                  f"{sum(len(course['standards']) for course in parsed['courses'])}"
+              )
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: standards-candidate-bundle
+          path: standards-candidate-bundle.json
+          if-no-files-found: error
+          retention-days: 1
