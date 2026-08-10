@@ -49,9 +49,22 @@ def _document() -> ExtractedDocument:
                     marker,
                 ]
             )
-        lines.extend(
-            [f"{number}. Content standard {number}." for number in range(1, 7)]
-        )
+        if grade == 3:
+            lines.extend(
+                [
+                    "1. Content standard 1.",
+                    "2. Content standard 2.",
+                    "3. Content standard 3.",
+                    "4. Content standard 4.",
+                    "SPEAKING",
+                    "5. Content standard 5.",
+                    "6. Content standard 6.",
+                ]
+            )
+        else:
+            lines.extend(
+                [f"{number}. Content standard {number}." for number in range(1, 7)]
+            )
     normalized = "\n".join(lines)
     return ExtractedDocument(
         lines=tuple(lines),
@@ -86,3 +99,14 @@ def test_ela_parser_does_not_append_title_case_lane_header_to_grade_9_r3() -> No
         "following predetermined norms."
     )
     assert "Expression" not in r3.text
+
+
+def test_ela_parser_treats_lane_heading_as_standard_boundary() -> None:
+    parsed = parse_alabama_ela_2021(_document())
+    grade_three = next(course for course in parsed.courses if course.course_key == "grade_3")
+    content = [
+        standard for standard in grade_three.standards if standard.strand == "Content Standards"
+    ]
+
+    assert [standard.code for standard in content] == ["1", "2", "3", "4", "5", "6"]
+    assert next(standard for standard in content if standard.code == "4").text == "Content standard 4."
