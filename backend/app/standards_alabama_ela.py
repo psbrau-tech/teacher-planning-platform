@@ -271,9 +271,7 @@ def _is_page_boilerplate(line: str) -> bool:
         return True
     if re.fullmatch(r"2021 Alabama(?: Course)?", line):
         return True
-    if line.startswith("Course of Study: English Language Arts"):
-        return True
-    return False
+    return line.startswith("Course of Study: English Language Arts")
 
 
 def _ela_noise(line: str) -> bool:
