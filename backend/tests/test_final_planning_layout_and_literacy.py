@@ -13,18 +13,22 @@ def test_week_at_a_glance_uses_matrix_layout() -> None:
     assert 'COMPONENTS.map(([prefix, label])' in source
     assert 'DAYS.map(([suffix, dayLabel])' in source
     assert 'week-at-glance-day' not in source
+    assert "Prefill matching fields" not in source
 
 
-def test_framework_is_one_continuous_section_before_week_at_a_glance() -> None:
+def test_framework_is_one_continuous_section_in_canonical_pdf_order() -> None:
     source = Path("../frontend/src/PlanningPdfFieldsPanel.tsx").read_text(encoding="utf-8")
     framework_summary = '<summary>Instructional Planning Framework</summary>'
     week_summary = '<summary>Week at a Glance</summary>'
     assert framework_summary in source
     assert 'Instructional Planning Framework — remaining fields' not in source
+    assert 'Supporting planning notes' not in source
     assert source.index(framework_summary) < source.index(week_summary)
-    for label in (
+    labels = (
         "Unit / topic",
         "Selected authoritative standards",
+        "Literacy Standards",
+        "ACT Preparation",
         "Know",
         "Understand",
         "Do",
@@ -34,10 +38,9 @@ def test_framework_is_one_continuous_section_before_week_at_a_glance() -> None:
         "Summative Assessments",
         "Performance Task / Authentic Application",
         "Resources",
-        "Literacy Standards",
-        "ACT Preparation",
-    ):
-        assert label in source
+    )
+    positions = [source.index(label) for label in labels]
+    assert positions == sorted(positions)
     assert '>Monday<textarea' not in source
     assert '>Tuesday<textarea' not in source
     assert '>Wednesday<textarea' not in source
@@ -45,9 +48,25 @@ def test_framework_is_one_continuous_section_before_week_at_a_glance() -> None:
     assert '>Friday<textarea' not in source
 
 
+def test_ai_review_follows_pdf_order_without_non_pdf_sections() -> None:
+    source = Path("../frontend/src/AiPlanningPanel.tsx").read_text(encoding="utf-8")
+    framework_group = (
+        '{ label: "Instructional Planning Framework", fields: '
+        '["unit_topic", "literacy_standards", "act_preparation", "know", "understand", '
+        '"do_statement", "plds", "misconceptions", "formative", "summative", '
+        '"performance_task", "resources"] }'
+    )
+    assert framework_group in source
+    assert 'label: "Supporting instructional design"' not in source
+    assert 'label: "Daily planning notes"' not in source
+    assert source.index(framework_group) < source.index(
+        'label: "Week at a Glance — Clear learning target & success criteria"'
+    )
+
+
 def test_governed_literacy_cannot_silently_disappear_from_ai_draft() -> None:
     source = Path("../frontend/src/AiPlanningPanel.tsx").read_text(encoding="utf-8")
-    assert 'Required governed literacy recommendation' in source
+    assert '"literacy_standards"' in source
     assert 'requireGovernedLiteracySuggestion(body.suggestions)' in source
     assert 'requireGovernedLiteracySuggestion(suggestions)' in source
     assert 'Use governed literacy standard' in source
