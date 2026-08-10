@@ -98,8 +98,8 @@ def test_admin_separates_upcoming_lesson_plan_and_completed_packet() -> None:
     panel = (FRONTEND / "AdminSubmissionPanel.tsx").read_text(encoding="utf-8")
     document_service = (BACKEND / "document_service.py").read_text(encoding="utf-8")
     assert "generate_anniston_lesson_plan_packet" in document_service
-    assert 'HqiDocument.INSTRUCTIONAL_FRAMEWORK' in document_service
-    assert 'HqiDocument.WEEK_AT_A_GLANCE' in document_service
+    assert "HqiDocument.INSTRUCTIONAL_FRAMEWORK" in document_service
+    assert "HqiDocument.WEEK_AT_A_GLANCE" in document_service
     assert '@router.get("/submissions/{assignment_id}/lesson-plan-packet")' in api
     assert '@router.get("/submissions/{assignment_id}/completed-packet")' in api
     assert "lesson_plan_revision" in panel
