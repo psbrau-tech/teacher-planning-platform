@@ -19,6 +19,13 @@ from app.standards_monthly_run import (
 from app.standards_parser_rematerialization import stage_parser_rematerialization_if_needed
 from app.standards_schedule import scheduled_reconciliation_kind
 
+# Parser-only rematerialization can change authoritative materialization even when
+# the source document itself is unchanged. Keep this path explicitly review-scoped;
+# adding another source requires a reviewed code change rather than a broad sweep.
+PARSER_REMATERIALIZATION_SOURCE_KEYS = frozenset(
+    {"alabama_academic_english_language_arts"}
+)
+
 
 def _date(value: str) -> date:
     try:
@@ -150,6 +157,8 @@ def run(argv: list[str] | None = None) -> int:
 
     parser_rematerializations: list[MaintenanceResult] = []
     for source_result in result.source_results:
+        if source_result.source_key not in PARSER_REMATERIALIZATION_SOURCE_KEYS:
+            continue
         rematerialization = stage_parser_rematerialization_if_needed(
             client,
             source_result.source_key,
