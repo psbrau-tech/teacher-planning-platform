@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import re
 
+from .standards_alabama_aas import parse_alabama_aas_ela_2021 as _parse_ela
+from .standards_alabama_aas import parse_alabama_aas_math_2019 as _parse_math
+from .standards_alabama_aas import parse_alabama_aas_science_2017 as _parse_science
 from .standards_alabama_aas import (
-    parse_alabama_aas_ela_2021 as _parse_ela,
-    parse_alabama_aas_math_2019 as _parse_math,
-    parse_alabama_aas_science_2017 as _parse_science,
     parse_alabama_aas_social_studies_2017 as _parse_social_studies,
 )
 from .standards_ingest import (
