@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - feature/gate-e-standards-ai
+  pull_request:
+    paths:
+      - '.github/workflows/standards-candidate-bundle.yml'
 
 permissions:
   contents: read
