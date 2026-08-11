@@ -2,11 +2,30 @@ from io import BytesIO
 from pathlib import Path
 from zipfile import ZipFile
 
-from app.curriculum_api import CurriculumDetailRead, CurriculumLessonRead, _xlsx_bytes
+from app.curriculum_api import (
+    CurriculumDetailRead,
+    CurriculumLessonRead,
+    _contiguous_unit_groups,
+    _xlsx_bytes,
+)
+from app.curriculum_import import CurriculumLessonImport
 
 ROOT = Path(__file__).resolve().parents[2]
 FRONTEND = ROOT / "frontend" / "src"
 MIGRATIONS = ROOT / "supabase" / "migrations"
+
+
+def _imported(sequence: int, unit: str, lesson: str) -> CurriculumLessonImport:
+    return CurriculumLessonImport(
+        sequence=sequence,
+        unit_title=unit,
+        lesson_title=lesson,
+        estimated_minutes=None,
+        standards=(),
+        learning_targets=(),
+        assessment="",
+        can_split=False,
+    )
 
 
 def test_saved_curriculum_export_is_a_real_xlsx_with_current_rows() -> None:
@@ -52,6 +71,23 @@ def test_saved_curriculum_export_is_a_real_xlsx_with_current_rows() -> None:
     assert "Cadet responsibilities" in sheet
     assert "Optional Minutes Override" in sheet
     assert "75" in sheet
+
+
+def test_noncontiguous_repeated_unit_titles_preserve_teacher_sequence() -> None:
+    groups = _contiguous_unit_groups(
+        (
+            _imported(1, "Drill", "Facing movements"),
+            _imported(2, "Leadership", "Team roles"),
+            _imported(3, "Drill", "Column movements"),
+        )
+    )
+
+    assert [title for title, _lessons in groups] == ["Drill", "Leadership", "Drill"]
+    assert [
+        lesson.sequence
+        for _title, unit_lessons in groups
+        for lesson in unit_lessons
+    ] == [1, 2, 3]
 
 
 def test_blank_pacing_minutes_are_persisted_as_schedule_derived() -> None:
