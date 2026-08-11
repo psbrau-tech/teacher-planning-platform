@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import OrderedDict
 from contextlib import suppress
 from dataclasses import dataclass
 from io import BytesIO
@@ -372,6 +371,20 @@ def _same_locked_content(old: _StoredLesson, new: CurriculumLessonImport) -> boo
     )
 
 
+def _contiguous_unit_groups(
+    lessons: tuple[CurriculumLessonImport, ...],
+) -> list[tuple[str, list[CurriculumLessonImport]]]:
+    """Preserve teacher-authored pacing order even when a unit title repeats later."""
+    groups: list[tuple[str, list[CurriculumLessonImport]]] = []
+    for lesson in lessons:
+        unit_title = lesson.unit_title.strip()
+        if groups and groups[-1][0] == unit_title:
+            groups[-1][1].append(lesson)
+        else:
+            groups.append((unit_title, [lesson]))
+    return groups
+
+
 def _save_curriculum(
     *,
     client: SupabaseRestClient,
@@ -404,12 +417,8 @@ def _save_curriculum(
         curriculum = curriculum_rows[0]
         curriculum_id = _text(curriculum, "id")
 
-        unit_groups: OrderedDict[str, list[CurriculumLessonImport]] = OrderedDict()
-        for lesson in lessons:
-            unit_groups.setdefault(lesson.unit_title.strip(), []).append(lesson)
-
         for unit_sequence, (unit_title, unit_lessons) in enumerate(
-            unit_groups.items(),
+            _contiguous_unit_groups(lessons),
             start=1,
         ):
             unit_rows = _records(
