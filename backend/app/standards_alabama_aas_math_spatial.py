@@ -10,11 +10,11 @@ from pypdf import PdfReader
 
 from .standards_alabama_aas import (
     _MATH,
+    _MATH_CANONICAL_CODE,
     _MATH_LAYOUT_CODE,
     _canonical_math_code,
     _clean_text,
     _is_math_layout_noise,
-    _math_course_on_page,
     _validate_math_document,
 )
 from .standards_ingest import (
@@ -98,7 +98,9 @@ def parse_alabama_aas_math_2019_spatial(
     The source is a three-column table. Plain text extraction interleaves cells, and a
     single logical AAS code can be split across multiple PDF text objects. Coordinate-based
     visual-line reconstruction keeps only the right-hand AAS lane and rejoins fragments on
-    a shared baseline before identifiers are parsed.
+    a shared baseline before identifiers are parsed. Each parsed standard is routed by the
+    grade encoded in its authoritative identifier rather than by a page heading, so a page
+    boundary can never reassign a standard to a neighboring grade.
     """
 
     if extracted.document_format != "pdf" or extracted.source_content is None:
@@ -116,6 +118,7 @@ def parse_alabama_aas_math_2019_spatial(
     standards_by_course: dict[str, list[ParsedStandard]] = {
         course.course_key: [] for course in _MATH.courses
     }
+    course_by_grade = {course.grade_band.upper(): course for course in _MATH.courses}
     current_course = None
     current_code: str | None = None
     current_parts: list[str] = []
@@ -140,16 +143,11 @@ def parse_alabama_aas_math_2019_spatial(
         fragments: list[_PositionedText] = []
         visitor = _positioned_text_visitor(fragments)
         try:
-            page_text = page.extract_text(visitor_text=visitor) or ""
+            page.extract_text(visitor_text=visitor)
         except Exception as error:
             raise StandardsIngestError(
                 "Alabama alternate mathematics coordinate extraction failed"
             ) from error
-
-        page_course = _math_course_on_page(page_text.splitlines())
-        if page_course is not None and page_course != current_course:
-            flush()
-            current_course = page_course
 
         code_xs = [
             fragment.x
@@ -186,9 +184,20 @@ def parse_alabama_aas_math_2019_spatial(
             code_match = _MATH_LAYOUT_CODE.search(lane)
             if code_match is not None:
                 flush()
-                if current_course is None:
-                    continue
-                current_code = _canonical_math_code(code_match)
+                canonical_code = _canonical_math_code(code_match)
+                canonical_match = _MATH_CANONICAL_CODE.fullmatch(canonical_code)
+                if canonical_match is None:
+                    raise StandardsIngestError(
+                        "Alabama alternate mathematics parser produced an incomplete standard code"
+                    )
+                grade = canonical_match.group("grade").upper()
+                target_course = course_by_grade.get(grade)
+                if target_course is None:
+                    raise StandardsIngestError(
+                        "Alabama alternate mathematics standard referenced an unknown grade"
+                    )
+                current_course = target_course
+                current_code = canonical_code
                 initial = lane[code_match.end() :].lstrip(" -–")
                 current_parts = [initial] if initial else []
                 continue
