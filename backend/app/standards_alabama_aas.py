@@ -205,7 +205,12 @@ def parse_alabama_aas_ela_2021(extracted: ExtractedDocument) -> ParsedStandardsD
 
 
 def parse_alabama_aas_math_2019(extracted: ExtractedDocument) -> ParsedStandardsDocument:
-    """Parse synthetic/plain-text Math fixtures; production PDF uses the spatial parser."""
+    if extracted.document_format == "pdf" and extracted.source_content is not None:
+        from .standards_alabama_aas_math_spatial import (
+            parse_alabama_aas_math_2019_spatial,
+        )
+
+        return parse_alabama_aas_math_2019_spatial(extracted)
 
     parsed = _parse_aas(extracted, _MATH)
     _validate_math_document(parsed)
