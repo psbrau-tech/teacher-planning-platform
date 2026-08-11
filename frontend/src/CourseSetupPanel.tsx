@@ -58,7 +58,9 @@ function academicVersion(pattern?: MeetingPattern): string {
   if (!pattern?.effective_start || !pattern.effective_end) return "Current year";
   const start = Number(pattern.effective_start.slice(0, 4));
   const end = Number(pattern.effective_end.slice(0, 4));
-  return Number.isFinite(start) && Number.isFinite(end) ? `${start}-${String(end).slice(-2)}` : "Current year";
+  return Number.isFinite(start) && Number.isFinite(end)
+    ? `${start}-${String(end).slice(-2)}`
+    : "Current year";
 }
 
 function weekdayLabel(weekdays: number[]): string {
@@ -163,7 +165,9 @@ export function CourseSetupPanel({
       );
       if (!response.ok) throw new Error(await readError(response, "Class schedule could not be saved."));
       const saved = await response.json() as Assignment;
-      const next = editing ? assignments.map((item) => item.id === saved.id ? saved : item) : [...assignments, saved];
+      const next = editing
+        ? assignments.map((item) => item.id === saved.id ? saved : item)
+        : [...assignments, saved];
       onAssignmentsChanged(next);
       onSelectAssignment(saved.id);
       setEditingId(null);
@@ -181,7 +185,10 @@ export function CourseSetupPanel({
     setWorking(true);
     onError("");
     try {
-      const response = await fetch(`/api/v1/teaching-assignments/${encodeURIComponent(assignment.id)}`, { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } });
+      const response = await fetch(
+        `/api/v1/teaching-assignments/${encodeURIComponent(assignment.id)}`,
+        { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } },
+      );
       if (!response.ok) throw new Error(await readError(response, "Class could not be removed."));
       const next = assignments.filter((item) => item.id !== assignment.id);
       onAssignmentsChanged(next);
@@ -222,6 +229,7 @@ export function CourseSetupPanel({
     try {
       const updated = await attachCurriculum(selectedAssignment, reuseCurriculumId);
       setPacingMode(null);
+      setReuseCurriculumId("");
       onMessage(`Curriculum & Pacing attached to ${updated.course_name}. Step 2 complete.`);
     } catch (caught) {
       onError(caught instanceof Error ? caught.message : "Curriculum & Pacing could not be attached.");
@@ -288,132 +296,100 @@ export function CourseSetupPanel({
     }
   }
 
+  function renderPacingChoices() {
+    return (
+      <div className="choice-grid" aria-label="Curriculum and pacing method">
+        <button type="button" className={`choice-card ${pacingMode === "upload" ? "selected" : ""}`} onClick={() => setPacingMode("upload")}><strong>Upload Excel</strong><span>I already have a year or semester pacing plan.</span></button>
+        <button type="button" className={`choice-card ${pacingMode === "build" ? "selected" : ""}`} onClick={() => setPacingMode("build")}><strong>Build in TPP</strong><span>I want to enter units and lessons here.</span></button>
+        <button type="button" className={`choice-card ${pacingMode === "reuse" ? "selected" : ""}`} onClick={() => setPacingMode("reuse")}><strong>Reuse mine</strong><span>I already created this curriculum for another class.</span></button>
+      </div>
+    );
+  }
+
+  function renderPacingMode() {
+    if (!selectedAssignment || !pacingMode) return null;
+    if (pacingMode === "reuse") {
+      return (
+        <div className="pacing-mode-panel">
+          {curricula.length === 0 ? (
+            <div className="empty-state"><p>You do not have a saved curriculum to reuse yet. Choose Upload Excel or Build in TPP.</p></div>
+          ) : <>
+            <label>My Curriculum & Pacing
+              <select value={reuseCurriculumId} onChange={(event) => setReuseCurriculumId(event.target.value)}>
+                <option value="">Choose one of your saved sequences</option>
+                {curricula.filter((item) => item.id !== selectedAssignment.curriculum_id).map((item) => <option value={item.id} key={item.id}>{item.name} · {item.version}</option>)}
+              </select>
+            </label>
+            <div className="button-row"><button type="button" className="primary" disabled={!reuseCurriculumId || working} onClick={() => void useExistingCurriculum()}>Use this curriculum & continue</button></div>
+            <details className="curriculum-cleanup"><summary>Manage my saved curricula</summary><p className="supporting">Unused demo or outdated curricula can be retired here. TPP will not remove a curriculum that is still attached to an active class.</p>{curricula.map((item) => <div className="curriculum-cleanup-row" key={item.id}><span>{item.name} · {item.version}</span><button type="button" className="link-button danger-link" disabled={working} onClick={() => void retireCurriculum(item)}>Remove from my list</button></div>)}</details>
+          </>}
+        </div>
+      );
+    }
+    return (
+      <div className="pacing-mode-panel">
+        {pacingMode === "upload" && <div className="guidance-card"><strong>Upload, review, then save.</strong><p>Loading an Excel workbook reads it into the lesson editor. Nothing is saved until you select <strong>Save Curriculum & Pacing & Continue</strong>.</p><button type="button" className="secondary" onClick={downloadPacingTemplate}>Download current Excel template</button></div>}
+        <form className="form-grid" onSubmit={(event) => void savePacing(event)}>
+          <label>Curriculum name<input name="name" required defaultValue={`${selectedAssignment.course_name} Curriculum & Pacing`} /></label>
+          <label>Version<input name="version" required defaultValue={academicVersion(selectedAssignment.meeting_patterns[0])} /></label>
+          <PacingSequenceEditor disabled={disabled || working} />
+          <div className="guidance-card full-width"><strong>Normal lesson minutes come from the class schedule.</strong><p>Use the optional minutes override only when a lesson intentionally spans multiple meetings or uses a different duration.</p></div>
+          <div className="form-actions full-width"><button className="primary" disabled={disabled || working}>{working ? "Saving…" : "Save Curriculum & Pacing & Continue"}</button></div>
+        </form>
+      </div>
+    );
+  }
+
   return (
     <section className="panel course-setup-panel">
-      <div className="section-heading compact">
-        <div>
-          <p className="eyebrow">Course Setup</p>
-          <h2>Set up one class at a time</h2>
-          <p className="supporting">TPP will reveal each setup step after the previous step is saved. Class and schedule come first; Curriculum & Pacing and standards are separate steps.</p>
-        </div>
-      </div>
+      <div className="section-heading compact"><div><p className="eyebrow">Course Setup</p><h2>Set up one class at a time</h2><p className="supporting">TPP reveals each setup step after the previous step is saved. Class and schedule come first; Curriculum & Pacing and standards are separate steps.</p></div></div>
 
       <div className="setup-stepper" aria-label="Course setup progress">
         <StepMarker number={1} title="Class & Schedule" complete={step1Complete} active={!step1Complete || editing !== null} />
-        <StepMarker number={2} title="Curriculum & Pacing" complete={step2Complete} active={step1Complete && !step2Complete} />
-        <StepMarker number={3} title="Standards" complete={step3Complete} active={step2Complete && !step3Complete} />
-        <StepMarker number={4} title="Ready" complete={step3Complete} active={step3Complete} />
+        <StepMarker number={2} title="Curriculum & Pacing" complete={step2Complete} active={step1Complete && (!step2Complete || pacingMode !== null)} />
+        <StepMarker number={3} title="Standards" complete={step3Complete} active={step2Complete && !step3Complete && pacingMode === null} />
+        <StepMarker number={4} title="Ready" complete={step3Complete} active={step3Complete && pacingMode === null} />
       </div>
 
-      {assignments.length > 0 && (
-        <section className="setup-class-picker">
-          <div className="section-heading compact"><div><p className="eyebrow">Your classes</p><h3>Choose a class to continue or edit setup</h3></div></div>
-          <div className="grid course-management-grid">{sortedAssignments.map((assignment) => {
-            const coursePattern = assignment.meeting_patterns[0];
-            const curriculum = assignment.curriculum_id ? curricula.find((item) => item.id === assignment.curriculum_id) : null;
-            return <article className={`card ${selectedAssignmentId === assignment.id ? "selected" : ""}`} key={assignment.id}>
-              <div className="card-row"><span className="badge">Revision {assignment.revision}</span><span className="status">{curriculum ? "Pacing added" : "Setup in progress"}</span></div>
-              <h3>{assignment.course_name}</h3>
-              <p>{coursePattern ? `${weekdayLabel(coursePattern.weekdays)} · ${coursePattern.start_time.slice(0, 5)}–${coursePattern.end_time.slice(0, 5)}` : "Schedule not set"}</p>
-              <small>{curriculum ? `${curriculum.name} · ${curriculum.version}` : "Curriculum & Pacing not added yet"}</small>
-              <div className="button-row">
-                <button type="button" className="secondary" onClick={() => onSelectAssignment(assignment.id)}>{selectedAssignmentId === assignment.id ? "Selected" : "Continue setup"}</button>
-                <button type="button" className="link-button" onClick={() => { setEditingId(assignment.id); onSelectAssignment(assignment.id); }}>Edit class</button>
-                <button type="button" className="link-button danger-link" onClick={() => void removeClass(assignment)}>Remove</button>
-              </div>
-            </article>;
-          })}</div>
-        </section>
-      )}
+      {assignments.length > 0 && <section className="setup-class-picker"><div className="section-heading compact"><div><p className="eyebrow">Your classes</p><h3>Choose a class to continue or edit setup</h3></div></div><div className="grid course-management-grid">{sortedAssignments.map((assignment) => {
+        const coursePattern = assignment.meeting_patterns[0];
+        const curriculum = assignment.curriculum_id ? curricula.find((item) => item.id === assignment.curriculum_id) : null;
+        return <article className={`card ${selectedAssignmentId === assignment.id ? "selected" : ""}`} key={assignment.id}>
+          <div className="card-row"><span className="badge">Revision {assignment.revision}</span><span className="status">{curriculum ? "Pacing added" : "Setup in progress"}</span></div>
+          <h3>{assignment.course_name}</h3>
+          <p>{coursePattern ? `${weekdayLabel(coursePattern.weekdays)} · ${coursePattern.start_time.slice(0, 5)}–${coursePattern.end_time.slice(0, 5)}` : "Schedule not set"}</p>
+          <small>{curriculum ? `${curriculum.name} · ${curriculum.version}` : "Curriculum & Pacing not added yet"}</small>
+          <div className="button-row"><button type="button" className="secondary" onClick={() => onSelectAssignment(assignment.id)}>{selectedAssignmentId === assignment.id ? "Selected" : "Continue setup"}</button><button type="button" className="link-button" onClick={() => { setEditingId(assignment.id); onSelectAssignment(assignment.id); }}>Edit class</button><button type="button" className="link-button danger-link" onClick={() => void removeClass(assignment)}>Remove</button></div>
+        </article>;
+      })}</div></section>}
 
-      {(!selectedAssignment || editing !== null) && (
-        <section className="setup-step-card active-step" aria-labelledby="course-step-1">
-          <div className="step-heading"><span className="step-number">1</span><div><p className="eyebrow">Step 1</p><h2 id="course-step-1">Class & Schedule</h2><p className="supporting">Enter only the class you teach and when you teach it. Curriculum comes next.</p></div></div>
-          <form className="form-grid" key={editing?.id ?? "new-class"} onSubmit={(event) => void saveClass(event)}>
-            <label>Course name<input name="course_name" required defaultValue={editing?.course_name ?? ""} placeholder="Army JROTC LET 1" /></label>
-            <label>Course code<input name="course_code" defaultValue={editing?.course_code ?? ""} placeholder="JROTC-1" /></label>
-            <label>Grade(s)<input name="grade_band" defaultValue={editing?.grade_band ?? ""} placeholder="9–12" /></label>
-            <label>Schedule type<select name="schedule_type" defaultValue={pattern?.schedule_type ?? "period"}><option value="period">Period</option><option value="block">Block</option><option value="custom">Custom</option></select></label>
-            <label>Rotation label<input name="rotation_label" defaultValue={pattern?.rotation_label ?? ""} placeholder="Daily, A Day, B Day" /></label>
-            <label>Start time<input name="start_time" type="time" defaultValue={pattern?.start_time.slice(0, 5) ?? "08:00"} required /></label>
-            <label>End time<input name="end_time" type="time" defaultValue={pattern?.end_time.slice(0, 5) ?? "08:50"} required /></label>
-            <label>Effective start<input name="effective_start" type="date" defaultValue={pattern?.effective_start ?? "2026-08-10"} required /></label>
-            <label>Effective end<input name="effective_end" type="date" defaultValue={pattern?.effective_end ?? "2027-05-28"} required /></label>
-            <fieldset className="full-width"><legend>Meeting weekdays</legend><div className="weekday-row">{[[1,"Mon"],[2,"Tue"],[3,"Wed"],[4,"Thu"],[5,"Fri"]].map(([value,label]) => <label className="check" key={value}><input type="checkbox" name="weekday" value={value} defaultChecked={!pattern || pattern.weekdays.includes(Number(value))} />{label}</label>)}</div></fieldset>
-            <div className="form-actions full-width"><button className="primary" disabled={disabled || working}>{working ? "Saving…" : editing ? "Save class changes" : "Save class & continue"}</button>{editing && <button type="button" className="secondary" onClick={() => setEditingId(null)}>Cancel edit</button>}</div>
-          </form>
-        </section>
-      )}
+      {(!selectedAssignment || editing !== null) && <section className="setup-step-card active-step" aria-labelledby="course-step-1"><div className="step-heading"><span className="step-number">1</span><div><p className="eyebrow">Step 1</p><h2 id="course-step-1">Class & Schedule</h2><p className="supporting">Enter only the class you teach and when you teach it. Curriculum comes next.</p></div></div><form className="form-grid" key={editing?.id ?? "new-class"} onSubmit={(event) => void saveClass(event)}>
+        <label>Course name<input name="course_name" required defaultValue={editing?.course_name ?? ""} placeholder="Army JROTC LET 1" /></label>
+        <label>Course code<input name="course_code" defaultValue={editing?.course_code ?? ""} placeholder="JROTC-1" /></label>
+        <label>Grade(s)<input name="grade_band" defaultValue={editing?.grade_band ?? ""} placeholder="9–12" /></label>
+        <label>Schedule type<select name="schedule_type" defaultValue={pattern?.schedule_type ?? "period"}><option value="period">Period</option><option value="block">Block</option><option value="custom">Custom</option></select></label>
+        <label>Rotation label<input name="rotation_label" defaultValue={pattern?.rotation_label ?? ""} placeholder="Daily, A Day, B Day" /></label>
+        <label>Start time<input name="start_time" type="time" defaultValue={pattern?.start_time.slice(0, 5) ?? "08:00"} required /></label>
+        <label>End time<input name="end_time" type="time" defaultValue={pattern?.end_time.slice(0, 5) ?? "08:50"} required /></label>
+        <label>Effective start<input name="effective_start" type="date" defaultValue={pattern?.effective_start ?? "2026-08-10"} required /></label>
+        <label>Effective end<input name="effective_end" type="date" defaultValue={pattern?.effective_end ?? "2027-05-28"} required /></label>
+        <fieldset className="full-width"><legend>Meeting weekdays</legend><div className="weekday-row">{[[1, "Mon"], [2, "Tue"], [3, "Wed"], [4, "Thu"], [5, "Fri"]].map(([value, label]) => <label className="check" key={value}><input type="checkbox" name="weekday" value={value} defaultChecked={!pattern || pattern.weekdays.includes(Number(value))} />{label}</label>)}</div></fieldset>
+        <div className="form-actions full-width"><button className="primary" disabled={disabled || working}>{working ? "Saving…" : editing ? "Save class changes" : "Save class & continue"}</button>{editing && <button type="button" className="secondary" onClick={() => setEditingId(null)}>Cancel edit</button>}</div>
+      </form></section>}
 
-      {selectedAssignment && editing === null && (
-        <section className="setup-step-summary complete-summary">
-          <div className="step-heading"><span className="step-number">✓</span><div><p className="eyebrow">Step 1 complete</p><h2>{selectedAssignment.course_name}</h2><p>{selectedAssignment.meeting_patterns[0] ? `${weekdayLabel(selectedAssignment.meeting_patterns[0].weekdays)} · ${selectedAssignment.meeting_patterns[0].start_time.slice(0, 5)}–${selectedAssignment.meeting_patterns[0].end_time.slice(0, 5)}` : "Schedule saved"}</p></div></div>
-          <button type="button" className="secondary" onClick={() => setEditingId(selectedAssignment.id)}>Edit Class & Schedule</button>
-        </section>
-      )}
+      {selectedAssignment && editing === null && <section className="setup-step-summary complete-summary"><div className="step-heading"><span className="step-number">✓</span><div><p className="eyebrow">Step 1 complete</p><h2>{selectedAssignment.course_name}</h2><p>{selectedAssignment.meeting_patterns[0] ? `${weekdayLabel(selectedAssignment.meeting_patterns[0].weekdays)} · ${selectedAssignment.meeting_patterns[0].start_time.slice(0, 5)}–${selectedAssignment.meeting_patterns[0].end_time.slice(0, 5)}` : "Schedule saved"}</p></div></div><button type="button" className="secondary" onClick={() => setEditingId(selectedAssignment.id)}>Edit Class & Schedule</button></section>}
 
-      {selectedAssignment && !step2Complete && editing === null && (
-        <section className="setup-step-card active-step" aria-labelledby="course-step-2">
-          <div className="step-heading"><span className="step-number">2</span><div><p className="eyebrow">Step 2</p><h2 id="course-step-2">Curriculum & Pacing</h2><p className="supporting">Choose how this class should move through the year. Only curricula you created appear here.</p></div></div>
-          <div className="choice-grid">
-            <button type="button" className={`choice-card ${pacingMode === "upload" ? "selected" : ""}`} onClick={() => setPacingMode("upload")}><strong>Upload Excel</strong><span>I already have a year or semester pacing plan.</span></button>
-            <button type="button" className={`choice-card ${pacingMode === "build" ? "selected" : ""}`} onClick={() => setPacingMode("build")}><strong>Build in TPP</strong><span>I want to enter units and lessons here.</span></button>
-            <button type="button" className={`choice-card ${pacingMode === "reuse" ? "selected" : ""}`} onClick={() => setPacingMode("reuse")}><strong>Reuse mine</strong><span>I already created this curriculum for another class.</span></button>
-          </div>
+      {selectedAssignment && !step2Complete && editing === null && <section className="setup-step-card active-step" aria-labelledby="course-step-2"><div className="step-heading"><span className="step-number">2</span><div><p className="eyebrow">Step 2</p><h2 id="course-step-2">Curriculum & Pacing</h2><p className="supporting">Choose how this class should move through the year. Only curricula you created appear here.</p></div></div>{renderPacingChoices()}{renderPacingMode()}</section>}
 
-          {pacingMode === "reuse" && (
-            <div className="pacing-mode-panel">
-              {curricula.length === 0 ? <div className="empty-state"><p>You do not have a saved curriculum to reuse yet. Choose Upload Excel or Build in TPP.</p></div> : <>
-                <label>My Curriculum & Pacing<select value={reuseCurriculumId} onChange={(event) => setReuseCurriculumId(event.target.value)}><option value="">Choose one of your saved sequences</option>{curricula.map((item) => <option value={item.id} key={item.id}>{item.name} · {item.version}</option>)}</select></label>
-                <div className="button-row"><button type="button" className="primary" disabled={!reuseCurriculumId || working} onClick={() => void useExistingCurriculum()}>Use this curriculum & continue</button></div>
-                <details className="curriculum-cleanup"><summary>Manage my saved curricula</summary><p className="supporting">Unused demo or outdated curricula can be retired here. TPP will not remove a curriculum that is still attached to an active class.</p>{curricula.map((item) => <div className="curriculum-cleanup-row" key={item.id}><span>{item.name} · {item.version}</span><button type="button" className="link-button danger-link" disabled={working} onClick={() => void retireCurriculum(item)}>Remove from my list</button></div>)}</details>
-              </>}
-            </div>
-          )}
+      {selectedAssignment && step2Complete && <section className="setup-step-summary complete-summary"><div className="step-heading"><span className="step-number">✓</span><div><p className="eyebrow">Step 2 complete</p><h2>Curriculum & Pacing</h2><p>{currentPacing?.name} · {currentPacing?.version}</p></div></div><button type="button" className="secondary" onClick={() => setPacingMode((current) => current ? null : "build")}>{pacingMode ? "Cancel pacing changes" : "Edit or replace Curriculum & Pacing"}</button></section>}
 
-          {(pacingMode === "upload" || pacingMode === "build") && (
-            <div className="pacing-mode-panel">
-              {pacingMode === "upload" && <div className="guidance-card"><strong>Upload, review, then save.</strong><p>Loading an Excel workbook reads it into the lesson editor. Nothing is saved until you select <strong>Save Curriculum & Pacing & Continue</strong>.</p><button type="button" className="secondary" onClick={downloadPacingTemplate}>Download current Excel template</button></div>}
-              <form className="form-grid" onSubmit={(event) => void savePacing(event)}>
-                <label>Curriculum name<input name="name" required defaultValue={`${selectedAssignment.course_name} Curriculum & Pacing`} /></label>
-                <label>Version<input name="version" required defaultValue={academicVersion(selectedAssignment.meeting_patterns[0])} /></label>
-                <PacingSequenceEditor disabled={disabled || working} />
-                <div className="guidance-card full-width"><strong>Normal lesson minutes come from the class schedule.</strong><p>Use the optional minutes override only when a lesson intentionally spans multiple meetings or uses a different duration.</p></div>
-                <div className="form-actions full-width"><button className="primary" disabled={disabled || working}>{working ? "Saving…" : "Save Curriculum & Pacing & Continue"}</button></div>
-              </form>
-            </div>
-          )}
-        </section>
-      )}
+      {selectedAssignment && step2Complete && pacingMode && <section className="setup-step-card active-step"><div className="step-heading"><span className="step-number">2</span><div><p className="eyebrow">Edit Step 2</p><h2>Replace Curriculum & Pacing</h2><p className="supporting">Choose a replacement method. Existing saved curriculum remains available unless you explicitly retire it.</p></div></div>{renderPacingChoices()}{renderPacingMode()}</section>}
 
-      {selectedAssignment && step2Complete && (
-        <section className="setup-step-summary complete-summary">
-          <div className="step-heading"><span className="step-number">✓</span><div><p className="eyebrow">Step 2 complete</p><h2>Curriculum & Pacing</h2><p>{currentPacing?.name} · {currentPacing?.version}</p></div></div>
-          <button type="button" className="secondary" onClick={() => setPacingMode(pacingMode ?? "build")}>Edit or replace Curriculum & Pacing</button>
-          {pacingMode && <div className="pacing-mode-panel"><p className="supporting">To replace the current pacing sequence, choose a new method below. Existing saved curriculum remains available unless you explicitly retire it.</p><div className="choice-grid"><button type="button" className="choice-card" onClick={() => setPacingMode("upload")}><strong>Upload Excel</strong><span>Replace with a workbook.</span></button><button type="button" className="choice-card" onClick={() => setPacingMode("build")}><strong>Build in TPP</strong><span>Create a new sequence.</span></button><button type="button" className="choice-card" onClick={() => setPacingMode("reuse")}><strong>Reuse mine</strong><span>Attach another saved sequence.</span></button></div></div>}
-        </section>
-      )}
+      {selectedAssignment && step2Complete && pacingMode === null && !step3Complete && <section className="setup-step-card active-step" aria-labelledby="course-step-3"><div className="step-heading"><span className="step-number">3</span><div><p className="eyebrow">Step 3</p><h2 id="course-step-3">Authoritative Standards</h2><p className="supporting">Map this class once to the governed standards course used during weekly planning.</p></div></div><StandardsCourseMappingPanel accessToken={accessToken} assignmentId={selectedAssignment.id} disabled={disabled || working} onMappingStatus={setStandardsMapped} onMappingSaved={() => { onStandardsMappingSaved(); setStandardsMapped(true); onMessage("Standards mapping saved. Step 3 complete."); }} /></section>}
 
-      {selectedAssignment && step2Complete && (
-        <section className="setup-step-card active-step" aria-labelledby="course-step-3">
-          <div className="step-heading"><span className="step-number">{step3Complete ? "✓" : "3"}</span><div><p className="eyebrow">Step 3</p><h2 id="course-step-3">Authoritative Standards</h2><p className="supporting">Map this class once to the governed standards course used during weekly planning.</p></div></div>
-          <StandardsCourseMappingPanel
-            accessToken={accessToken}
-            assignmentId={selectedAssignment.id}
-            disabled={disabled || working}
-            onMappingStatus={setStandardsMapped}
-            onMappingSaved={() => { onStandardsMappingSaved(); setStandardsMapped(true); onMessage("Standards mapping saved. Step 3 complete."); }}
-          />
-        </section>
-      )}
+      {selectedAssignment && step2Complete && pacingMode === null && step3Complete && <section className="setup-step-summary complete-summary"><div className="step-heading"><span className="step-number">✓</span><div><p className="eyebrow">Step 3 complete</p><h2>Authoritative Standards</h2><p>Governed standards course mapping saved.</p></div></div><button type="button" className="secondary" onClick={() => setStandardsMapped(false)}>Review standards mapping</button></section>}
 
-      {selectedAssignment && step3Complete && (
-        <section className="setup-ready-card" aria-labelledby="course-step-4">
-          <div className="step-heading"><span className="step-number">✓</span><div><p className="eyebrow">Step 4 · Ready</p><h2 id="course-step-4">{selectedAssignment.course_name} is ready for weekly planning</h2><p className="supporting">Class schedule, Curriculum & Pacing, and authoritative standards mapping are all configured.</p></div></div>
-          <div className="ready-summary-grid"><div><strong>Class & Schedule</strong><span>{selectedAssignment.meeting_patterns[0] ? `${weekdayLabel(selectedAssignment.meeting_patterns[0].weekdays)} · ${selectedAssignment.meeting_patterns[0].start_time.slice(0, 5)}–${selectedAssignment.meeting_patterns[0].end_time.slice(0, 5)}` : "Saved"}</span></div><div><strong>Curriculum & Pacing</strong><span>{currentPacing?.name} · {currentPacing?.version}</span></div><div><strong>Standards</strong><span>Governed course mapping saved</span></div></div>
-          {onOpenWeeklyPlan && <div className="button-row"><button type="button" className="primary" onClick={() => onOpenWeeklyPlan(selectedAssignment.id)}>Go to Weekly Plan</button></div>}
-        </section>
-      )}
+      {selectedAssignment && step3Complete && pacingMode === null && <section className="setup-ready-card" aria-labelledby="course-step-4"><div className="step-heading"><span className="step-number">✓</span><div><p className="eyebrow">Step 4 · Ready</p><h2 id="course-step-4">{selectedAssignment.course_name} is ready for weekly planning</h2><p className="supporting">Class schedule, Curriculum & Pacing, and authoritative standards mapping are configured.</p></div></div><div className="ready-summary-grid"><div><strong>Class & Schedule</strong><span>{selectedAssignment.meeting_patterns[0] ? `${weekdayLabel(selectedAssignment.meeting_patterns[0].weekdays)} · ${selectedAssignment.meeting_patterns[0].start_time.slice(0, 5)}–${selectedAssignment.meeting_patterns[0].end_time.slice(0, 5)}` : "Saved"}</span></div><div><strong>Curriculum & Pacing</strong><span>{currentPacing?.name} · {currentPacing?.version}</span></div><div><strong>Standards</strong><span>Governed course mapping saved</span></div></div>{onOpenWeeklyPlan && <div className="button-row"><button type="button" className="primary" onClick={() => onOpenWeeklyPlan(selectedAssignment.id)}>Go to Weekly Plan</button></div>}</section>}
     </section>
   );
 }
