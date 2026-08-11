@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Any, cast
+from typing import Any
 from uuid import UUID
 
 from .standards_ingest import StandardsIngestError, extract_document, fetch_source
@@ -88,9 +88,7 @@ def stage_pending_parser_rematerialization_if_needed(
                 "Pending parser rematerialization source normalization changed unexpectedly"
             )
 
-    baseline_id = UUID(
-        _required_text(baseline or current or {}, "id")
-    )
+    baseline_id = UUID(_required_text(baseline or current or {}, "id"))
     source_version = _optional_text(baseline or current or {}, "source_version")
 
     candidate_id = _stage_parser_version_candidate(
