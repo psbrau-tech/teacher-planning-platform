@@ -235,7 +235,11 @@ def _load_exceptions(
                     assignment_id=assignment_id,
                     kind="other",
                     instructional_minutes=minutes if available else 0,
-                    note=(item.get("reason") if isinstance(item.get("reason"), str) else None),
+                    note=(
+                        item.get("reason")
+                        if isinstance(item.get("reason"), str)
+                        else None
+                    ),
                 )
             )
         return exceptions
@@ -267,7 +271,8 @@ def _read_persisted_plan(
                     "teaching_assignment_id": f"eq.{assignment_id}",
                     "and": _date_range_filter("school_date", week_start, week_end),
                     "select": (
-                        "id,lesson_id,school_date,segment_index,planned_minutes,sequence_position"
+                        "id,lesson_id,school_date,segment_index,planned_minutes,"
+                        "sequence_position"
                     ),
                     "order": "school_date.asc,sequence_position.asc,segment_index.asc",
                 },
@@ -281,7 +286,10 @@ def _read_persisted_plan(
         lesson_id = UUID(_text(row, "lesson_id"))
         lesson = lookup.get(lesson_id)
         if lesson is None:
-            raise HTTPException(status_code=503, detail="Weekly plan references an unknown lesson")
+            raise HTTPException(
+                status_code=503,
+                detail="Weekly plan references an unknown lesson",
+            )
         planned.append(
             PlannedLessonRead(
                 scheduled_lesson_id=UUID(_text(row, "id")),
@@ -301,7 +309,10 @@ def _require_curriculum(curriculum_id: str | None) -> str:
     if not curriculum_id:
         raise HTTPException(
             status_code=409,
-            detail="Complete Course Setup Step 2 by adding Curriculum & Pacing before building a week.",
+            detail=(
+                "Complete Course Setup Step 2 by adding Curriculum & Pacing before "
+                "building a week."
+            ),
         )
     return curriculum_id
 
@@ -322,7 +333,8 @@ def get_weekly_plan(
         raise HTTPException(status_code=error.status_code, detail=str(error)) from error
     if assignment is None:
         raise HTTPException(status_code=404, detail="Teaching assignment not found")
-    lessons = _load_curriculum_lessons(client, _require_curriculum(assignment.curriculum_id))
+    curriculum_id = _require_curriculum(assignment.curriculum_id)
+    lessons = _load_curriculum_lessons(client, curriculum_id)
     return _read_persisted_plan(
         client,
         assignment_id=assignment_id,
@@ -347,7 +359,8 @@ def generate_weekly_plan(
     if assignment is None:
         raise HTTPException(status_code=404, detail="Teaching assignment not found")
 
-    lessons = _load_curriculum_lessons(client, _require_curriculum(assignment.curriculum_id))
+    curriculum_id = _require_curriculum(assignment.curriculum_id)
+    lessons = _load_curriculum_lessons(client, curriculum_id)
     validation_store = SupabaseFridayValidationStore(client, identity.subject)
     try:
         previous_validation = validation_store.get(
