@@ -38,6 +38,19 @@ _INLINE_GENERAL = re.compile(
 )
 _PAGE_SUFFIX = re.compile(r"(?<=[.!?)])\d{1,3}$")
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+_AAS_MISSING_DOT = re.compile(
+    r"\b(?P<prefix>ELA(?:21)?\.AAS)(?=(?:K|[1-9]|1[0-2])\.)",
+    flags=re.IGNORECASE,
+)
+_MATH_LAYOUT_CODE = re.compile(
+    r"M\s*\.\s*(?:(?P<domain>G|A)\s*\.\s*)?AAS\s*\.\s*"
+    r"(?P<grade>K|[1-9]|1[0-2])\s*\.\s*(?P<number>\d+)(?P<suffix>[a-z]?)",
+    flags=re.IGNORECASE,
+)
+_MATH_CANONICAL_CODE = re.compile(
+    r"^M(?:\.(?:G|A))?\.AAS\.(?P<grade>K|[1-9]|1[0-2])\.\d+[a-z]?$",
+    flags=re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,7 +71,7 @@ class _SubjectSpec:
 
 _ELA = _SubjectSpec(
     parser_key="alabama_aas_ela_2021",
-    parser_version="gate-e-alabama-aas-ela-2021-v1",
+    parser_version="gate-e-alabama-aas-ela-2021-v2",
     code_prefixes=("ELA21.", "ELA."),
     courses=tuple(
         _CourseSpec(
@@ -81,14 +94,25 @@ _ELA = _SubjectSpec(
     ),
 )
 
+
+def _math_display_name(grade: int) -> str:
+    if grade == 0:
+        return "Kindergarten"
+    if grade in {9, 10}:
+        return f"Grade {grade} Geometry with Data Analysis"
+    if grade in {11, 12}:
+        return f"Grade {grade} Algebra with Probability"
+    return f"Grade {grade}"
+
+
 _MATH = _SubjectSpec(
     parser_key="alabama_aas_math_2019",
-    parser_version="gate-e-alabama-aas-math-2019-v1",
+    parser_version="gate-e-alabama-aas-math-2019-v2",
     code_prefixes=("M.",),
     courses=tuple(
         _CourseSpec(
             course_key="kindergarten" if grade == 0 else f"grade_{grade}",
-            display_name="Kindergarten" if grade == 0 else f"Grade {grade}",
+            display_name=_math_display_name(grade),
             grade_band="K" if grade == 0 else str(grade),
             headings=(
                 "kindergarten",
@@ -115,10 +139,20 @@ _SCIENCE = _SubjectSpec(
     courses=(
         _CourseSpec("kindergarten", "Kindergarten", "K", ("kindergarten science",)),
         *tuple(
-            _CourseSpec(f"grade_{grade}", f"Grade {grade}", str(grade), (f"grade {grade} science",))
+            _CourseSpec(
+                f"grade_{grade}",
+                f"Grade {grade}",
+                str(grade),
+                (f"grade {grade} science",),
+            )
             for grade in range(1, 9)
         ),
-        _CourseSpec("grade_9", "Grade 9 Physical Science", "9", ("grade 9 physical science",)),
+        _CourseSpec(
+            "grade_9",
+            "Grade 9 Physical Science",
+            "9",
+            ("grade 9 physical science",),
+        ),
         _CourseSpec("grade_10", "Grade 10 Biology", "10", ("grade 10 biology",)),
         _CourseSpec(
             "grade_11",
@@ -171,7 +205,16 @@ def parse_alabama_aas_ela_2021(extracted: ExtractedDocument) -> ParsedStandardsD
 
 
 def parse_alabama_aas_math_2019(extracted: ExtractedDocument) -> ParsedStandardsDocument:
-    return _parse_aas(extracted, _MATH)
+    if extracted.document_format == "pdf" and extracted.source_content is not None:
+        from .standards_alabama_aas_math_spatial import (
+            parse_alabama_aas_math_2019_spatial,
+        )
+
+        return parse_alabama_aas_math_2019_spatial(extracted)
+
+    parsed = _parse_aas(extracted, _MATH)
+    _validate_math_document(parsed)
+    return parsed
 
 
 def parse_alabama_aas_science_2017(extracted: ExtractedDocument) -> ParsedStandardsDocument:
@@ -182,6 +225,66 @@ def parse_alabama_aas_social_studies_2017(
     extracted: ExtractedDocument,
 ) -> ParsedStandardsDocument:
     return _parse_aas(extracted, _SOCIAL_STUDIES)
+
+
+def _math_course_on_page(raw_lines: list[str]) -> _CourseSpec | None:
+    for raw_line in raw_lines:
+        line = _clean_text(raw_line).casefold()
+        if not line:
+            continue
+        for course in reversed(_MATH.courses):
+            for heading in sorted(course.headings, key=len, reverse=True):
+                pattern = rf"(?<!\w){re.escape(heading.casefold())}(?!\w)"
+                if re.search(pattern, line):
+                    return course
+    return None
+
+
+def _canonical_math_code(match: re.Match[str]) -> str:
+    domain = match.group("domain")
+    grade = match.group("grade").upper()
+    number = match.group("number")
+    suffix = match.group("suffix").lower()
+    if domain:
+        return f"M.{domain.upper()}.AAS.{grade}.{number}{suffix}"
+    return f"M.AAS.{grade}.{number}{suffix}"
+
+
+def _is_math_layout_noise(line: str) -> bool:
+    normalized = line.casefold().rstrip(":")
+    if normalized in {
+        "2019 aas standard",
+        "2019 math cos standard 2019 aas standard",
+        "cluster 2019 math cos standard 2019 aas standard",
+        "mathematics alternate achievement standards",
+    }:
+        return True
+    return bool(re.fullmatch(r"\d{1,3}", line))
+
+
+def _validate_math_document(parsed: ParsedStandardsDocument) -> None:
+    for course in parsed.courses:
+        seen: set[str] = set()
+        expected_grade = course.grade_band.upper() if course.grade_band else None
+        for standard in course.standards:
+            match = _MATH_CANONICAL_CODE.fullmatch(standard.code)
+            if match is None:
+                raise StandardsIngestError(
+                    "Alabama alternate mathematics parser produced an incomplete standard code"
+                )
+            if expected_grade is not None and match.group("grade").upper() != expected_grade:
+                raise StandardsIngestError(
+                    "Alabama alternate mathematics standard was assigned to the wrong grade"
+                )
+            if standard.code in seen:
+                raise StandardsIngestError(
+                    "Alabama alternate mathematics parser produced a duplicate standard code"
+                )
+            seen.add(standard.code)
+            if not standard.text.strip() or standard.text.rstrip().endswith("$"):
+                raise StandardsIngestError(
+                    "Alabama alternate mathematics parser produced truncated standard text"
+                )
 
 
 def _parse_aas(
@@ -282,14 +385,15 @@ def _matches_subject(code: str, spec: _SubjectSpec) -> bool:
 
 
 def _fragments(line: str) -> tuple[str, ...]:
-    starts = {0, len(line)}
-    starts.update(match.start() for match in _INLINE_CODE.finditer(line))
-    starts.update(match.start() for match in _INLINE_GENERAL.finditer(line))
+    normalized_line = _AAS_MISSING_DOT.sub(r"\g<prefix>.", line)
+    starts = {0, len(normalized_line)}
+    starts.update(match.start() for match in _INLINE_CODE.finditer(normalized_line))
+    starts.update(match.start() for match in _INLINE_GENERAL.finditer(normalized_line))
     boundaries = sorted(starts)
     return tuple(
-        line[boundaries[index] : boundaries[index + 1]].strip()
+        normalized_line[boundaries[index] : boundaries[index + 1]].strip()
         for index in range(len(boundaries) - 1)
-        if line[boundaries[index] : boundaries[index + 1]].strip()
+        if normalized_line[boundaries[index] : boundaries[index + 1]].strip()
     )
 
 

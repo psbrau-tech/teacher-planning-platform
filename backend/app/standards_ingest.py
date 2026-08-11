@@ -60,6 +60,8 @@ class ParsedStandardsDocument:
 class ExtractedDocument:
     lines: tuple[str, ...]
     normalized_sha256: str
+    source_content: bytes | None = None
+    document_format: str | None = None
 
 
 def fetch_source(
@@ -118,6 +120,8 @@ def extract_document(source: FetchedSource) -> ExtractedDocument:
     return ExtractedDocument(
         lines=lines,
         normalized_sha256=sha256(normalized.encode("utf-8")).hexdigest(),
+        source_content=source.content,
+        document_format=source.document_format,
     )
 
 

@@ -1,4 +1,8 @@
 from hashlib import sha256
+from io import BytesIO
+
+import pytest
+from reportlab.pdfgen import canvas
 
 from app.standards_alabama_aas import (
     parse_alabama_aas_ela_2021,
@@ -6,7 +10,7 @@ from app.standards_alabama_aas import (
     parse_alabama_aas_science_2017,
     parse_alabama_aas_social_studies_2017,
 )
-from app.standards_ingest import ExtractedDocument
+from app.standards_ingest import ExtractedDocument, StandardsIngestError
 
 
 def _document(lines: list[str]) -> ExtractedDocument:
@@ -14,6 +18,54 @@ def _document(lines: list[str]) -> ExtractedDocument:
     return ExtractedDocument(
         lines=tuple(lines),
         normalized_sha256=sha256(normalized.encode("utf-8")).hexdigest(),
+    )
+
+
+def _math_layout_document() -> ExtractedDocument:
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer)
+    for grade in range(13):
+        token = "K" if grade == 0 else str(grade)
+        if grade == 0:
+            heading = "Kindergarten Mathematics"
+        elif grade in {9, 10}:
+            heading = f"Grade {grade}- Geometry with Data Analysis"
+        elif grade in {11, 12}:
+            heading = f"Grade {grade}- Algebra with Probability"
+        else:
+            heading = f"Grade {grade} Mathematics"
+
+        pdf.setFont("Helvetica-Bold", 16)
+        pdf.drawString(72, 760, heading)
+        pdf.setFont("Helvetica-Bold", 10)
+        pdf.drawString(72, 720, "Cluster")
+        pdf.drawString(220, 720, "2019 Math COS Standard")
+        pdf.drawString(430, 720, "2019 AAS Standard")
+        pdf.setFont("Helvetica", 9)
+
+        for number in range(1, 4):
+            y = 680 - ((number - 1) * 110)
+            pdf.drawString(72, y, f"Neighboring cluster narrative {number}.")
+            pdf.drawString(220, y, f"{number}. General standard text that must not leak.")
+            if grade in {9, 10}:
+                code = f"M.G.AAS.{token}.{number}"
+            elif grade in {11, 12}:
+                code = f"M.A.AAS.{token}.{number}"
+            else:
+                code = f"M.AAS.{token}.{number}"
+            pdf.setFont("Helvetica-Bold", 9)
+            pdf.drawString(430, y, code)
+            pdf.setFont("Helvetica", 9)
+            pdf.drawString(430, y - 14, f"Alternate math standard {number}.")
+        pdf.showPage()
+
+    pdf.save()
+    content = buffer.getvalue()
+    return ExtractedDocument(
+        lines=("plain extraction intentionally unused for layout parser",),
+        normalized_sha256="a" * 64,
+        source_content=content,
+        document_format="pdf",
     )
 
 
@@ -32,6 +84,7 @@ def test_ela_aas_parser_materializes_official_k_12_pdf_pattern() -> None:
     parsed = parse_alabama_aas_ela_2021(_document(lines))
 
     assert len(parsed.courses) == 13
+    assert parsed.parser_version == "gate-e-alabama-aas-ela-2021-v2"
     assert parsed.courses[0].standards[0].code == "ELA.AAS.K.1"
     assert parsed.courses[-1].standards[-1].code == "ELA.AAS.12.3"
 
@@ -42,6 +95,33 @@ def test_ela_aas_parser_materializes_official_k_12_pdf_pattern() -> None:
         "Alternate ELA standard 3.",
     ]
     assert all("General standard" not in standard.text for standard in kindergarten.standards)
+
+
+def test_ela_aas_parser_splits_publisher_token_missing_dot_after_aas() -> None:
+    lines: list[str] = []
+    for grade in range(13):
+        token = "K" if grade == 0 else str(grade)
+        heading = "KINDERGARTEN ELA" if grade == 0 else f"Grade {grade} ELA"
+        lines.append(heading)
+        lines.extend(
+            [
+                f"ELA.AAS.{token}.1 Alternate ELA standard one.",
+                f"ELA.AAS.{token}.2 Alternate ELA standard two.",
+                f"ELA.AAS.{token}.3 Alternate ELA standard three.",
+            ]
+        )
+        if grade == 1:
+            lines.append(
+                "ELA.AAS.1.7a Identify a phoneme with its grapheme. "
+                "ELA.AAS1.7b Encode concrete CVC spelled words."
+            )
+
+    parsed = parse_alabama_aas_ela_2021(_document(lines))
+    grade_one = next(course for course in parsed.courses if course.course_key == "grade_1")
+    standards = {standard.code: standard.text for standard in grade_one.standards}
+
+    assert standards["ELA.AAS.1.7a"] == "Identify a phoneme with its grapheme."
+    assert standards["ELA.AAS.1.7b"] == "Encode concrete CVC spelled words."
 
 
 def test_math_aas_parser_ignores_general_rows_and_page_boundary_join() -> None:
@@ -64,12 +144,58 @@ def test_math_aas_parser_ignores_general_rows_and_page_boundary_join() -> None:
     parsed = parse_alabama_aas_math_2019(_document(lines))
     grade_two = next(course for course in parsed.courses if course.course_key == "grade_2")
 
+    assert parsed.parser_version == "gate-e-alabama-aas-math-2019-v2"
     assert [standard.code for standard in grade_two.standards] == [
         "M.AAS.2.1",
         "M.AAS.2.2",
         "M.AAS.2.3",
     ]
     assert grade_two.standards[-1].text == "Alternate math standard three."
+
+
+def test_math_aas_layout_parser_isolates_authoritative_right_hand_lane() -> None:
+    parsed = parse_alabama_aas_math_2019(_math_layout_document())
+
+    assert len(parsed.courses) == 13
+    assert parsed.parser_version == "gate-e-alabama-aas-math-2019-v2"
+    grade_nine = next(course for course in parsed.courses if course.course_key == "grade_9")
+    grade_eleven = next(course for course in parsed.courses if course.course_key == "grade_11")
+    assert grade_nine.display_name == "Grade 9 Geometry with Data Analysis"
+    assert grade_eleven.display_name == "Grade 11 Algebra with Probability"
+    assert [standard.code for standard in grade_nine.standards] == [
+        "M.G.AAS.9.1",
+        "M.G.AAS.9.2",
+        "M.G.AAS.9.3",
+    ]
+    assert [standard.code for standard in grade_eleven.standards] == [
+        "M.A.AAS.11.1",
+        "M.A.AAS.11.2",
+        "M.A.AAS.11.3",
+    ]
+    assert all(
+        "General standard" not in standard.text and "Neighboring cluster" not in standard.text
+        for course in parsed.courses
+        for standard in course.standards
+    )
+
+
+def test_math_aas_parser_rejects_incomplete_identifier() -> None:
+    lines: list[str] = []
+    for grade in range(13):
+        token = "K" if grade == 0 else str(grade)
+        heading = "Kindergarten Mathematics" if grade == 0 else f"Grade {grade} Mathematics"
+        lines.extend(
+            [
+                heading,
+                f"M.AAS.{token}.1 Alternate one.",
+                f"M.AAS.{token}.2 Alternate two.",
+                f"M.AAS.{token}.3 Alternate three.",
+            ]
+        )
+    lines[2] = "M.AAS.K. Incomplete code must fail."
+
+    with pytest.raises(StandardsIngestError, match="incomplete"):
+        parse_alabama_aas_math_2019(_document(lines))
 
 
 def test_science_aas_parser_keeps_high_school_courses_separate() -> None:
