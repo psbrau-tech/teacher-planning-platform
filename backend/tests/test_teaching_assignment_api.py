@@ -5,7 +5,11 @@ from app.main import app
 client = TestClient(app)
 
 
-def _payload(*, schedule_type: str = "period", curriculum_id: str | None = "jrotc-let-1") -> dict[str, object]:
+def _payload(
+    *,
+    schedule_type: str = "period",
+    curriculum_id: str | None = "jrotc-let-1",
+) -> dict[str, object]:
     return {
         "school_id": "anniston-high-school",
         "course_name": "Army JROTC LET 1",
