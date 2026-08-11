@@ -6,7 +6,12 @@ from typing import Annotated
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
+from .act_reference_admin_api import router as act_reference_admin_router
 from .administration_api import router as administration_router
+from .ai_district_planning_api import router as ai_district_planning_router
+from .ai_planning_api import router as ai_planning_router
+from .ai_planning_resilient_api import router as ai_planning_resilient_router
+from .ai_reflection_api import router as ai_reflection_router
 from .curriculum_api import router as curriculum_router
 from .document_sections import HqiDocument
 from .document_service import (
@@ -14,6 +19,7 @@ from .document_service import (
     generate_anniston_hqi,
     generate_anniston_hqi_document,
     generate_anniston_hqi_packet,
+    generate_anniston_lesson_plan_packet,
 )
 from .fixtures import (
     ASSIGNMENT_IDS,
@@ -23,10 +29,12 @@ from .fixtures import (
     synthetic_jrotc_lessons,
 )
 from .friday_validation_api import router as friday_validation_router
+from .hqi_document_renderer import DOCUMENT_TITLES
 from .identity_api import router as identity_router
 from .live_planning_api import router as live_planning_router
 from .models import PlannedLesson
 from .pdf_fields import ALL_HQI_FIELDS
+from .planned_lesson_api import router as planned_lesson_router
 from .planner import build_weekly_plan
 from .readiness_api import router as readiness_router
 from .reporting import (
@@ -37,8 +45,17 @@ from .reporting import (
     summarize_ai_cost,
 )
 from .schedule_exception_api import router as schedule_exception_router
+from .standards_admin_api import router as standards_admin_router
+from .standards_api import router as standards_router
+from .standards_catalog_api import router as standards_catalog_router
+from .teacher_submission_api import router as teacher_submission_router
 from .teaching_assignment_api import router as teaching_assignment_router
 from .weekly_draft_api import router as weekly_draft_router
+
+# HQI was an early source of inspiration for the pilot, but it is not TPP's product identity.
+# Keep legacy internal route/type names stable during the pilot while removing the legacy
+# framework name from every teacher-visible generated document and download filename.
+DOCUMENT_TITLES[HqiDocument.INSTRUCTIONAL_FRAMEWORK] = "Instructional Planning Framework"
 
 app = FastAPI(
     title="Teacher Planning Platform API",
@@ -48,12 +65,24 @@ app = FastAPI(
 app.include_router(identity_router)
 app.include_router(readiness_router)
 app.include_router(administration_router)
+app.include_router(act_reference_admin_router)
 app.include_router(curriculum_router)
 app.include_router(teaching_assignment_router)
 app.include_router(live_planning_router)
+app.include_router(planned_lesson_router)
 app.include_router(schedule_exception_router)
+app.include_router(standards_router)
+app.include_router(standards_catalog_router)
+app.include_router(standards_admin_router)
+# This route is intentionally registered first for the shared planning path. It preserves
+# fail-closed governed references while retaining the rest of a valid teacher planning draft.
+app.include_router(ai_planning_resilient_router)
+app.include_router(ai_planning_router)
+app.include_router(ai_district_planning_router)
+app.include_router(ai_reflection_router)
 app.include_router(weekly_draft_router)
 app.include_router(friday_validation_router)
+app.include_router(teacher_submission_router)
 
 
 @app.get("/health", tags=["operations"])
@@ -97,7 +126,7 @@ def weekly_plan(
 @app.get("/api/v1/templates/anniston-hqi/fields", tags=["documents"])
 def anniston_hqi_fields() -> dict[str, object]:
     return {
-        "template": "Anniston City Schools HQI Lesson Plan Framework",
+        "template": "Anniston City Schools Planning Document Set",
         "field_count": len(ALL_HQI_FIELDS),
         "fields": ALL_HQI_FIELDS,
         "template_installed": DEFAULT_TEMPLATE_PATH.exists(),
@@ -109,7 +138,7 @@ def _require_template() -> None:
     if not DEFAULT_TEMPLATE_PATH.exists():
         raise HTTPException(
             status_code=503,
-            detail="The approved Anniston HQI PDF template is not installed.",
+            detail="The approved Anniston planning PDF template is not installed.",
         )
 
 
@@ -125,7 +154,11 @@ def generate_hqi_document_legacy(
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
 
-    filename = "anniston-hqi-lesson-plan-flat.pdf" if flatten else "anniston-hqi-lesson-plan.pdf"
+    filename = (
+        "anniston-planning-document-set-flat.pdf"
+        if flatten
+        else "anniston-planning-document-set.pdf"
+    )
     return StreamingResponse(
         BytesIO(document),
         media_type="application/pdf",
@@ -146,7 +179,7 @@ def generate_hqi_section_document(
         raise HTTPException(status_code=422, detail=str(error)) from error
 
     suffix = "-flat" if flatten else ""
-    filename = f"anniston-hqi-{document.value}{suffix}.pdf"
+    filename = f"anniston-planning-{document.value}{suffix}.pdf"
     return StreamingResponse(
         BytesIO(rendered.pdf_bytes),
         media_type="application/pdf",
@@ -154,6 +187,32 @@ def generate_hqi_section_document(
             "Content-Disposition": f'attachment; filename="{filename}"',
             "X-TPP-Page-Count": str(rendered.page_count),
             "X-TPP-Continuation-Pages": str(rendered.continuation_page_count),
+        },
+    )
+
+
+@app.post("/api/v1/documents/anniston-lesson-plan-packet", tags=["documents"])
+def generate_lesson_plan_packet(
+    payload: Annotated[dict[str, str], Body()],
+    flatten: Annotated[bool, Query()] = False,
+) -> StreamingResponse:
+    """Render the pre-instruction Framework + Week at a Glance as one PDF."""
+    _require_template()
+    try:
+        packet, documents = generate_anniston_lesson_plan_packet(payload, flatten=flatten)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+    continuation_pages = sum(item.continuation_page_count for item in documents)
+    suffix = "-flat" if flatten else ""
+    filename = f"anniston-weekly-lesson-plan{suffix}.pdf"
+    return StreamingResponse(
+        BytesIO(packet),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-TPP-Document-Count": str(len(documents)),
+            "X-TPP-Continuation-Pages": str(continuation_pages),
         },
     )
 
@@ -176,7 +235,7 @@ def generate_hqi_packet(
         media_type="application/pdf",
         headers={
             "Content-Disposition": (
-                f'attachment; filename="anniston-hqi-combined-packet{suffix}.pdf"'
+                f'attachment; filename="anniston-planning-combined-packet{suffix}.pdf"'
             ),
             "X-TPP-Document-Count": str(len(documents)),
             "X-TPP-Continuation-Pages": str(continuation_pages),

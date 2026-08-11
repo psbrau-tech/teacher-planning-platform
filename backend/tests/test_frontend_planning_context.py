@@ -3,15 +3,50 @@ from pathlib import Path
 
 def test_frontend_clears_stale_planning_context_on_course_and_week_changes() -> None:
     source = (
-        Path(__file__).resolve().parents[2] / "frontend" / "src" / "main.tsx"
+        Path(__file__).resolve().parents[2]
+        / "frontend"
+        / "src"
+        / "TeacherPlanningShell.tsx"
     ).read_text(encoding="utf-8")
 
     assert "function clearPlanningContext(" in source
-    assert "clearPlanningContext(created, weekStart);" in source
-    assert source.count("selectPlanningAssignment(event.target.value)") == 2
-    assert source.count("selectPlanningWeek(event.target.value)") == 2
-    assert "selectPlanningAssignment(assignment.id); setView(\"plan\");" in source
+    assert "selectPlanningAssignment(event.target.value)" in source
+    assert "function selectPlanningWeek(" in source
+    assert "mondayForIso(nextWeek)" in source
+    assert "setWeekStart(monday);" in source
+    assert "clearPlanningContext(selectedAssignment, monday);" in source
 
-    assert 'onChange={(event) => setSelectedAssignmentId(event.target.value)}' not in source
+    # Workflow entry points must not reuse whichever week the teacher happened to view last.
+    assert "function openFridayCloseout(" in source
+    assert "const currentWeek = mondayFor();" in source
+    assert "clearPlanningContext(assignment, currentWeek);" in source
+    assert 'setView("validation");' in source
+    assert "function openPlanningWeek(" in source
+    assert "const monday = mondayForIso(targetWeek);" in source
+    assert "clearPlanningContext(assignment, monday);" in source
+    assert "addDays(mondayFor(), 7)" in source
+    assert "Week of (Monday)" in source
+    assert "Previous week" in source
+    assert "Next week" in source
+    assert "Friday validation" in source
+    assert "Course Setup" in source
+
+    # Friday optimistic concurrency preflights an existing saved revision before writing.
+    assert "const [validationRevision, setValidationRevision]" in source
+    assert "setValidationRevision(saved.revision);" in source
+    assert "let expectedRevision = validationRevision;" in source
+    assert "if (expectedRevision === null)" in source
+    assert "expectedRevision = existing.revision;" in source
+    assert "expected_revision: expectedRevision" in source
+
+    # Friday closeout persists teacher-owned reflection through its dedicated endpoint.
+    assert "async function saveCloseoutDraft()" in source
+    closeout = source.split("async function saveCloseoutDraft()", 1)[1].split(
+        "async function submitDraft", 1
+    )[0]
+    assert "/api/v1/weekly-drafts/closeout" in closeout
+    assert "literacy_standards" not in closeout
+    assert "act_preparation" not in closeout
+
+    # The old raw week assignment path must not return.
     assert 'onChange={(event) => setWeekStart(event.target.value)}' not in source
-    assert 'setSelectedAssignmentId(assignment.id); setView("plan");' not in source

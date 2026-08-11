@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 
-type ScheduleException = {
+export type ScheduleException = {
   id: string;
   teaching_assignment_id: string;
   exception_date: string;
@@ -15,6 +15,7 @@ type Props = {
   weekStart: string;
   disabled?: boolean;
   onChanged: () => void;
+  onExceptionsChanged?: (exceptions: ScheduleException[]) => void;
 };
 
 function addDays(isoDate: string, days: number): string {
@@ -38,6 +39,7 @@ export function ScheduleExceptionPanel({
   weekStart,
   disabled = false,
   onChanged,
+  onExceptionsChanged,
 }: Props) {
   const [exceptions, setExceptions] = useState<ScheduleException[]>([]);
   const [exceptionDate, setExceptionDate] = useState(weekStart);
@@ -51,6 +53,7 @@ export function ScheduleExceptionPanel({
   async function loadExceptions() {
     if (!assignmentId) {
       setExceptions([]);
+      onExceptionsChanged?.([]);
       return;
     }
     const response = await fetch(
@@ -58,9 +61,11 @@ export function ScheduleExceptionPanel({
       { headers: { Authorization: `Bearer ${accessToken}` } },
     );
     if (!response.ok) {
-      throw new Error(await responseDetail(response, "Schedule exceptions could not be loaded."));
+      throw new Error(await responseDetail(response, "Schedule adjustments could not be loaded."));
     }
-    setExceptions(await response.json() as ScheduleException[]);
+    const loaded = await response.json() as ScheduleException[];
+    setExceptions(loaded);
+    onExceptionsChanged?.(loaded);
   }
 
   useEffect(() => {
@@ -68,7 +73,7 @@ export function ScheduleExceptionPanel({
     setNotice("");
     setError("");
     void loadExceptions().catch((caught) => {
-      setError(caught instanceof Error ? caught.message : "Schedule exceptions could not be loaded.");
+      setError(caught instanceof Error ? caught.message : "Schedule adjustments could not be loaded.");
     });
   }, [assignmentId, weekStart, accessToken]);
 
@@ -103,14 +108,18 @@ export function ScheduleExceptionPanel({
         },
       );
       if (!response.ok) {
-        throw new Error(await responseDetail(response, "Schedule exception could not be saved."));
+        throw new Error(await responseDetail(response, "Schedule adjustment could not be saved."));
       }
       await loadExceptions();
       setReason("");
-      setNotice("Exception saved. Regenerate the week to apply it.");
+      setNotice(
+        mode === "unavailable"
+          ? "Class day skipped. Select Build / reconcile week to shift pacing to the next available class meeting."
+          : "Reduced-time adjustment saved. Select Build / reconcile week to apply it.",
+      );
       onChanged();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Schedule exception could not be saved.");
+      setError(caught instanceof Error ? caught.message : "Schedule adjustment could not be saved.");
     } finally {
       setWorking(false);
     }
@@ -129,13 +138,13 @@ export function ScheduleExceptionPanel({
         },
       );
       if (!response.ok) {
-        throw new Error(await responseDetail(response, "Schedule exception could not be removed."));
+        throw new Error(await responseDetail(response, "Schedule adjustment could not be removed."));
       }
       await loadExceptions();
-      setNotice("Exception removed. Regenerate the week to restore the normal schedule.");
+      setNotice("Adjustment removed. Select Build / reconcile week to restore the normal schedule.");
       onChanged();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Schedule exception could not be removed.");
+      setError(caught instanceof Error ? caught.message : "Schedule adjustment could not be removed.");
     } finally {
       setWorking(false);
     }
@@ -146,8 +155,12 @@ export function ScheduleExceptionPanel({
       <div className="section-heading compact">
         <div>
           <p className="eyebrow">Schedule adjustment</p>
-          <h3>One-time exception</h3>
-          <p className="supporting">Use only for this course and week. Regenerate the week after a change.</p>
+          <h3>Skip or shorten a class day</h3>
+          <p className="supporting">
+            Use this when testing, a rally, closure, or another event changes one class meeting.
+            A skipped day does not consume a pacing lesson: after you rebuild the week, lessons
+            remain in curriculum order and resume on the next available meeting.
+          </p>
         </div>
       </div>
       <form className="form-grid" onSubmit={(event) => void saveException(event)}>
@@ -165,7 +178,7 @@ export function ScheduleExceptionPanel({
         <label>
           Adjustment
           <select value={mode} onChange={(event) => setMode(event.target.value as "unavailable" | "reduced")}>
-            <option value="unavailable">Day unavailable</option>
+            <option value="unavailable">No class / postpone pacing for this day</option>
             <option value="reduced">Reduced instructional minutes</option>
           </select>
         </label>
@@ -193,17 +206,20 @@ export function ScheduleExceptionPanel({
           />
         </label>
         <div className="form-actions full-width">
-          <button className="secondary" disabled={disabled || working || !assignmentId}>Save exception</button>
+          <button className="secondary" disabled={disabled || working || !assignmentId}>
+            {working ? "Saving adjustment…" : "Save schedule adjustment"}
+          </button>
         </div>
       </form>
+      {working && <p className="working-status" role="status"><span className="button-spinner" aria-hidden="true" /> Updating schedule…</p>}
       {notice && <p className="status">{notice}</p>}
-      {error && <p className="error-message">{error}</p>}
+      {error && <p className="error-message" role="alert">{error}</p>}
       {exceptions.length > 0 && (
         <div className="grid">
           {exceptions.map((exception) => (
             <article className="card" key={exception.id}>
               <strong>{exception.exception_date}</strong>
-              <p>{exception.is_available ? `${exception.instructional_minutes ?? 0} instructional minutes` : "Unavailable"}</p>
+              <p>{exception.is_available ? `${exception.instructional_minutes ?? 0} instructional minutes` : "No class · pacing postponed"}</p>
               <small>{exception.reason}</small>
               <button
                 type="button"
@@ -211,7 +227,7 @@ export function ScheduleExceptionPanel({
                 disabled={disabled || working}
                 onClick={() => void removeException(exception)}
               >
-                Remove exception
+                Remove adjustment
               </button>
             </article>
           ))}

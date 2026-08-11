@@ -7,6 +7,11 @@ on:
         description: Reason for this controlled pilot deployment
         required: true
         type: string
+      help_review_confirmed:
+        description: I reviewed Help against this exact release candidate and it is current
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -35,7 +40,18 @@ jobs:
       CONFIGURED_CERTIFICATE_ARN: ${{ vars.TPP_CERTIFICATE_ARN }}
       SUPABASE_URL_SECRET_ID: ${{ vars.TPP_SUPABASE_URL_SECRET_ID || 'tpp/pilot/supabase-url' }}
       SUPABASE_ANON_KEY_SECRET_ID: ${{ vars.TPP_SUPABASE_ANON_KEY_SECRET_ID || 'tpp/pilot/supabase-anon-key' }}
+      OPENAI_API_KEY_SECRET_ID: ${{ vars.TPP_OPENAI_API_KEY_SECRET_ID || 'tpp/pilot/openai-api-key' }}
     steps:
+      - name: Enforce exact-candidate Help review gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ inputs.help_review_confirmed }}" != "true" ]]; then
+            echo "Pilot deployment is blocked until Help is reviewed against this exact release candidate." >&2
+            exit 1
+          fi
+          echo "Help review gate confirmed for $GITHUB_SHA."
+
       - name: Validate controlled deployment configuration
         shell: bash
         run: |
@@ -104,6 +120,7 @@ jobs:
           }
           resolve_secret supabase_url "$SUPABASE_URL_SECRET_ID"
           resolve_secret supabase_anon_key "$SUPABASE_ANON_KEY_SECRET_ID"
+          resolve_secret openai_api_key "$OPENAI_API_KEY_SECRET_ID"
 
       - name: Resolve current service, certificate, and rollback baseline
         id: baseline
@@ -160,8 +177,10 @@ jobs:
             exit 1
           fi
           secret_names="$(jq -r '.taskDefinition.containerDefinitions[0].secrets[].name' <<<"$task_json" | sort)"
-          if [[ "$secret_names" != $'TPP_SUPABASE_ANON_KEY\nTPP_SUPABASE_URL' ]]; then
-            echo "The current task does not use the approved least-privilege runtime secret set:" >&2
+          legacy_secret_set=$'TPP_SUPABASE_ANON_KEY\nTPP_SUPABASE_URL'
+          gate_e_secret_set=$'TPP_OPENAI_API_KEY\nTPP_SUPABASE_ANON_KEY\nTPP_SUPABASE_URL'
+          if [[ "$secret_names" != "$legacy_secret_set" && "$secret_names" != "$gate_e_secret_set" ]]; then
+            echo "The current task does not use an approved rollback runtime secret set:" >&2
             echo "$secret_names" >&2
             exit 1
           fi
@@ -221,7 +240,8 @@ jobs:
               PublicBaseUrl=https://planner.guidedscholar.ai \
               AllowedEmailDomains=anniston.k12.al.us \
               SupabaseUrlSecretArn="${{ steps.secrets.outputs.supabase_url }}" \
-              SupabaseAnonKeySecretArn="${{ steps.secrets.outputs.supabase_anon_key }}"
+              SupabaseAnonKeySecretArn="${{ steps.secrets.outputs.supabase_anon_key }}" \
+              OpenAiApiKeySecretArn="${{ steps.secrets.outputs.openai_api_key }}"
           aws ecs wait services-stable \
             --cluster "$ECS_CLUSTER" \
             --services "$ECS_SERVICE"
@@ -258,12 +278,19 @@ jobs:
             echo "ECS and CloudFormation task definitions do not match after deployment." >&2
             exit 1
           fi
-          deployed_image="$(aws ecs describe-task-definition \
+          deployed_task_json="$(aws ecs describe-task-definition \
             --task-definition "$deployed_task_definition" \
-            --query 'taskDefinition.containerDefinitions[0].image' \
-            --output text)"
+            --output json)"
+          deployed_image="$(jq -r '.taskDefinition.containerDefinitions[0].image' <<<"$deployed_task_json")"
           if [[ "$deployed_image" != "${{ steps.image.outputs.immutable_image }}" ]]; then
             echo "ECS task image does not match the accepted exact digest." >&2
+            exit 1
+          fi
+          deployed_secret_names="$(jq -r '.taskDefinition.containerDefinitions[0].secrets[].name' <<<"$deployed_task_json" | sort)"
+          expected_secret_names=$'TPP_OPENAI_API_KEY\nTPP_SUPABASE_ANON_KEY\nTPP_SUPABASE_URL'
+          if [[ "$deployed_secret_names" != "$expected_secret_names" ]]; then
+            echo "Deployed Gate E task does not use the exact approved runtime secret set:" >&2
+            echo "$deployed_secret_names" >&2
             exit 1
           fi
 
@@ -309,6 +336,7 @@ jobs:
             echo "## TPP pilot deployment"
             echo "- Reason: ${{ inputs.reason }}"
             echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- Help reviewed against exact candidate: \`${{ inputs.help_review_confirmed }}\`"
             echo "- Build configuration fingerprint: \`${{ steps.image.outputs.build_config_fingerprint }}\`"
             echo "- Image: \`${{ steps.image.outputs.immutable_image }}\`"
             echo "- Existing immutable image reused: \`${{ steps.image.outputs.reused }}\`"
@@ -320,7 +348,7 @@ jobs:
             echo "- CloudFormation execution role: \`$CLOUDFORMATION_ROLE_ARN\`"
             echo "- Rollback task definition: \`${{ steps.baseline.outputs.task_definition }}\`"
             echo "- CloudFormation and ECS task provenance: \`synchronized\`"
-            echo "- Runtime secret mappings: \`TPP_SUPABASE_URL, TPP_SUPABASE_ANON_KEY\`"
-            echo "- High-privilege runtime credentials: \`not injected\`"
+            echo "- Runtime secret mappings: \`TPP_SUPABASE_URL, TPP_SUPABASE_ANON_KEY, TPP_OPENAI_API_KEY\`"
+            echo "- Supabase service-role/database/OAuth runtime credentials: \`not injected\`"
             echo "- Data boundary: teacher and curriculum data only; no student data"
           } >> "$GITHUB_STEP_SUMMARY"

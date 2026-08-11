@@ -16,6 +16,7 @@ from .settings import Settings, get_settings
 from .supabase_persistence import PersistenceError, SupabaseFridayValidationStore
 from .supabase_rest import SupabaseRestClient
 from .validation import ScheduledLessonRecord, apply_friday_validation
+from .week_dates import require_monday
 
 router = APIRouter(prefix="/api/v1/friday-validations", tags=["planning"])
 
@@ -115,6 +116,7 @@ def get_friday_validation(
     teacher: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> FridayValidationRead:
+    require_monday(week_start)
     try:
         record = _store_for(teacher, settings).get(
             teacher.subject,
@@ -134,6 +136,7 @@ def save_friday_validation(
     teacher: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> FridayValidationRead:
+    require_monday(payload.week_start)
     scheduled = [
         ScheduledLessonRecord(
             id=item.scheduled_lesson_id,
@@ -154,8 +157,23 @@ def save_friday_validation(
         for item in payload.lessons
     }
     try:
+        store = _store_for(teacher, settings)
+        current = store.get(
+            teacher.subject,
+            payload.assignment_id,
+            payload.week_start,
+        )
+        if current is not None and payload.expected_revision is None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Friday validation revision conflict: reload the saved validation "
+                    "before updating it"
+                ),
+            )
+
         result = apply_friday_validation(scheduled, updates)
-        record = _store_for(teacher, settings).save(
+        record = store.save(
             teacher_id=teacher.subject,
             assignment_id=payload.assignment_id,
             week_start=payload.week_start,

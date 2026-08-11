@@ -44,7 +44,13 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.ruff.lint.per-file-ignores]
 "app/auth.py" = ["E501"]
+"app/administration_api.py" = ["E501"]
+"app/curriculum_api.py" = ["E501", "I001"]
+"app/live_planning_api.py" = ["E501"]
+"app/planned_lesson_api.py" = ["E501"]
 "app/supabase_persistence.py" = ["SIM105"]
+"app/weekly_draft_api.py" = ["E501"]
+"app/weekly_drafts.py" = ["E501"]
 "scripts/provision_pilot.py" = ["SIM117"]
 
 [tool.mypy]

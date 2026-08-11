@@ -27,7 +27,41 @@ jobs:
       - name: Type check
         run: mypy app
       - name: Test
-        run: pytest --cov=app --cov-report=term-missing
+        run: pytest --cov=app --cov-report=term-missing --junitxml=pytest-results.xml
+      - name: Upload pytest failure details
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-pytest-failure
+          path: backend/pytest-results.xml
+          if-no-files-found: ignore
+          retention-days: 3
+      - name: Extract current Alabama Arts source lines
+        continue-on-error: true
+        run: |
+          python - <<'PY' > arts-extraction.txt
+          from app.standards_ingest import extract_document, fetch_source
+
+          url = (
+              "https://www.alabamaachieves.org/wp-content/uploads/2025/01/"
+              "AS_20250108_2024-Alabama-Course-of-Study-Arts-Education_V1.0.pdf"
+          )
+          fetched = fetch_source(url, "pdf")
+          extracted = extract_document(fetched)
+          print(f"source_sha256={fetched.source_sha256}")
+          print(f"normalized_sha256={extracted.normalized_sha256}")
+          print(f"line_count={len(extracted.lines)}")
+          for index, line in enumerate(extracted.lines):
+              print(f"{index:05d}\t{line}")
+          PY
+      - name: Upload Alabama Arts extraction diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: alabama-arts-extraction-diagnostic
+          path: backend/arts-extraction.txt
+          if-no-files-found: warn
+          retention-days: 1
       - name: Generate HQI acceptance samples
         run: python scripts/generate_hqi_acceptance_samples.py
       - name: Upload HQI acceptance samples

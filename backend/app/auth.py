@@ -217,11 +217,11 @@ def require_teacher(
 def require_school_reporting_admin(
     identity: Annotated[AuthenticatedTeacher, Depends(require_governed_user)],
 ) -> AuthenticatedTeacher:
-    """Allow school or platform administrators to read aggregate school reporting."""
+    """Allow school, district, or platform administrators to read governed reporting."""
     return _require_any_role(
         identity,
-        frozenset({"school_admin", "platform_admin"}),
-        "School Administrator or Platform Administrator role is required",
+        frozenset({"school_admin", "district_admin", "platform_admin"}),
+        "School, District, or Platform Administrator role is required",
     )
 
 

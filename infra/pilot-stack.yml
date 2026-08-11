@@ -56,6 +56,9 @@ Parameters:
   SupabaseAnonKeySecretArn:
     Type: String
     Default: ''
+  OpenAiApiKeySecretArn:
+    Type: String
+    Default: ''
 
 Conditions:
   CreateService: !Equals [!Ref DeployService, 'true']
@@ -313,6 +316,7 @@ Resources:
                 Resource:
                   - !Ref SupabaseUrlSecretArn
                   - !Ref SupabaseAnonKeySecretArn
+                  - !Ref OpenAiApiKeySecretArn
 
   TaskRole:
     Type: AWS::IAM::Role
@@ -365,6 +369,8 @@ Resources:
               ValueFrom: !Ref SupabaseUrlSecretArn
             - Name: TPP_SUPABASE_ANON_KEY
               ValueFrom: !Ref SupabaseAnonKeySecretArn
+            - Name: TPP_OPENAI_API_KEY
+              ValueFrom: !Ref OpenAiApiKeySecretArn
           MountPoints:
             - SourceVolume: temp
               ContainerPath: /tmp

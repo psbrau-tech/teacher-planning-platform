@@ -23,7 +23,37 @@ def test_exception_removes_instructional_minutes() -> None:
     assert available_minutes_for_date(monday, [period_pattern()], [exception]) == 0
 
 
-def test_weekly_plan_splits_long_lesson_without_reordering() -> None:
+def test_schedule_derived_lesson_uses_full_meeting_and_advances_next_day() -> None:
+    lessons = synthetic_jrotc_lessons("LET 1", count=2)
+    lessons[0].estimated_minutes = None
+    lessons[1].estimated_minutes = None
+    plan = build_weekly_plan(
+        assignment_id=ASSIGNMENT_IDS["LET 1"],
+        week_start=date(2026, 8, 10),
+        patterns=[period_pattern()],
+        lessons=lessons,
+    )
+
+    assert [item.curriculum_lesson_id for item in plan[:2]] == [lessons[0].id, lessons[1].id]
+    assert [item.date.isoformat() for item in plan[:2]] == ["2026-08-10", "2026-08-11"]
+    assert [item.planned_minutes for item in plan[:2]] == [50, 50]
+
+
+def test_schedule_derived_lesson_uses_block_duration_without_duplicate_input() -> None:
+    lesson = synthetic_jrotc_lessons("LET 4", count=1)[0]
+    lesson.estimated_minutes = None
+    plan = build_weekly_plan(
+        assignment_id=ASSIGNMENT_IDS["LET 4"],
+        week_start=date(2026, 8, 10),
+        patterns=[afternoon_block_pattern()],
+        lessons=[lesson],
+    )
+
+    assert len(plan) == 1
+    assert plan[0].planned_minutes == 90
+
+
+def test_weekly_plan_splits_explicit_long_lesson_without_reordering() -> None:
     lessons = synthetic_jrotc_lessons("LET 1", count=2)
     lessons[0].estimated_minutes = 75
     plan = build_weekly_plan(
@@ -37,7 +67,34 @@ def test_weekly_plan_splits_long_lesson_without_reordering() -> None:
     assert plan[2].curriculum_lesson_id == lessons[1].id
 
 
-def test_unsplittable_lesson_waits_for_sufficient_block() -> None:
+def test_next_lesson_does_not_start_in_one_minute_remainder() -> None:
+    lessons = synthetic_jrotc_lessons("LET 1", count=2)
+    lessons[0].estimated_minutes = 50
+    lessons[1].estimated_minutes = 50
+    fifty_one_minute_pattern = MeetingPattern(
+        schedule_type=ScheduleType.PERIOD,
+        weekdays=[1, 2, 3, 4, 5],
+        start_time=time(8, 0),
+        end_time=time(8, 51),
+        effective_start=date(2026, 8, 6),
+        effective_end=date(2027, 5, 24),
+    )
+
+    plan = build_weekly_plan(
+        assignment_id=ASSIGNMENT_IDS["LET 1"],
+        week_start=date(2026, 8, 10),
+        patterns=[fifty_one_minute_pattern],
+        lessons=lessons,
+    )
+
+    assert len(plan) == 2
+    assert [item.curriculum_lesson_id for item in plan] == [lessons[0].id, lessons[1].id]
+    assert [item.date.isoformat() for item in plan] == ["2026-08-10", "2026-08-11"]
+    assert [item.planned_minutes for item in plan] == [50, 50]
+    assert [item.segment_number for item in plan] == [1, 1]
+
+
+def test_unsplittable_explicit_lesson_waits_for_sufficient_block() -> None:
     lesson = synthetic_jrotc_lessons("LET 4", count=1)[0]
     lesson.estimated_minutes = 80
     lesson.can_split = False

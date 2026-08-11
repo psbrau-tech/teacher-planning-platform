@@ -1,0 +1,108 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from .standards_catalog_discovery import DiscoveredStandardsSource
+
+
+@dataclass(frozen=True, slots=True)
+class SourceIngestPlan:
+    parser_key: str
+    source_kind: str
+    provides_standard_entries: bool
+    parser_ready: bool
+    readiness_detail: str
+
+
+def source_ingest_plan(source: DiscoveredStandardsSource) -> SourceIngestPlan:
+    if source.family == "alabama_cte_program":
+        return SourceIngestPlan(
+            parser_key="alabama_cte_program_generic",
+            source_kind="program_guide",
+            provides_standard_entries=False,
+            parser_ready=True,
+            readiness_detail="Generic Alabama CTE Program Guide course-listing parser",
+        )
+
+    if source.family == "alabama_cte":
+        return SourceIngestPlan(
+            parser_key="alabama_cte_cos_generic",
+            source_kind="course_of_study",
+            provides_standard_entries=True,
+            parser_ready=True,
+            readiness_detail="Generic Alabama CTE Course of Study standards parser",
+        )
+
+    if source.family == "alabama_alternate":
+        parser_key = _ALTERNATE_PARSERS.get(source.source_key)
+        if parser_key is not None:
+            return SourceIngestPlan(
+                parser_key=parser_key,
+                source_kind="alternate_achievement_standards",
+                provides_standard_entries=True,
+                parser_ready=True,
+                readiness_detail="Verified source-specific Alabama alternate achievement parser",
+            )
+        return SourceIngestPlan(
+            parser_key="alabama_alternate_parser_pending",
+            source_kind="alternate_achievement_standards",
+            provides_standard_entries=True,
+            parser_ready=False,
+            readiness_detail=(
+                "Alternate achievement source discovered and governed, but deterministic "
+                "parser verification is pending"
+            ),
+        )
+
+    if source.family == "alabama_academic":
+        parser_key = _ACADEMIC_PARSERS.get(source.source_key)
+        if parser_key is not None:
+            return SourceIngestPlan(
+                parser_key=parser_key,
+                source_kind="course_of_study",
+                provides_standard_entries=True,
+                parser_ready=True,
+                readiness_detail="Verified source-specific Alabama academic parser",
+            )
+        return SourceIngestPlan(
+            parser_key="alabama_academic_parser_pending",
+            source_kind="course_of_study",
+            provides_standard_entries=True,
+            parser_ready=False,
+            readiness_detail=(
+                "Source discovered and governed, but deterministic parser verification is pending"
+            ),
+        )
+
+    return SourceIngestPlan(
+        parser_key="unsupported_source_parser_pending",
+        source_kind="reference",
+        provides_standard_entries=False,
+        parser_ready=False,
+        readiness_detail="Source family requires explicit parser/source-role review",
+    )
+
+
+_ALTERNATE_PARSERS = {
+    "alabama_alternate_english_language_arts": "alabama_aas_ela_2021",
+    "alabama_alternate_mathematics": "alabama_aas_math_2019",
+    "alabama_alternate_science": "alabama_aas_science_2017",
+    "alabama_alternate_social_studies": "alabama_aas_social_studies_2017",
+}
+
+_ACADEMIC_PARSERS = {
+    "alabama_academic_arts_education": "alabama_arts_2024",
+    "alabama_academic_digital_literacy_computer_science": "alabama_dlcs_2025",
+    "alabama_academic_driver_traffic_safety": "alabama_driver_traffic_safety_2007",
+    "alabama_academic_english_language_arts": "alabama_ela_2021",
+    "alabama_academic_health": "alabama_health_2019",
+    "alabama_academic_mathematics": "alabama_math_2019",
+    "alabama_academic_mathematics_algebra_with_finance": (
+        "alabama_algebra_finance_revised"
+    ),
+    "alabama_academic_mathematics_career_mathematics": "alabama_career_mathematics",
+    "alabama_academic_physical_education": "alabama_physical_education_2019",
+    "alabama_academic_science": "alabama_science_2023",
+    "alabama_academic_social_studies": "alabama_social_studies_2024",
+    "alabama_academic_world_languages": "alabama_world_languages_2017",
+}

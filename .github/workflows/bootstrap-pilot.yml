@@ -40,6 +40,7 @@ jobs:
       CERTIFICATE_ARN: ${{ vars.TPP_CERTIFICATE_ARN }}
       SUPABASE_URL_SECRET_ID: ${{ vars.TPP_SUPABASE_URL_SECRET_ID || 'tpp/pilot/supabase-url' }}
       SUPABASE_ANON_KEY_SECRET_ID: ${{ vars.TPP_SUPABASE_ANON_KEY_SECRET_ID || 'tpp/pilot/supabase-anon-key' }}
+      OPENAI_API_KEY_SECRET_ID: ${{ vars.TPP_OPENAI_API_KEY_SECRET_ID || 'tpp/pilot/openai-api-key' }}
       REASON: ${{ inputs.reason }}
       REQUEST_CERTIFICATE: ${{ inputs.request_certificate }}
 

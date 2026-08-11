@@ -1,0 +1,67 @@
+name: ACT Public Source Verify
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/act_reference.py"
+      - "backend/app/act_benchmarks.py"
+      - ".github/workflows/act-public-source-verify.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-act-public-sources:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+      - name: Install backend
+        run: python -m pip install -e '.[dev]'
+      - name: Verify current public first-party ACT sources read-only
+        run: |
+          python - <<'PY'
+          from app.act_benchmarks import fetch_and_parse_act_benchmarks
+          from app.act_reference import ACT_CCR_SOURCES, fetch_and_parse_act_ccr
+
+          print("database_writes=0")
+          print("source_boundary=public_first_party_ACT_only")
+          total = 0
+          for source_key, domain, url in ACT_CCR_SOURCES:
+              parsed = fetch_and_parse_act_ccr(source_key, domain, url)
+              codes = [entry.reference_code for entry in parsed.entries]
+              if len(codes) != len(set(codes)):
+                  raise RuntimeError(f"duplicate ACT identifiers in {domain}")
+              if any(not entry.exact_text.strip() for entry in parsed.entries):
+                  raise RuntimeError(f"empty ACT authoritative text in {domain}")
+              total += len(parsed.entries)
+              print(
+                  f"verified={source_key}|domain={domain}|entries={len(parsed.entries)}|"
+                  f"source_sha256={parsed.source_sha256}|parser={parsed.parser_version}"
+              )
+
+          benchmarks = fetch_and_parse_act_benchmarks()
+          if len(benchmarks.benchmarks) != 6:
+              raise RuntimeError("ACT readiness benchmark verification did not return six rows")
+          benchmark_summary = ",".join(
+              f"{item.domain}:{item.benchmark_score}" for item in benchmarks.benchmarks
+          )
+          print(
+              "verified=act_readiness_benchmarks|"
+              f"entries={len(benchmarks.benchmarks)}|"
+              f"source_sha256={benchmarks.source_sha256}|"
+              f"parser={benchmarks.parser_version}|scores={benchmark_summary}"
+          )
+          print(f"verified_domains={len(ACT_CCR_SOURCES)}")
+          print(f"verified_entries={total}")
+          print("verified_benchmark_rows=6")
+          PY

@@ -13,6 +13,7 @@ required=(
   VITE_SUPABASE_ANON_KEY
   SUPABASE_URL_SECRET_ID
   SUPABASE_ANON_KEY_SECRET_ID
+  OPENAI_API_KEY_SECRET_ID
   GITHUB_SHA
   GITHUB_OUTPUT
   GITHUB_STEP_SUMMARY
@@ -61,6 +62,7 @@ resolve_secret_arn() {
 
 supabase_url_secret_arn="$(resolve_secret_arn "$SUPABASE_URL_SECRET_ID")"
 supabase_anon_key_secret_arn="$(resolve_secret_arn "$SUPABASE_ANON_KEY_SECRET_ID")"
+openai_api_key_secret_arn="$(resolve_secret_arn "$OPENAI_API_KEY_SECRET_ID")"
 
 stack_exists=false
 service_deployed=false
@@ -120,7 +122,8 @@ if [[ "$service_deployed" != "true" ]]; then
       DeployService=false \
       CertificateArn="${CERTIFICATE_ARN:-}" \
       SupabaseUrlSecretArn="$supabase_url_secret_arn" \
-      SupabaseAnonKeySecretArn="$supabase_anon_key_secret_arn"
+      SupabaseAnonKeySecretArn="$supabase_anon_key_secret_arn" \
+      OpenAiApiKeySecretArn="$openai_api_key_secret_arn"
 fi
 
 account_id="$(aws sts get-caller-identity --query Account --output text)"
@@ -170,7 +173,8 @@ if [[ "$service_deployed" != "true" ]]; then
       PublicBaseUrl=https://planner.guidedscholar.ai \
       AllowedEmailDomains=anniston.k12.al.us \
       SupabaseUrlSecretArn="$supabase_url_secret_arn" \
-      SupabaseAnonKeySecretArn="$supabase_anon_key_secret_arn"
+      SupabaseAnonKeySecretArn="$supabase_anon_key_secret_arn" \
+      OpenAiApiKeySecretArn="$openai_api_key_secret_arn"
 fi
 
 aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
@@ -210,12 +214,19 @@ task_definition="$(aws ecs describe-services \
   --services "$ECS_SERVICE" \
   --query 'services[0].taskDefinition' \
   --output text)"
-deployed_image="$(aws ecs describe-task-definition \
+deployed_task_json="$(aws ecs describe-task-definition \
   --task-definition "$task_definition" \
-  --query 'taskDefinition.containerDefinitions[0].image' \
-  --output text)"
+  --output json)"
+deployed_image="$(jq -r '.taskDefinition.containerDefinitions[0].image' <<<"$deployed_task_json")"
 if [[ "$deployed_image" != "$immutable_image" ]]; then
   echo "Initial service image does not match the accepted exact digest." >&2
+  exit 1
+fi
+secret_names="$(jq -r '.taskDefinition.containerDefinitions[0].secrets[].name' <<<"$deployed_task_json" | sort)"
+expected_secret_names=$'TPP_OPENAI_API_KEY\nTPP_SUPABASE_ANON_KEY\nTPP_SUPABASE_URL'
+if [[ "$secret_names" != "$expected_secret_names" ]]; then
+  echo "Initial Gate E task does not use the exact approved runtime secret set:" >&2
+  echo "$secret_names" >&2
   exit 1
 fi
 
@@ -281,8 +292,8 @@ fi
   echo "- ALB DNS: \`$alb_dns\`"
   echo "- Image: \`$immutable_image\`"
   echo "- Task definition: \`$task_definition\`"
-  echo "- Runtime secret mappings: \`TPP_SUPABASE_URL, TPP_SUPABASE_ANON_KEY\`"
-  echo "- High-privilege runtime credentials: \`not injected\`"
+  echo "- Runtime secret mappings: \`TPP_SUPABASE_URL, TPP_SUPABASE_ANON_KEY, TPP_OPENAI_API_KEY\`"
+  echo "- Supabase service-role/database/OAuth runtime credentials: \`not injected\`"
   echo "- Data boundary: teacher and curriculum data only; no student data"
   if [[ "$REQUEST_CERTIFICATE" == "true" ]]; then
     echo "- ACM certificate: \`$certificate_arn\`"

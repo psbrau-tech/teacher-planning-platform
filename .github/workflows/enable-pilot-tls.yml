@@ -36,6 +36,7 @@ jobs:
       TASK_DEFINITION_FAMILY: ${{ vars.TPP_TASK_DEFINITION_FAMILY || 'teacher-planning-platform-pilot' }}
       SUPABASE_URL_SECRET_ID: ${{ vars.TPP_SUPABASE_URL_SECRET_ID || 'tpp/pilot/supabase-url' }}
       SUPABASE_ANON_KEY_SECRET_ID: ${{ vars.TPP_SUPABASE_ANON_KEY_SECRET_ID || 'tpp/pilot/supabase-anon-key' }}
+      OPENAI_API_KEY_SECRET_ID: ${{ vars.TPP_OPENAI_API_KEY_SECRET_ID || 'tpp/pilot/openai-api-key' }}
     steps:
       - name: Validate controlled TLS configuration
         shell: bash
@@ -101,12 +102,19 @@ jobs:
             exit 1
           fi
           task_definition="$(jq -r '.services[0].taskDefinition' <<<"$service_json")"
-          image="$(aws ecs describe-task-definition \
+          task_json="$(aws ecs describe-task-definition \
             --task-definition "$task_definition" \
-            --query 'taskDefinition.containerDefinitions[0].image' \
-            --output text)"
+            --output json)"
+          image="$(jq -r '.taskDefinition.containerDefinitions[0].image' <<<"$task_json")"
           if [[ -z "$image" || "$image" == "None" || ! "$image" =~ @sha256:[0-9a-f]{64}$ ]]; then
             echo "The active pilot service is not using an immutable ECR digest." >&2
+            exit 1
+          fi
+          active_secret_names="$(jq -r '.taskDefinition.containerDefinitions[0].secrets[].name' <<<"$task_json" | sort)"
+          expected_secret_names=$'TPP_OPENAI_API_KEY\nTPP_SUPABASE_ANON_KEY\nTPP_SUPABASE_URL'
+          if [[ "$active_secret_names" != "$expected_secret_names" ]]; then
+            echo "TLS updates require an already-migrated Gate E runtime secret set:" >&2
+            echo "$active_secret_names" >&2
             exit 1
           fi
           echo "image=$image" >> "$GITHUB_OUTPUT"
@@ -128,6 +136,7 @@ jobs:
           }
           resolve_secret supabase_url "$SUPABASE_URL_SECRET_ID"
           resolve_secret supabase_anon_key "$SUPABASE_ANON_KEY_SECRET_ID"
+          resolve_secret openai_api_key "$OPENAI_API_KEY_SECRET_ID"
 
       - name: Attach HTTPS listener and HTTP redirect through CloudFormation
         shell: bash
@@ -150,7 +159,8 @@ jobs:
               PublicBaseUrl=https://planner.guidedscholar.ai \
               AllowedEmailDomains=anniston.k12.al.us \
               SupabaseUrlSecretArn="${{ steps.values.outputs.supabase_url }}" \
-              SupabaseAnonKeySecretArn="${{ steps.values.outputs.supabase_anon_key }}"
+              SupabaseAnonKeySecretArn="${{ steps.values.outputs.supabase_anon_key }}" \
+              OpenAiApiKeySecretArn="${{ steps.values.outputs.openai_api_key }}"
           aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
 
       - name: Verify listeners, certificate, target health, and active image
@@ -227,7 +237,8 @@ jobs:
             exit 1
           fi
           secret_names="$(jq -r '.taskDefinition.containerDefinitions[0].secrets[].name' <<<"$active_task_json" | sort)"
-          if [[ "$secret_names" != $'TPP_SUPABASE_ANON_KEY\nTPP_SUPABASE_URL' ]]; then
+          expected_secret_names=$'TPP_OPENAI_API_KEY\nTPP_SUPABASE_ANON_KEY\nTPP_SUPABASE_URL'
+          if [[ "$secret_names" != "$expected_secret_names" ]]; then
             echo "TLS attachment produced an unexpected ECS runtime secret set:" >&2
             echo "$secret_names" >&2
             exit 1
@@ -250,8 +261,8 @@ jobs:
             echo "- Prior task definition: \`${{ steps.values.outputs.task_definition }}\`"
             echo "- Active task definition: \`${{ steps.verify.outputs.active_task_definition }}\`"
             echo "- Healthy targets: \`${{ steps.verify.outputs.healthy_targets }}\`"
-            echo "- Runtime secret mappings: \`TPP_SUPABASE_URL, TPP_SUPABASE_ANON_KEY\`"
-            echo "- High-privilege runtime credentials: \`not injected\`"
+            echo "- Runtime secret mappings: \`TPP_SUPABASE_URL, TPP_SUPABASE_ANON_KEY, TPP_OPENAI_API_KEY\`"
+            echo "- Supabase service-role/database/OAuth runtime credentials: \`not injected\`"
             echo "- ALB DNS target: \`${{ steps.verify.outputs.alb_dns }}\`"
             echo "- Manual GitHub environment update required: set \`TPP_CERTIFICATE_ARN\` to this certificate ARN."
             echo "- Manual Cloudflare record required: CNAME \`planner\` → \`${{ steps.verify.outputs.alb_dns }}\`, DNS only during acceptance."

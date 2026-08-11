@@ -55,7 +55,7 @@ Complete one record for each test session.
 7. Do not combine Platform Owner, administrator, and teacher evidence into one persona unless the governed account intentionally holds the corresponding concurrent roles.
 8. AI-assisted planning remains teacher-controlled: suggestions must not silently overwrite saved teacher content.
 9. Current standards must be traceable to an authoritative source and version/effective date. Runtime planning must remain usable if the external standards source is temporarily unavailable.
-10. Each authoritative standards source must be automatically revalidated on the first workday of every month. A changed source is staged for review and does not silently replace the currently approved snapshot.
+10. Standards reconciliation follows three governed layers: annual full-catalog/source validation before the school year, quarterly lightweight catalog monitoring during the school year, and event-driven reconciliation when an authoritative adoption/amendment/replacement is identified. No layer may silently replace an approved snapshot or rewrite validated historical plans.
 
 ## Gate A — Operational baseline
 
@@ -119,11 +119,11 @@ Use the next approved instructional week and enter only synthetic instructional 
 
 ## Gate E — Authoritative standards and AI planning assistance
 
-This is a release-blocking pilot gate. Use only the bounded pilot course set: Army JROTC LET 1–4, English 10, and Business Administration. Where Alabama publishes the applicable course standards, ingest from the current authoritative Alabama source. For curriculum governed by another authoritative issuer, retain equivalent source/version provenance and any approved Alabama/local mapping.
+This is a release-blocking pilot gate. The governed standards catalog is comprehensive across current Alabama academic and CTE Courses of Study; pilot teaching assignments remain browser-acceptance fixtures rather than defining the ingestion boundary. Where Alabama publishes the applicable course standards, ingest from the current authoritative Alabama source. For curriculum governed by another authoritative issuer, retain equivalent source/version provenance and any approved Alabama/local mapping.
 
 "Live standards" means the current authoritative standards are ingested into governed, refreshable snapshots. Weekly planning must not require the external standards website to be available at runtime.
 
-The first-workday monthly validation uses the configured Anniston school/business calendar when available; if no applicable business-day calendar is configured, the fallback is the first Monday-Friday weekday of the month. The check must compare the authoritative source against the currently approved snapshot and record `unchanged`, `changed`, or `unavailable/error`. A `changed` result creates or updates a pending candidate for human review; it does not replace the approved snapshot. An unavailable/error result leaves the approved snapshot usable and produces a visible operational record/alert.
+Standards maintenance uses three layers. **Annual full validation** runs before the school year (default first eligible workday of July) and validates the complete governed Alabama catalog plus every governed standards-bearing source. **Quarterly lightweight monitoring** runs on the first eligible workday of January, April, and October and reconciles authoritative catalog/adoption signals without unnecessarily re-fetching every unchanged standards document; July's annual run replaces that quarter's monitor. **Event-driven reconciliation** runs as soon as an ALSDE/State Board adoption, amendment, replacement, or other authoritative change is identified and validates only the affected source(s), with a controlled manual path available at any time. Every changed/new candidate requires human review before activation. An unavailable/error result leaves the approved snapshot usable and produces a visible operational record/alert. Validated historical plans remain pinned to the exact standard entry IDs, wording, and source snapshot used at validation.
 
 | ID | Action | Expected result | Evidence | Result |
 |---|---|---|---|---|
@@ -134,14 +134,17 @@ The first-workday monthly validation uses the configured Anniston school/busines
 | STD-AI-05 | Review AI breakdown of standards | Suggestions include useful learning targets and Know/Understand/Do components aligned to the selected standard text | Comparison note | |
 | STD-AI-06 | Review additional HQI suggestions | Activities, assessments, resources, Literacy Standards/ACT connections where appropriate, and other suggested HQI fields remain visibly draft suggestions | Screenshot | |
 | STD-AI-07 | Accept some AI suggestions, edit one, and reject one | Only teacher-approved/edited values enter the working plan; rejected suggestions do not overwrite teacher content | Before/after evidence | |
-| STD-AI-08 | Complete Friday validation and invoke Weekly Reflection assistance | Reflection suggestion is grounded in the saved plan and validation outcome, is teacher-reviewable, and can be accepted/edited/rejected | Screenshot/result note | |
+| STD-AI-08 | Complete Friday validation and all 12 Weekly Reflection / PLC Discussion prompts | Reflection is entirely teacher-authored at the class/group level; TPP does not generate or rewrite responses, and the disabled AI-reflection endpoint remains fail-closed if directly invoked | Screenshot/result note | |
 | STD-AI-09 | Inspect AI usage/cost evidence | Model/request usage and estimated cost are logged without exposing API keys, tokens, or student data | Redacted usage record | |
 | STD-AI-10 | Force or simulate an AI-service failure | Clear bounded failure is shown; existing manual planning remains intact and usable with no partial overwrite | Result note | |
 | STD-AI-11 | Inspect AI request boundary | Inputs contain only governed teacher/curriculum/standards/planning/validation context; no student-specific data is sent | Redacted review note | |
 | STD-AI-12 | Temporarily make the external standards source unavailable or use the stored snapshot without refreshing | Previously ingested standards remain usable for weekly planning; refresh failure does not block existing standards use | Result note | |
-| STD-AI-13 | Execute/simulate the first-workday monthly standards validation | Every bounded authoritative source receives an auditable monthly result; unchanged sources remain unchanged, changed sources are staged pending review without replacing the approved snapshot, and unavailable/error sources leave the approved snapshot active while surfacing an alert | Scheduler/run record plus snapshot comparison | |
+| STD-AI-13A | Execute/simulate the annual full standards validation | Complete governed catalog and every standards-bearing source are checked; unchanged sources remain approved, changes are staged pending review, failures retain the approved snapshot | Annual scheduler/run record plus source results | |
+| STD-AI-13B | Execute/simulate a quarterly lightweight monitor | Authoritative catalog/adoption signals are reconciled without re-fetching every unchanged source; new/changed/missing catalog items are auditable and routed for review | Quarterly run record plus catalog comparison | |
+| STD-AI-13C | Execute/simulate an event-driven reconciliation for one affected source | Only the named affected source is revalidated; any changed candidate is staged and the approved snapshot remains active until human approval | Event-driven run record plus snapshot comparison | |
+| STD-AI-13D | Reopen a validated historical plan after a newer standards candidate/version exists | Historical plan still resolves the exact standard entries, wording, and source snapshot originally validated | Historical plan comparison | |
 
-Release-blocking defects include fabricated or altered standard text presented as authoritative, missing provenance, cross-course standards leakage, silent standards replacement after a source change, failure to execute the monthly first-workday validation, silent AI overwrite, student data entering AI requests, unbounded AI errors, or inability to plan when the external standards source is temporarily unavailable.
+Release-blocking defects include fabricated or altered standard text presented as authoritative, missing provenance, cross-course standards leakage, silent standards replacement after a source change, failure of the annual/quarterly/event-driven reconciliation contract, historical standards being rewritten, silent AI overwrite, student data entering AI requests, unbounded AI errors, AI-generated or AI-rewritten Weekly Reflection / PLC Discussion responses, or inability to plan when the external standards source is temporarily unavailable.
 
 ## Gate F — Anniston document exports
 
@@ -206,9 +209,11 @@ For every failed test, record:
 The controlled pilot may proceed only when:
 
 - all operational, authentication, curriculum/setup, weekly-planning, standards/AI-assistance, export, validation, and data-boundary gates pass;
-- the bounded pilot standards set is current, traceable to authoritative source/version provenance, usable from governed snapshots, and covered by a functioning first-workday monthly source-validation schedule;
+- the comprehensive governed Alabama standards catalog is current, traceable to authoritative source/version provenance, usable from governed snapshots, and covered by functioning annual full, quarterly lightweight, and event-driven reconciliation paths;
 - any detected standards-source change is staged for human review rather than silently replacing the approved snapshot;
+- validated historical lesson plans remain pinned to the exact standards version/snapshot used when validated;
 - AI suggestions are demonstrably teacher-invoked, teacher-controlled, logged for usage/cost, and constrained to teacher/curriculum data with no student data;
+- Weekly Reflection / PLC Discussion remains entirely teacher-authored, class/group-level only, and unavailable for AI generation or rewrite;
 - no release-blocking or high-severity defect remains open;
 - the Platform Owner dual-role session is verified;
 - the unapproved-account denial is verified;

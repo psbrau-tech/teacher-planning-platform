@@ -13,7 +13,7 @@ class TeachingAssignmentRecord:
     school_id: str
     course_name: str
     course_code: str | None
-    curriculum_id: str
+    curriculum_id: str | None
     grade_band: str | None
     meeting_patterns: tuple[MeetingPattern, ...]
     revision: int
@@ -50,7 +50,7 @@ class TeachingAssignmentStore:
         school_id: str,
         course_name: str,
         course_code: str | None,
-        curriculum_id: str,
+        curriculum_id: str | None,
         grade_band: str | None,
         meeting_patterns: list[MeetingPattern],
         assignment_id: str | None = None,
@@ -79,7 +79,7 @@ class TeachingAssignmentStore:
                 school_id=school_id.strip(),
                 course_name=normalized_name,
                 course_code=course_code.strip() if course_code else None,
-                curriculum_id=curriculum_id.strip(),
+                curriculum_id=curriculum_id.strip() if curriculum_id else None,
                 grade_band=grade_band.strip() if grade_band else None,
                 meeting_patterns=tuple(meeting_patterns),
                 revision=(current.revision + 1) if current else 1,
@@ -87,6 +87,14 @@ class TeachingAssignmentStore:
             )
             self._assignments[record.id] = record
             return record
+
+    def archive(self, teacher_id: str, assignment_id: str) -> None:
+        """Remove an assignment from active in-memory pilot planning."""
+        with self._lock:
+            current = self._assignments.get(assignment_id)
+            if current is None or current.teacher_id != teacher_id:
+                raise ValueError("teaching assignment not found")
+            del self._assignments[assignment_id]
 
 
 teaching_assignment_store = TeachingAssignmentStore()
