@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from io import BytesIO
@@ -24,12 +25,21 @@ from .standards_ingest import (
     StandardsIngestError,
 )
 
+_FRAGMENT_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
 
 @dataclass(frozen=True, slots=True)
 class _PositionedText:
     x: float
     y: float
     text: str
+
+
+def _clean_positioned_fragment(value: str) -> str:
+    """Normalize a positioned PDF fragment without stripping code suffix digits."""
+
+    cleaned = _FRAGMENT_CONTROL.sub("", value)
+    return re.sub(r"\s+", " ", cleaned).strip()
 
 
 def _positioned_text_visitor(
@@ -50,7 +60,7 @@ def _positioned_text_visitor(
         x = text_x if abs(text_x) > 0.01 else user_x
         y = text_y if abs(text_y) > 0.01 else user_y
         for raw_line in text.splitlines():
-            cleaned = _clean_text(raw_line)
+            cleaned = _clean_positioned_fragment(raw_line)
             if cleaned:
                 fragments.append(_PositionedText(x=x, y=y, text=cleaned))
 
