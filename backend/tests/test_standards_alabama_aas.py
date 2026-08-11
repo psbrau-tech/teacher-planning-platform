@@ -84,6 +84,7 @@ def test_ela_aas_parser_materializes_official_k_12_pdf_pattern() -> None:
     parsed = parse_alabama_aas_ela_2021(_document(lines))
 
     assert len(parsed.courses) == 13
+    assert parsed.parser_version == "gate-e-alabama-aas-ela-2021-v2"
     assert parsed.courses[0].standards[0].code == "ELA.AAS.K.1"
     assert parsed.courses[-1].standards[-1].code == "ELA.AAS.12.3"
 
@@ -94,6 +95,33 @@ def test_ela_aas_parser_materializes_official_k_12_pdf_pattern() -> None:
         "Alternate ELA standard 3.",
     ]
     assert all("General standard" not in standard.text for standard in kindergarten.standards)
+
+
+def test_ela_aas_parser_splits_publisher_token_missing_dot_after_aas() -> None:
+    lines: list[str] = []
+    for grade in range(13):
+        token = "K" if grade == 0 else str(grade)
+        heading = "KINDERGARTEN ELA" if grade == 0 else f"Grade {grade} ELA"
+        lines.append(heading)
+        lines.extend(
+            [
+                f"ELA.AAS.{token}.1 Alternate ELA standard one.",
+                f"ELA.AAS.{token}.2 Alternate ELA standard two.",
+                f"ELA.AAS.{token}.3 Alternate ELA standard three.",
+            ]
+        )
+        if grade == 1:
+            lines.append(
+                "ELA.AAS.1.7a Identify a phoneme with its grapheme. "
+                "ELA.AAS1.7b Encode concrete CVC spelled words."
+            )
+
+    parsed = parse_alabama_aas_ela_2021(_document(lines))
+    grade_one = next(course for course in parsed.courses if course.course_key == "grade_1")
+    standards = {standard.code: standard.text for standard in grade_one.standards}
+
+    assert standards["ELA.AAS.1.7a"] == "Identify a phoneme with its grapheme."
+    assert standards["ELA.AAS.1.7b"] == "Encode concrete CVC spelled words."
 
 
 def test_math_aas_parser_ignores_general_rows_and_page_boundary_join() -> None:
