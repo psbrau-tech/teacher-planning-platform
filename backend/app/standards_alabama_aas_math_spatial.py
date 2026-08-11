@@ -128,6 +128,7 @@ def parse_alabama_aas_math_2019_spatial(
             for fragment in fragments
             if "2019 AAS Standard" in fragment.text
         ]
+        aas_x: float | None
         if code_xs:
             aas_x = min(code_xs)
             prior_aas_x = aas_x
