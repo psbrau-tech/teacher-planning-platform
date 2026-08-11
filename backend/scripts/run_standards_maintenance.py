@@ -29,7 +29,10 @@ PARSER_REMATERIALIZATION_SOURCE_KEYS = frozenset(
     {"alabama_academic_english_language_arts"}
 )
 PENDING_PARSER_REMATERIALIZATION_SOURCE_KEYS = frozenset(
-    {"alabama_alternate_mathematics"}
+    {
+        "alabama_alternate_english_language_arts",
+        "alabama_alternate_mathematics",
+    }
 )
 
 
