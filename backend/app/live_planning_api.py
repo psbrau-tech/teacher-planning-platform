@@ -11,13 +11,11 @@ from .auth import AuthenticatedTeacher, require_teacher
 from .carry_forward import lessons_for_next_week
 from .models import CurriculumLesson, ScheduleException
 from .planner import build_weekly_plan
+from .progressive_assignment_store import ProgressiveSupabaseTeachingAssignmentStore
 from .settings import Settings, get_settings
-from .supabase_persistence import (
-    PersistenceError,
-    SupabaseFridayValidationStore,
-    SupabaseTeachingAssignmentStore,
-)
+from .supabase_persistence import PersistenceError, SupabaseFridayValidationStore
 from .supabase_rest import SupabaseRestClient, SupabaseRestError
+from .week_dates import require_monday
 
 router = APIRouter(prefix="/api/v1/plans", tags=["planning"])
 
@@ -299,6 +297,15 @@ def _read_persisted_plan(
     return planned
 
 
+def _require_curriculum(curriculum_id: str | None) -> str:
+    if not curriculum_id:
+        raise HTTPException(
+            status_code=409,
+            detail="Complete Course Setup Step 2 by adding Curriculum & Pacing before building a week.",
+        )
+    return curriculum_id
+
+
 @router.get("", response_model=list[PlannedLessonRead])
 def get_weekly_plan(
     assignment_id: UUID,
@@ -306,15 +313,16 @@ def get_weekly_plan(
     identity: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> list[PlannedLessonRead]:
+    require_monday(week_start)
     client = _client(identity, settings)
-    assignment_store = SupabaseTeachingAssignmentStore(client, identity.subject)
+    assignment_store = ProgressiveSupabaseTeachingAssignmentStore(client, identity.subject)
     try:
         assignment = assignment_store.get(identity.subject, str(assignment_id))
     except PersistenceError as error:
         raise HTTPException(status_code=error.status_code, detail=str(error)) from error
     if assignment is None:
         raise HTTPException(status_code=404, detail="Teaching assignment not found")
-    lessons = _load_curriculum_lessons(client, assignment.curriculum_id)
+    lessons = _load_curriculum_lessons(client, _require_curriculum(assignment.curriculum_id))
     return _read_persisted_plan(
         client,
         assignment_id=assignment_id,
@@ -329,8 +337,9 @@ def generate_weekly_plan(
     identity: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> list[PlannedLessonRead]:
+    require_monday(payload.week_start)
     client = _client(identity, settings)
-    assignment_store = SupabaseTeachingAssignmentStore(client, identity.subject)
+    assignment_store = ProgressiveSupabaseTeachingAssignmentStore(client, identity.subject)
     try:
         assignment = assignment_store.get(identity.subject, str(payload.assignment_id))
     except PersistenceError as error:
@@ -338,7 +347,7 @@ def generate_weekly_plan(
     if assignment is None:
         raise HTTPException(status_code=404, detail="Teaching assignment not found")
 
-    lessons = _load_curriculum_lessons(client, assignment.curriculum_id)
+    lessons = _load_curriculum_lessons(client, _require_curriculum(assignment.curriculum_id))
     validation_store = SupabaseFridayValidationStore(client, identity.subject)
     try:
         previous_validation = validation_store.get(
