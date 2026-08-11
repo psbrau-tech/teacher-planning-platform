@@ -113,7 +113,11 @@ def _install(monkeypatch, persisted: list[UUID]) -> None:
             document_format=fetched.document_format,
         ),
     )
-    monkeypatch.setattr(rematerialization, "parse_document", lambda parser_key, extracted: _parsed())
+    monkeypatch.setattr(
+        rematerialization,
+        "parse_document",
+        lambda parser_key, extracted: _parsed(),
+    )
     monkeypatch.setattr(
         rematerialization,
         "_persist_parsed_standards",
