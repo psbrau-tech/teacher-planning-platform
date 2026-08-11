@@ -82,6 +82,10 @@ function parseXml(text: string, label: string): Document {
   return document;
 }
 
+function elementsByLocalName(root: Document | Element, localName: string): Element[] {
+  return Array.from(root.getElementsByTagNameNS("*", localName));
+}
+
 function columnIndex(reference: string): number {
   const letters = reference.match(/^[A-Za-z]+/)?.[0]?.toUpperCase() ?? "";
   let value = 0;
@@ -91,17 +95,17 @@ function columnIndex(reference: string): number {
 
 function sharedStrings(document: Document | null): string[] {
   if (!document) return [];
-  return Array.from(document.getElementsByTagName("si")).map((item) =>
-    Array.from(item.getElementsByTagName("t")).map((text) => text.textContent ?? "").join(""),
+  return elementsByLocalName(document, "si").map((item) =>
+    elementsByLocalName(item, "t").map((text) => text.textContent ?? "").join(""),
   );
 }
 
 function cellValue(cell: Element, shared: string[]): string {
   const type = cell.getAttribute("t") ?? "";
   if (type === "inlineStr") {
-    return Array.from(cell.getElementsByTagName("t")).map((item) => item.textContent ?? "").join("").trim();
+    return elementsByLocalName(cell, "t").map((item) => item.textContent ?? "").join("").trim();
   }
-  const raw = cell.getElementsByTagName("v")[0]?.textContent ?? "";
+  const raw = elementsByLocalName(cell, "v")[0]?.textContent ?? "";
   if (type === "s") {
     const index = Number(raw);
     return Number.isInteger(index) && index >= 0 ? (shared[index] ?? "").trim() : "";
@@ -134,9 +138,9 @@ export async function readPacingWorkbook(file: File): Promise<ImportedPacingRow[
     : null;
   const shared = sharedStrings(sharedDocument);
 
-  const rows = Array.from(sheet.getElementsByTagName("row")).map((row) => {
+  const rows = elementsByLocalName(sheet, "row").map((row) => {
     const values: string[] = [];
-    for (const cell of Array.from(row.getElementsByTagName("c"))) {
+    for (const cell of elementsByLocalName(row, "c")) {
       const index = columnIndex(cell.getAttribute("r") ?? "A1");
       values[index] = cellValue(cell, shared);
     }
