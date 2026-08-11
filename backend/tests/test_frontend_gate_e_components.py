@@ -12,6 +12,8 @@ REFLECTION = FRONTEND / "AiReflectionPanel.tsx"
 WEEKLY_CONTEXT = FRONTEND / "ScheduleExceptionPanel.tsx"
 STANDARDS_ADMIN = FRONTEND / "StandardsAdministrationPanel.tsx"
 ACT_ADMIN = FRONTEND / "ActReferenceAdministrationPanel.tsx"
+HELP = FRONTEND / "HelpPage.tsx"
+MAIN = FRONTEND / "main.tsx"
 
 
 def test_teacher_mapping_uses_two_step_catalog_and_explicit_correction_warning() -> None:
@@ -69,7 +71,7 @@ def test_live_weekly_selector_prioritizes_scheduled_lesson_relevance() -> None:
     assert 'new CustomEvent("tpp:standards-saved"' in source
 
 
-def test_course_setup_owns_schedule_pacing_and_primary_standards_mapping() -> None:
+def test_course_setup_is_progressive_and_keeps_curriculum_out_of_step_one() -> None:
     shell = SHELL.read_text(encoding="utf-8")
     setup = COURSE_SETUP.read_text(encoding="utf-8")
     parser = CURRICULUM_ROWS.read_text(encoding="utf-8")
@@ -80,14 +82,27 @@ def test_course_setup_owns_schedule_pacing_and_primary_standards_mapping() -> No
     assert "parseCurriculumRows" in setup
     assert 'from "./StandardsCourseMappingPanel"' in setup
     assert "<StandardsCourseMappingPanel" in setup
-    assert "Curriculum & Pacing" in setup
+    assert "Step 1" in setup and "Class & Schedule" in setup
+    assert "Step 2" in setup and "Curriculum & Pacing" in setup
+    assert "Step 3" in setup and "Authoritative Standards" in setup
+    assert "Step 4 · Ready" in setup
+    assert "Save class & continue" in setup
+    assert "Upload Excel" in setup
+    assert "Build in TPP" in setup
+    assert "Reuse mine" in setup
+    assert "Nothing is saved until you select" in setup
+    assert "My Curriculum & Pacing" in setup
+    assert "Remove from my list" in setup
     assert "Grade(s)" in setup
     assert "Edit class" in setup
-    assert "Remove" in setup
-    assert "Existing planning and submission history will be preserved" in setup
+    assert "submitted packets, and reusable curricula will be preserved" in setup
+    # Class creation no longer exposes or silently creates a curriculum selector/placeholder.
+    save_class = setup.split("async function saveClass", 1)[1].split("async function removeClass", 1)[0]
+    assert "createPlaceholderCurriculum" not in setup
+    assert 'form.get("curriculum_id")' not in save_class
+    assert "curriculum_id: editing?.curriculum_id ?? null" in save_class
     assert "estimated_minutes: number | null" in parser
     assert "if (!value.trim()) return null" in parser
-    # Backward compatibility remains explicit for both earlier six-column and numeric-minute rows.
     assert "earlierSixColumn" in parser
     assert "legacyMinutes" in parser
     assert "parts.length >= 6" in parser
@@ -105,6 +120,44 @@ def test_weekly_plan_uses_live_standards_without_repeating_primary_mapping() -> 
 
     assert "StandardsCourseMappingPanel" not in schedule
     assert "CanonicalStandardsPanel" not in schedule
+
+
+def test_weekly_plan_and_friday_closeout_are_progressive() -> None:
+    shell = SHELL.read_text(encoding="utf-8")
+
+    for label in (
+        "Build Week",
+        "Standards",
+        "Planning Assist",
+        "Review & Save",
+        "Review PDF",
+        "Submit",
+    ):
+        assert label in shell
+    for label in ("Validate", "Reflect & Submit", "Review Packet", "Continue"):
+        assert label in shell
+    assert "Review completed weekly packet" in shell
+    assert "View completed packet" in shell
+    assert "Download PDF" in shell
+    assert "Print" in shell
+    assert "/api/v1/teacher-submissions/" in shell
+    assert "Continue to next week" in shell
+
+
+def test_help_is_discoverable_and_uses_authenticated_roles() -> None:
+    shell = SHELL.read_text(encoding="utf-8")
+    help_source = HELP.read_text(encoding="utf-8")
+    main = MAIN.read_text(encoding="utf-8")
+
+    assert ">Help</button>" in shell
+    assert "<HelpPage roles={identity.roles}" in shell
+    assert "<TeacherPlanningShell />" in main
+    assert 'roles={["teacher", "school_admin"]}' not in main
+    assert "Class & Schedule" in help_source
+    assert "Upload Excel" in help_source
+    assert "Save Curriculum & Pacing & Continue" in help_source
+    assert "Review the completed weekly packet" in help_source
+    assert "Monday" in help_source
 
 
 def test_ai_planning_remains_teacher_reviewed_and_recoverable() -> None:
