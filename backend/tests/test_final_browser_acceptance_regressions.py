@@ -145,16 +145,18 @@ def test_help_page_covers_progressive_setup_friday_and_admin_records() -> None:
     shell_source = (FRONTEND / "TeacherPlanningShell.tsx").read_text(encoding="utf-8")
     assert "<TeacherPlanningShell />" in main_source
     assert '=== "/help"' in shell_source
-    assert ">Help</button>" in shell_source
+    assert 'view === "help"' in shell_source
+    assert 'setView("help")' in shell_source
+    assert "<HelpPage roles={identity.roles}" in shell_source
     assert "Set up each class once" in help_source
-    assert "First planning week" in help_source
+    assert "Build a weekly plan" in help_source
     assert "Every Friday after the first week" in help_source
     assert "teacher-authored reflection" in help_source
     assert "completed weekly packet" in help_source.lower()
-    assert "following week's lesson plan" in help_source
+    assert "Continue to the following week" in help_source
     assert "Upcoming lesson plan" in help_source
     assert "Completed weekly packet" in help_source
     assert "Administrator workflow" in help_source
-    assert "Weekly Reflection / PLC Discussion" in help_source
+    assert "Reflection / PLC Discussion prompts" in help_source
     assert "Do not enter student names" in help_source
     assert "Review many records" in help_source
