@@ -776,7 +776,7 @@ export function CourseSetupPanel({
       {assignments.length > 0 && (
         <section className="setup-class-picker">
           <div className="section-heading compact">
-            <div><p className="eyebrow">Your classes</p><h3>Choose a class to continue or edit setup</h3></div>
+            <div><p className="eyebrow">Your classes</p><h3>Select a class to view or edit setup</h3></div>
           </div>
           <div className="grid course-management-grid">
             {sortedAssignments.map((assignment) => {
@@ -795,7 +795,7 @@ export function CourseSetupPanel({
                   <small>{curriculum ? `${curriculum.name} · ${curriculum.version}` : "Curriculum & Pacing not added yet"}</small>
                   <div className="button-row">
                     <button type="button" className="secondary" onClick={() => onSelectAssignment(assignment.id)}>
-                      {selectedAssignmentId === assignment.id ? "Selected" : "Continue setup"}
+                      {selectedAssignmentId === assignment.id ? "Selected" : "Select class"}
                     </button>
                     <button type="button" className="link-button" onClick={() => { setEditingId(assignment.id); onSelectAssignment(assignment.id); }}>
                       Edit class
