@@ -16,6 +16,7 @@ from .supabase_persistence import (
     SupabaseWeeklyDraftStore,
 )
 from .supabase_rest import SupabaseRestClient, SupabaseRestError
+from .week_dates import require_monday
 from .weekly_drafts import WeeklyDraft, WeeklyDraftStore, weekly_draft_store
 
 router = APIRouter(prefix="/api/v1/weekly-drafts", tags=["planning"])
@@ -176,6 +177,7 @@ def get_weekly_draft(
     teacher: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> WeeklyDraftRead:
+    require_monday(week_start)
     try:
         draft = _store_for(teacher, settings).get(teacher.subject, assignment_id, week_start)
     except PersistenceError as error:
@@ -191,6 +193,7 @@ def save_weekly_draft(
     teacher: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> WeeklyDraftRead:
+    require_monday(payload.week_start)
     store = _store_for(teacher, settings)
     try:
         current = store.get(teacher.subject, payload.assignment_id, payload.week_start)
@@ -221,6 +224,7 @@ def save_friday_closeout(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> WeeklyDraftRead:
     """Save Friday reflection/closeout without requiring unrelated planning fields."""
+    require_monday(payload.week_start)
     if teacher.access_token is None:
         try:
             draft = weekly_draft_store.save(
@@ -295,6 +299,7 @@ def submit_weekly_draft(
     teacher: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> WeeklyDraftRead:
+    require_monday(payload.week_start)
     store = _store_for(teacher, settings)
     if teacher.access_token is None:
         try:
