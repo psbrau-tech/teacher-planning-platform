@@ -6,7 +6,9 @@ from zipfile import ZipFile
 from app.curriculum_api import (
     CurriculumDetailRead,
     CurriculumLessonRead,
+    _StoredLesson,
     _contiguous_unit_groups,
+    _same_locked_content,
     _xlsx_bytes,
 )
 from app.curriculum_import import CurriculumLessonImport
@@ -99,6 +101,44 @@ def test_noncontiguous_repeated_unit_titles_preserve_teacher_sequence() -> None:
     ] == [1, 2, 3]
 
 
+def test_locked_curriculum_comparison_ignores_internal_can_split_default() -> None:
+    stored = _StoredLesson(
+        sequence=1,
+        unit_title="Introduction",
+        lesson_title="Course orientation and expectations",
+        estimated_minutes=50,
+        standards=(),
+        learning_targets=("Explain course expectations",),
+        assessment="Exit ticket",
+        can_split=True,
+    )
+    reconstructed = CurriculumLessonImport(
+        sequence=1,
+        unit_title="Introduction",
+        lesson_title="Course orientation and expectations",
+        estimated_minutes=50,
+        standards=(),
+        learning_targets=("Explain course expectations",),
+        assessment="Exit ticket",
+        can_split=False,
+    )
+
+    assert _same_locked_content(stored, reconstructed)
+    assert not _same_locked_content(
+        stored,
+        CurriculumLessonImport(
+            sequence=1,
+            unit_title="Introduction",
+            lesson_title="Changed teacher-visible title",
+            estimated_minutes=50,
+            standards=(),
+            learning_targets=("Explain course expectations",),
+            assessment="Exit ticket",
+            can_split=False,
+        ),
+    )
+
+
 def test_blank_pacing_minutes_are_persisted_as_schedule_derived() -> None:
     migration = (
         MIGRATIONS / "20260811030300_curriculum_pacing_optional_minutes.sql"
@@ -120,11 +160,16 @@ def test_current_year_curriculum_edit_uses_copy_on_write_and_teacher_owned_switc
     assert "revised = _save_curriculum(" in api
     assert 'rpc/replace_teacher_curriculum_version' in api
     assert "locked_through_sequence" in api
+    assert "teacher-editable fields" in api
+    assert "scheduled or submitted" in api
     assert "Edit current curriculum" in setup
     assert "Update shared future pacing" in setup
     assert "Create a separate copy for this class" in setup
     assert "Download Excel" in setup
     assert "Create new version / copy" in setup
+    assert "Start with a complete first instructional week" in setup
+    assert "Updating Course Setup" in setup
+    assert "If multiple active classes reuse it" in setup
 
     assert "where c.id = prior_curriculum_id" in migration
     assert "c.created_by = (select auth.uid())" in migration
@@ -137,11 +182,28 @@ def test_current_year_curriculum_edit_uses_copy_on_write_and_teacher_owned_switc
 
 def test_weekly_build_requires_explicit_curriculum_confirmation_and_closeout_recovers() -> None:
     shell = (FRONTEND / "TeacherPlanningShell.tsx").read_text(encoding="utf-8")
+    schedule = (FRONTEND / "ScheduleExceptionPanel.tsx").read_text(encoding="utf-8")
+    admin = (FRONTEND / "AdminSubmissionPanel.tsx").read_text(encoding="utf-8")
+
     assert "const [weekCurriculumConfirmed, setWeekCurriculumConfirmed]" in shell
     assert "const weekStep1 = plan.length > 0 && weekCurriculumConfirmed" in shell
     assert "Confirm this week's curriculum & continue" in shell
     assert "Nothing advances to standards until you confirm this sequence" in shell
     assert "setWeekCurriculumConfirmed(false)" in shell
+
+    assert 'document === "lesson-plan" && action === "view"' in shell
+    assert '"View PDF & continue"' not in shell
+    assert "Viewing the PDF only completes this review step" in shell
+    assert "submission remains a separate Step 6 action" in shell
+    assert "Reviewing the PDF did not submit it again" in shell
+
+    assert "No class / postpone pacing for this day" in schedule
+    assert "does not consume a pacing lesson" in schedule
+    assert "Build / reconcile week" in schedule
+
+    assert "teacherFilterRef" in admin
+    assert "closeTeacherFilterOnOutsidePointer" in admin
+    assert 'addEventListener("pointerdown"' in admin
 
     assert 'view !== "validation"' in shell
     assert "/completed-packet?week_start=" in shell
