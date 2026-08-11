@@ -173,10 +173,11 @@ def parse_alabama_aas_math_2019_spatial(
 
         page_width = float(page.mediabox.width)
         geometric_lane_x = page_width * 0.64
-        if aas_x is None:
-            lane_min_x = geometric_lane_x
-        else:
-            lane_min_x = min(aas_x - 12.0, geometric_lane_x)
+        lane_min_x = (
+            geometric_lane_x
+            if aas_x is None
+            else min(aas_x - 12.0, geometric_lane_x)
+        )
 
         for lane in _right_lane_lines(fragments, lane_min_x=lane_min_x):
             if _is_math_layout_noise(lane):
