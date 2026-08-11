@@ -67,15 +67,38 @@ def _positioned_text_visitor(
     return visitor
 
 
+def _right_lane_lines(
+    fragments: list[_PositionedText],
+    *,
+    lane_min_x: float,
+) -> tuple[str, ...]:
+    """Reconstruct visual lines from right-lane fragments, top to bottom."""
+
+    grouped: dict[float, list[_PositionedText]] = {}
+    for fragment in fragments:
+        if fragment.x < lane_min_x:
+            continue
+        y_key = round(fragment.y, 1)
+        grouped.setdefault(y_key, []).append(fragment)
+
+    lines: list[str] = []
+    for y_key in sorted(grouped, reverse=True):
+        row = sorted(grouped[y_key], key=lambda fragment: fragment.x)
+        line = _clean_positioned_fragment(" ".join(fragment.text for fragment in row))
+        if line:
+            lines.append(line)
+    return tuple(lines)
+
+
 def parse_alabama_aas_math_2019_spatial(
     extracted: ExtractedDocument,
 ) -> ParsedStandardsDocument:
     """Parse the authoritative Math AAS lane using PDF text coordinates.
 
-    The source is a three-column table. Plain text and fixed-width layout extraction can
-    interleave or clip cells because the AAS rows are sparse. The PDF visitor API exposes
-    each text fragment's position, allowing the parser to retain only fragments that begin
-    in the right-hand AAS column while preserving their document order.
+    The source is a three-column table. Plain text extraction interleaves cells, and a
+    single logical AAS code can be split across multiple PDF text objects. Coordinate-based
+    visual-line reconstruction keeps only the right-hand AAS lane and rejoins fragments on
+    a shared baseline before identifiers are parsed.
     """
 
     if extracted.document_format != "pdf" or extracted.source_content is None:
@@ -148,16 +171,14 @@ def parse_alabama_aas_math_2019_spatial(
         else:
             aas_x = prior_aas_x
 
+        page_width = float(page.mediabox.width)
+        geometric_lane_x = page_width * 0.64
         if aas_x is None:
-            continue
+            lane_min_x = geometric_lane_x
+        else:
+            lane_min_x = min(aas_x - 12.0, geometric_lane_x)
 
-        # A small tolerance accounts for font/transform rounding across wrapped rows while
-        # remaining far to the right of the general-standard column.
-        lane_min_x = aas_x - 6.0
-        for fragment in fragments:
-            if fragment.x < lane_min_x:
-                continue
-            lane = fragment.text
+        for lane in _right_lane_lines(fragments, lane_min_x=lane_min_x):
             if _is_math_layout_noise(lane):
                 continue
 
