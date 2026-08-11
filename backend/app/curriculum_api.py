@@ -534,7 +534,7 @@ def _xlsx_bytes(detail: CurriculumDetailRead) -> bytes:
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
         'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
-        '<sheets><sheet name="Curriculum & Pacing" sheetId="1" r:id="rId1"/></sheets>'
+        '<sheets><sheet name="Curriculum &amp; Pacing" sheetId="1" r:id="rId1"/></sheets>'
         '</workbook>'
     )
     content_types = (
