@@ -12,8 +12,9 @@ def test_course_setup_ready_requires_saved_standards_mapping() -> None:
     assert "const step3Complete = step2Complete && standardsMapped" in setup
     assert "onMappingStatus={setStandardsMapped}" in setup
     assert "onMappingStatus?: (mapped: boolean) => void" in mapping
-    assert "onMappingStatus(Boolean(body.course))" in mapping
-    assert "onMappingStatus(false)" in mapping
+    assert "onMappingStatus?.(nextMapping.mapped)" in mapping
+    assert "onMappingStatus?.(true)" in mapping
+    assert "onMappingStatus?.(false)" in mapping
 
 
 def test_ready_step_exposes_weekly_plan_only_after_all_setup_steps() -> None:
