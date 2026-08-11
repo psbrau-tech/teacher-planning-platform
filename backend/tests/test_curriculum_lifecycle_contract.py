@@ -1,5 +1,6 @@
 from io import BytesIO
 from pathlib import Path
+from xml.etree import ElementTree
 from zipfile import ZipFile
 
 from app.curriculum_api import (
@@ -66,7 +67,15 @@ def test_saved_curriculum_export_is_a_real_xlsx_with_current_rows() -> None:
         assert archive.testzip() is None
         assert "[Content_Types].xml" in archive.namelist()
         assert "xl/workbook.xml" in archive.namelist()
-        sheet = archive.read("xl/worksheets/sheet1.xml").decode("utf-8")
+        workbook_xml = archive.read("xl/workbook.xml")
+        sheet_xml = archive.read("xl/worksheets/sheet1.xml")
+    workbook_root = ElementTree.fromstring(workbook_xml)
+    ElementTree.fromstring(sheet_xml)
+    namespace = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+    sheet_node = workbook_root.find(f"{namespace}sheets/{namespace}sheet")
+    assert sheet_node is not None
+    assert sheet_node.attrib["name"] == "Curriculum & Pacing"
+    sheet = sheet_xml.decode("utf-8")
     assert "Introduction to JROTC" in sheet
     assert "Cadet responsibilities" in sheet
     assert "Optional Minutes Override" in sheet
