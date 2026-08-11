@@ -917,7 +917,7 @@ export function TeacherPlanningShell() {
     try {
       const blob = await documentBlob(document);
       presentPdf(blob, documentTitle(document), `anniston-${document}-${weekStart}.pdf`, action);
-      if (document === "lesson-plan") setPdfReviewed(true);
+      if (document === "lesson-plan" && action === "view") setPdfReviewed(true);
       setMessage(
         `${documentTitle(document)} ${
           action === "download"
@@ -925,7 +925,7 @@ export function TeacherPlanningShell() {
             : action === "print"
               ? "opened for printing"
               : "ready for review"
-        }.`,
+        }.${document === "lesson-plan" && action === "view" ? " Viewing the PDF does not submit the weekly plan; submission remains a separate Step 6 action." : ""}`,
       );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Document export failed.");
@@ -2216,8 +2216,9 @@ export function TeacherPlanningShell() {
                     <p className="eyebrow">Step 5</p>
                     <h2>Review Weekly Lesson Plan PDF</h2>
                     <p className="supporting">
-                      Review, download, or print the Instructional Planning Framework + Week at a
-                      Glance before submission.
+                      Open the Instructional Planning Framework + Week at a Glance and review it.
+                      Viewing the PDF only completes this review step; it does not submit or
+                      resubmit the weekly plan. Submission is a separate Step 6 action.
                     </p>
                   </div>
                 </div>
@@ -2239,7 +2240,7 @@ export function TeacherPlanningShell() {
                         disabled={busy}
                         onClick={() => void exportDocument("lesson-plan", "view")}
                       >
-                        {documentWorking === "lesson-plan" ? "Preparing…" : "View PDF & continue"}
+                        {documentWorking === "lesson-plan" ? "Preparing…" : "View PDF"}
                       </button>
                       <button
                         className="secondary"
@@ -2265,7 +2266,7 @@ export function TeacherPlanningShell() {
               <section className="setup-step-summary complete-summary">
                 <div>
                   <strong>Step 5 complete · Weekly Lesson Plan PDF reviewed</strong>
-                  <p>View, download, or print the saved revision again before or after submission.</p>
+                  <p>PDF review is complete. Viewing did not submit the plan; Step 6 controls submission separately.</p>
                 </div>
                 <div className="button-row">
                   <button
@@ -2301,8 +2302,9 @@ export function TeacherPlanningShell() {
                     <p className="eyebrow">Step 6</p>
                     <h2>{weekStep6 ? "Weekly plan submitted" : "Submit weekly plan"}</h2>
                     <p className="supporting">
-                      Submission creates the immutable administrator-visible upcoming lesson plan
-                      for this class and Monday-starting week.
+                      {weekStep6
+                        ? "This saved revision was already submitted. Reviewing the PDF did not submit it again."
+                        : "Select Submit weekly plan when you are ready to create the immutable administrator-visible upcoming lesson plan for this class and Monday-starting week."}
                     </p>
                   </div>
                 </div>
