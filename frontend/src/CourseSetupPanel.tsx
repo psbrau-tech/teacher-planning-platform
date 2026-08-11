@@ -187,6 +187,10 @@ export function CourseSetupPanel({
   const step2Complete = Boolean(selectedAssignment?.curriculum_id && currentPacing);
   const step3Complete = step2Complete && standardsMapped;
   const curriculumManagerOpen = curriculumDetail !== null || copyVersionOpen;
+  const firstWeekMeetings = Math.max(
+    1,
+    selectedAssignment?.meeting_patterns[0]?.weekdays.length ?? 1,
+  );
 
   useEffect(() => {
     setStandardsMapped(false);
@@ -686,6 +690,17 @@ export function CourseSetupPanel({
             </button>
           </div>
         )}
+        {pacingMode === "build" && (
+          <div className="guidance-card">
+            <strong>Start with a complete first instructional week.</strong>
+            <p>
+              Enter enough lessons to cover every normal meeting in the first week before you
+              begin weekly planning. Based on this class schedule, that is normally
+              <strong> {firstWeekMeetings} lesson{firstWeekMeetings === 1 ? "" : "s"}</strong>.
+              You can add the rest of the semester or year now or extend future pacing later.
+            </p>
+          </div>
+        )}
         <form className="form-grid" onSubmit={(event) => void savePacing(event)}>
           <label>
             Curriculum name
@@ -750,6 +765,13 @@ export function CourseSetupPanel({
         <StepMarker number={3} title="Standards" complete={step3Complete} active={step2Complete && pacingMode === null && !curriculumManagerOpen && (!step3Complete || standardsEditing)} />
         <StepMarker number={4} title="Ready" complete={step3Complete} active={step3Complete && pacingMode === null && !curriculumManagerOpen && !standardsEditing} />
       </div>
+
+      {working && (
+        <p className="working-status" role="status" aria-live="polite">
+          <span className="button-spinner" aria-hidden="true" />
+          Updating Course Setup…
+        </p>
+      )}
 
       {assignments.length > 0 && (
         <section className="setup-class-picker">
@@ -832,7 +854,7 @@ export function CourseSetupPanel({
 
       {selectedAssignment && step2Complete && (
         <section className="setup-step-summary complete-summary">
-          <div className="step-heading"><span className="step-number">✓</span><div><p className="eyebrow">Step 2 complete</p><h2>Curriculum & Pacing</h2><p>{currentPacing?.name} · {currentPacing?.version}</p></div></div>
+          <div className="step-heading"><span className="step-number">✓</span><div><p className="eyebrow">Step 2 complete</p><h2>Curriculum & Pacing</h2><p>{currentPacing?.name} · {currentPacing?.version}</p><p className="supporting">If this curriculum is used by one active class, Edit current curriculum opens the future pacing editor directly. If multiple active classes reuse it, TPP first asks whether to update their shared future pacing or create a separate copy for this class.</p></div></div>
           <div className="button-row">
             <button type="button" className="secondary" disabled={working} onClick={() => void loadCurriculumDetail()}>Edit current curriculum</button>
             <button type="button" className="secondary" disabled={working} onClick={() => void downloadCurriculum()}>Download Excel</button>
@@ -875,7 +897,7 @@ export function CourseSetupPanel({
 
       {selectedAssignment && step2Complete && curriculumDetail && sharedEditConfirmed && (
         <section className="setup-step-card active-step">
-          <div className="step-heading"><span className="step-number">2</span><div><p className="eyebrow">Edit current year</p><h2>Curriculum & Pacing</h2><p className="supporting">The current-year curriculum is a living pacing document. Already scheduled instruction is preserved; change the future sequence, add lessons, replace a future block, or extend the year.</p></div></div>
+          <div className="step-heading"><span className="step-number">2</span><div><p className="eyebrow">Edit current year</p><h2>Curriculum & Pacing</h2><p className="supporting">The current-year curriculum is a living pacing document. Already scheduled or submitted instruction is preserved; add or change only future pacing after the preserved point.</p></div></div>
           <form className="form-grid" onSubmit={(event) => void saveCurriculumRevision(event)}>
             <label>Curriculum name<input name="name" required defaultValue={curriculumDetail.name} /></label>
             <label>Version<input name="version" required defaultValue={curriculumDetail.version} /></label>
