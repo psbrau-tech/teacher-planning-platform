@@ -47,6 +47,13 @@ export function HelpPage({ roles }: Props) {
               schedule.
             </p>
             <p>
+              <strong>If you build pacing in TPP.</strong> Start with a complete first instructional
+              week rather than a single placeholder lesson. Enter enough lessons to cover the
+              class's normal meeting days that first week — from one lesson for a once-weekly class
+              through five lessons for a daily class. You can add the rest of the semester/year now
+              or extend future unscheduled pacing later.
+            </p>
+            <p>
               <strong>Step 3 — Authoritative Standards.</strong> Map the class to the governed
               Alabama subject/career-cluster course used for weekly standards selection.
             </p>
@@ -71,13 +78,15 @@ export function HelpPage({ roles }: Props) {
             </p>
             <p>
               <strong>Edit current curriculum.</strong> The current-year curriculum is a living
-              pacing document. Lessons already scheduled by a class using the shared curriculum are
-              preserved. You can edit, replace, reorder, or add future unscheduled lessons and can
-              extend the sequence when you need more instruction later in the year.
+              pacing document. Lessons already scheduled or submitted by a class using the
+              curriculum are preserved. You can edit, replace, reorder, or add future unscheduled
+              lessons after the preserved point and can extend the sequence when you need more
+              instruction later in the year.
             </p>
             <p>
-              <strong>Shared curriculum changes.</strong> When multiple active classes use the same
-              curriculum, TPP tells you before an edit. Choose
+              <strong>Shared curriculum changes.</strong> A curriculum used by one active class
+              opens the future pacing editor directly. When multiple active classes use the same
+              curriculum, TPP asks how the edit should apply. Choose
               <strong> Update shared future pacing</strong> to change the common future sequence, or
               <strong> Create a separate copy for this class</strong> when one class needs a
               different path. Historical weekly plans and completed packets are never rewritten.
@@ -107,10 +116,14 @@ export function HelpPage({ roles }: Props) {
               Monday that begins the week; the server rejects a non-Monday week identity.
             </p>
             <p>
-              <strong>2. Build/reconcile and confirm the week.</strong> TPP uses that class's saved
-              Curriculum & Pacing, independent progress, schedule, school calendar, schedule
-              exceptions, and teacher-selected carry-forward. Review the scheduled lessons before
-              continuing.
+              <strong>2. Reconcile schedule changes, then build/confirm the week.</strong> If a
+              testing day, rally, closure, or other event means the class will not meet, choose
+              <strong> No class / postpone pacing for this day</strong> before rebuilding. A skipped
+              meeting does not consume the pacing lesson; TPP keeps curriculum order and resumes on
+              the next available class meeting. TPP then uses the class's saved Curriculum & Pacing,
+              independent progress, schedule, school calendar, schedule exceptions, and
+              teacher-selected carry-forward. Review the scheduled lessons and explicitly confirm
+              the week's curriculum before continuing.
             </p>
             <p>
               <strong>3. Save authoritative standards.</strong> Confirm the governed standards
@@ -122,11 +135,18 @@ export function HelpPage({ roles }: Props) {
             </p>
             <p>
               <strong>5. Review and save the plan.</strong> Review the Instructional Planning
-              Framework and Week at a Glance in district PDF order.
+              Framework and Week at a Glance in district PDF order, then save the working revision.
             </p>
             <p>
-              <strong>6. Review PDF and submit.</strong> Review, download, or print the Weekly Lesson
-              Plan PDF, then submit the immutable upcoming lesson plan.
+              <strong>6. Review the PDF.</strong> Choose <strong>View PDF</strong> to open and review
+              the saved Weekly Lesson Plan. Downloading or printing is also available, but those
+              actions do not substitute for the review gate. Viewing the PDF does not submit or
+              resubmit the weekly plan.
+            </p>
+            <p>
+              <strong>7. Submit explicitly.</strong> After PDF review, use the separate
+              <strong> Submit weekly plan</strong> step when you are ready to create the immutable
+              administrator-visible upcoming lesson-plan record.
             </p>
           </div>
 
@@ -160,17 +180,26 @@ export function HelpPage({ roles }: Props) {
           <div className="help-notes">
             <h3>Common teacher questions</h3>
             <p>
+              <strong>I clicked a Course Setup action and the page has not changed yet.</strong> Some
+              curriculum loads or saves can take several seconds. The Course Setup working indicator
+              confirms that TPP is still processing the action; wait for it to finish rather than
+              clicking the same action repeatedly.
+            </p>
+            <p>
               <strong>I uploaded Excel and nothing changed.</strong> Confirm the success message and
               compact lesson review, then select <strong>Save Curriculum & Pacing & Continue</strong>.
               Uploading alone does not write anything to the database.
             </p>
             <p>
-              <strong>My schedule changed.</strong> Add the schedule exception before
-              rebuilding/reconciling the week.
+              <strong>My schedule changed or I need to postpone one class day.</strong> Add the
+              schedule adjustment before rebuilding/reconciling the week. Choose
+              <strong> No class / postpone pacing for this day</strong> when the meeting will not
+              occur; use reduced instructional minutes when the class still meets on a shortened
+              schedule.
             </p>
             <p>
-              <strong>A lesson was not taught.</strong> Record that during Friday validation and
-              select carry-forward only when it should remain in sequence.
+              <strong>A lesson was not taught unexpectedly.</strong> Record that during Friday
+              validation and select carry-forward only when it should remain in sequence.
             </p>
             <p>
               <strong>I planned next week early.</strong> Previously scheduled lessons are part of
@@ -178,8 +207,9 @@ export function HelpPage({ roles }: Props) {
               Friday validation still records what actually happened and controls carry-forward.
             </p>
             <p>
-              <strong>I changed a submitted lesson plan.</strong> Save the revision and resubmit so
-              the upcoming lesson-plan record reflects the new immutable revision.
+              <strong>I changed a submitted lesson plan.</strong> Save the revision, review its PDF,
+              and use the explicit resubmit action so the upcoming lesson-plan record reflects the
+              new immutable revision.
             </p>
           </div>
         </section>
