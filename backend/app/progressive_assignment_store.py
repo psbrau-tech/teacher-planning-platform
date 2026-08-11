@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .models import MeetingPattern
 from .supabase_persistence import (
     PersistenceError,
     SupabaseTeachingAssignmentStore,
@@ -47,7 +48,7 @@ class ProgressiveSupabaseTeachingAssignmentStore(SupabaseTeachingAssignmentStore
         course_code: str | None,
         curriculum_id: str | None,
         grade_band: str | None,
-        meeting_patterns: list,
+        meeting_patterns: list[MeetingPattern],
         assignment_id: str | None = None,
         expected_revision: int | None = None,
     ) -> TeachingAssignmentRecord:
