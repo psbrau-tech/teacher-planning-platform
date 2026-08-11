@@ -33,6 +33,22 @@ def test_monday_invariant_is_applied_to_core_weekly_api_surfaces() -> None:
     assert "require_monday(week_start)" in schedule
 
 
+def test_all_visible_week_selectors_normalize_to_monday() -> None:
+    shell = (FRONTEND / "TeacherPlanningShell.tsx").read_text(encoding="utf-8")
+    admin = (FRONTEND / "AdminSubmissionPanel.tsx").read_text(encoding="utf-8")
+
+    assert "function mondayForIso(" in shell
+    assert "Week of (Monday)" in shell
+    assert "Previous week" in shell and "Next week" in shell
+    assert 'onChange={(event) => onChange(mondayForIso(event.target.value))}' in shell
+
+    assert "function mondayForIso(" in admin
+    assert "Week of (Monday)" in admin
+    assert "Previous week" in admin and "Next week" in admin
+    assert "setWeekStart(mondayForIso(value))" in admin
+    assert 'setWeekStart(event.target.value)' not in admin
+
+
 def test_database_preserves_one_canonical_monday_week_identity() -> None:
     migration = (
         MIGRATIONS / "20260811030200_enforce_monday_week_start.sql"
@@ -96,7 +112,7 @@ def test_help_and_excel_import_explain_persistence_boundary() -> None:
     pacing = (FRONTEND / "PacingSequenceEditor.tsx").read_text(encoding="utf-8")
     setup = (FRONTEND / "CourseSetupPanel.tsx").read_text(encoding="utf-8")
 
-    assert "Loading Excel reads the workbook into the lesson editor" in help_source
+    assert "Upload Excel reads the workbook into the lesson editor" in help_source
     assert "Nothing is saved merely by selecting the file" in help_source
     assert "loaded from Excel. Review the lesson cards, then save Curriculum & Pacing" in pacing
     assert "Upload, review, then save" in setup
