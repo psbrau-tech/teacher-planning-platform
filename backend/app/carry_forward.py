@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import date, timedelta
-from typing import Sequence
 
 from .models import CurriculumLesson
 from .validation import FridayValidationResult
