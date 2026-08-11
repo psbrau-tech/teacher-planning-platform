@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from io import BytesIO
 from typing import Any
@@ -29,6 +30,31 @@ class _PositionedText:
     x: float
     y: float
     text: str
+
+
+def _positioned_text_visitor(
+    fragments: list[_PositionedText],
+) -> Callable[[str, list[float], list[float], dict[str, Any] | None, float], None]:
+    def visitor(
+        text: str,
+        user_matrix: list[float],
+        text_matrix: list[float],
+        font_dictionary: dict[str, Any] | None,
+        font_size: float,
+    ) -> None:
+        del font_dictionary, font_size
+        text_x = float(text_matrix[4])
+        text_y = float(text_matrix[5])
+        user_x = float(user_matrix[4])
+        user_y = float(user_matrix[5])
+        x = text_x if abs(text_x) > 0.01 else user_x
+        y = text_y if abs(text_y) > 0.01 else user_y
+        for raw_line in text.splitlines():
+            cleaned = _clean_text(raw_line)
+            if cleaned:
+                fragments.append(_PositionedText(x=x, y=y, text=cleaned))
+
+    return visitor
 
 
 def parse_alabama_aas_math_2019_spatial(
@@ -79,26 +105,7 @@ def parse_alabama_aas_math_2019_spatial(
 
     for page in reader.pages:
         fragments: list[_PositionedText] = []
-
-        def visitor(
-            text: str,
-            user_matrix: list[float],
-            text_matrix: list[float],
-            font_dictionary: dict[str, Any] | None,
-            font_size: float,
-        ) -> None:
-            del font_dictionary, font_size
-            text_x = float(text_matrix[4])
-            text_y = float(text_matrix[5])
-            user_x = float(user_matrix[4])
-            user_y = float(user_matrix[5])
-            x = text_x if abs(text_x) > 0.01 else user_x
-            y = text_y if abs(text_y) > 0.01 else user_y
-            for raw_line in text.splitlines():
-                cleaned = _clean_text(raw_line)
-                if cleaned:
-                    fragments.append(_PositionedText(x=x, y=y, text=cleaned))
-
+        visitor = _positioned_text_visitor(fragments)
         try:
             page_text = page.extract_text(visitor_text=visitor) or ""
         except Exception as error:
