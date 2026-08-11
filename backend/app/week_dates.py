@@ -11,7 +11,8 @@ def require_monday(value: date) -> date:
         raise HTTPException(
             status_code=422,
             detail=(
-                "Week of must be a Monday. Choose the Monday that starts the intended planning week."
+                "Week of must be a Monday. Choose the Monday that starts the intended "
+                "planning week."
             ),
         )
     return value
