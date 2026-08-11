@@ -35,7 +35,7 @@ def completed_packet(
     identity: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> StreamingResponse:
-    """Render the teacher's own latest immutable completed packet for one Monday-starting week."""
+    """Render the teacher's latest immutable completed packet for one Monday week."""
     require_monday(week_start)
     try:
         rows = _records(
@@ -50,8 +50,14 @@ def completed_packet(
         )
     except SupabaseRestError as error:
         if error.status_code in {401, 403}:
-            raise HTTPException(status_code=403, detail="Completed packet access is not authorized") from error
-        raise HTTPException(status_code=503, detail="Completed packet is unavailable") from error
+            raise HTTPException(
+                status_code=403,
+                detail="Completed packet access is not authorized",
+            ) from error
+        raise HTTPException(
+            status_code=503,
+            detail="Completed packet is unavailable",
+        ) from error
 
     if not rows:
         raise HTTPException(status_code=404, detail="Completed weekly packet was not found")
@@ -61,20 +67,31 @@ def completed_packet(
     ):
         raise HTTPException(status_code=503, detail="Completed packet source data is invalid")
     if not DEFAULT_TEMPLATE_PATH.exists():
-        raise HTTPException(status_code=503, detail="The approved planning PDF template is unavailable")
+        raise HTTPException(
+            status_code=503,
+            detail="The approved planning PDF template is unavailable",
+        )
     try:
-        packet, documents = generate_anniston_hqi_packet(cast(dict[str, str], source_data))
+        packet, documents = generate_anniston_hqi_packet(
+            cast(dict[str, str], source_data)
+        )
     except (FileNotFoundError, ValueError) as error:
-        raise HTTPException(status_code=503, detail="Completed packet PDF could not be generated") from error
+        raise HTTPException(
+            status_code=503,
+            detail="Completed packet PDF could not be generated",
+        ) from error
 
     revision = rows[0].get("revision")
+    filename = f"completed-weekly-packet-{week_start.isoformat()}.pdf"
     return StreamingResponse(
         BytesIO(packet),
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f'inline; filename="completed-weekly-packet-{week_start.isoformat()}.pdf"',
+            "Content-Disposition": f'inline; filename="{filename}"',
             "X-TPP-Submission-Kind": "completed_packet",
-            "X-TPP-Submitted-Revision": str(revision) if isinstance(revision, int) else "",
+            "X-TPP-Submitted-Revision": (
+                str(revision) if isinstance(revision, int) else ""
+            ),
             "X-TPP-Document-Count": str(len(documents)),
         },
     )
