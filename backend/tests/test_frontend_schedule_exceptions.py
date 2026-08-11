@@ -24,11 +24,12 @@ def test_weekly_plan_mounts_schedule_exception_controls() -> None:
 
     assert "/api/v1/schedule-exceptions?assignment_id=" in panel_source
     assert "onExceptionsChanged" in panel_source
-    assert "Day unavailable" in panel_source
+    assert "No class / postpone pacing for this day" in panel_source
     assert "Reduced instructional minutes" in panel_source
-    assert "Save exception" in panel_source
-    assert "Remove exception" in panel_source
-    assert "Regenerate the week" in panel_source
+    assert "Save schedule adjustment" in panel_source
+    assert "Remove adjustment" in panel_source
+    assert "Build / reconcile week" in panel_source
+    assert "does not consume a pacing lesson" in panel_source
 
     # The API independently rejects a move to a saved unavailable exception date.
     assert '"schedule_exceptions"' in move_api_source

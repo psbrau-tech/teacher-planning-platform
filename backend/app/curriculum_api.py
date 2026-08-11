@@ -361,13 +361,18 @@ def _locked_through_sequence(client: SupabaseRestClient, assignment_ids: list[st
 
 
 def _same_locked_content(old: _StoredLesson, new: CurriculumLessonImport) -> bool:
+    """Compare only teacher-editable fields for already scheduled curriculum history.
+
+    The Course Setup editor does not expose ``can_split``. Locked lessons are copied from
+    the stored curriculum verbatim when a revision is saved, so an internal/default value
+    reconstructed by the browser must never make an unchanged historical lesson look edited.
+    """
     return (
         old.unit_title.strip() == new.unit_title.strip()
         and old.lesson_title.strip() == new.lesson_title.strip()
         and old.estimated_minutes == new.estimated_minutes
         and old.learning_targets == new.learning_targets
         and old.assessment.strip() == new.assessment.strip()
-        and old.can_split == new.can_split
     )
 
 
@@ -699,9 +704,10 @@ def revise_curriculum(
         raise HTTPException(
             status_code=409,
             detail=(
-                f"Lessons 1 through {locked} are already scheduled in a class using this "
-                "curriculum and must remain in the current-year history. Create a separate "
-                "copy for a class if it needs a different path."
+                f"Lessons 1 through {locked} are already part of scheduled or submitted "
+                "planning history and must remain unchanged. Add or edit lessons after that "
+                "preserved point, or create a separate curriculum copy when a class needs a "
+                "different future path."
             ),
         )
     if locked > len(current):
@@ -711,9 +717,11 @@ def revise_curriculum(
             raise HTTPException(
                 status_code=409,
                 detail=(
-                    f"Lesson {index + 1} is already scheduled in a class using this curriculum. "
-                    "Only the unscheduled portion of a shared current-year curriculum can be "
-                    "changed. Create a separate copy for a class when its future path differs."
+                    f"Lessons 1 through {locked} are already part of scheduled or submitted "
+                    "planning history and are preserved. A teacher-visible field in lesson "
+                    f"{index + 1} differs from that saved history. Restore the preserved lesson "
+                    "and make changes after the locked point, or create a separate curriculum "
+                    "copy for a different future path."
                 ),
             )
 

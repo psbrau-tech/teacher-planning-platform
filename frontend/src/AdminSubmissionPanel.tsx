@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "./AdminSubmissionPanel.css";
 
 type ReviewMode = "lesson_plan" | "completed_packet";
@@ -76,6 +76,7 @@ export function AdminSubmissionPanel({ accessToken, roles, disabled = false }: P
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState("");
+  const teacherFilterRef = useRef<HTMLDetailsElement>(null);
 
   const isPlatformAdmin = roles.includes("platform_admin");
   const isDistrictAdmin = roles.includes("district_admin");
@@ -358,6 +359,15 @@ export function AdminSubmissionPanel({ accessToken, roles, disabled = false }: P
       [...current].filter((id) => teachers.some(([teacherId]) => teacherId === id)),
     ));
   }, [teachers]);
+  useEffect(() => {
+    function closeTeacherFilterOnOutsidePointer(event: PointerEvent) {
+      const filter = teacherFilterRef.current;
+      if (!filter?.open) return;
+      if (event.target instanceof Node && !filter.contains(event.target)) filter.open = false;
+    }
+    window.document.addEventListener("pointerdown", closeTeacherFilterOnOutsidePointer);
+    return () => window.document.removeEventListener("pointerdown", closeTeacherFilterOnOutsidePointer);
+  }, []);
   useEffect(() => () => { if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl); }, [pdfPreviewUrl]);
 
   return (
@@ -377,7 +387,7 @@ export function AdminSubmissionPanel({ accessToken, roles, disabled = false }: P
           <button type="button" className="secondary" disabled={disabled || loading} onClick={() => selectWeek(addDays(weekStart, 7))}>Next week →</button>
         </div>
         {canFilterSchools && <label>School<select value={schoolFilter} onChange={(event) => { setSchoolFilter(event.target.value); setSelectedTeacherIds(new Set()); }}><option value="">All governed schools</option>{schools.map(([schoolId, schoolName]) => <option value={schoolId} key={schoolId}>{schoolName}</option>)}</select></label>}
-        <details className="teacher-multi-filter"><summary>{selectedTeacherIds.size ? `${selectedTeacherIds.size} teacher${selectedTeacherIds.size === 1 ? "" : "s"} selected` : "All teachers"}</summary><div className="teacher-filter-options"><div className="teacher-filter-actions"><button type="button" className="link-button" onClick={() => setSelectedTeacherIds(new Set(teachers.map(([id]) => id)))}>Select all</button><button type="button" className="link-button" onClick={() => setSelectedTeacherIds(new Set())}>Clear</button></div>{teachers.map(([teacherId, teacherName]) => <label className="check" key={teacherId}><input type="checkbox" checked={selectedTeacherIds.has(teacherId)} onChange={() => toggleTeacher(teacherId)} />{teacherName}</label>)}</div></details>
+        <details ref={teacherFilterRef} className="teacher-multi-filter"><summary>{selectedTeacherIds.size ? `${selectedTeacherIds.size} teacher${selectedTeacherIds.size === 1 ? "" : "s"} selected` : "All teachers"}</summary><div className="teacher-filter-options"><div className="teacher-filter-actions"><button type="button" className="link-button" onClick={() => setSelectedTeacherIds(new Set(teachers.map(([id]) => id)))}>Select all</button><button type="button" className="link-button" onClick={() => setSelectedTeacherIds(new Set())}>Clear</button></div>{teachers.map(([teacherId, teacherName]) => <label className="check" key={teacherId}><input type="checkbox" checked={selectedTeacherIds.has(teacherId)} onChange={() => toggleTeacher(teacherId)} />{teacherName}</label>)}</div></details>
         <label>Course search<input type="search" value={courseFilter} placeholder="Filter courses" onChange={(event) => setCourseFilter(event.target.value)} /></label>
         <button className="secondary" disabled={disabled || loading} onClick={() => void load()}>Refresh submissions</button>
       </div>
