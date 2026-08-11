@@ -4,7 +4,7 @@ from collections import OrderedDict
 from contextlib import suppress
 from typing import Annotated, Any, NoReturn, cast
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from .auth import AuthenticatedTeacher, require_teacher
@@ -93,6 +93,7 @@ def list_curricula(
     identity: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> list[CurriculumRead]:
+    """Return only active curricula created by the teacher using Course Setup."""
     if identity.school_id is None:
         raise HTTPException(status_code=403, detail="Pilot school assignment is required")
     try:
@@ -102,6 +103,7 @@ def list_curricula(
                 "curricula",
                 params={
                     "school_id": f"eq.{identity.school_id}",
+                    "created_by": f"eq.{identity.subject}",
                     "is_active": "eq.true",
                     "select": "id,school_id,name,version,standards_family,is_active",
                     "order": "name.asc,version.desc",
@@ -217,3 +219,65 @@ def create_curriculum(
                     params={"id": f"eq.{curriculum_id}"},
                 )
         _raise_data_error(error, "Curriculum save")
+
+
+@router.delete("/{curriculum_id}", status_code=204)
+def archive_curriculum(
+    curriculum_id: str,
+    identity: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> Response:
+    """Retire an unused teacher-owned curriculum without deleting planning history."""
+    client = _client(identity, settings)
+    try:
+        owned = _records(
+            client.request(
+                "GET",
+                "curricula",
+                params={
+                    "id": f"eq.{curriculum_id}",
+                    "created_by": f"eq.{identity.subject}",
+                    "is_active": "eq.true",
+                    "select": "id",
+                    "limit": "1",
+                },
+            )
+        )
+        if not owned:
+            raise HTTPException(status_code=404, detail="Curriculum was not found in your active curricula")
+        active_assignments = _records(
+            client.request(
+                "GET",
+                "teaching_assignments",
+                params={
+                    "teacher_id": f"eq.{identity.subject}",
+                    "curriculum_id": f"eq.{curriculum_id}",
+                    "is_active": "eq.true",
+                    "select": "id",
+                    "limit": "1",
+                },
+            )
+        )
+        if active_assignments:
+            raise HTTPException(
+                status_code=409,
+                detail="This curriculum is still attached to an active class. Replace or remove it from that class first.",
+            )
+        rows = _records(
+            client.request(
+                "PATCH",
+                "curricula",
+                params={
+                    "id": f"eq.{curriculum_id}",
+                    "created_by": f"eq.{identity.subject}",
+                    "is_active": "eq.true",
+                },
+                payload={"is_active": False},
+                prefer="return=representation",
+            )
+        )
+    except SupabaseRestError as error:
+        _raise_data_error(error, "Curriculum retirement")
+    if not rows:
+        raise HTTPException(status_code=404, detail="Curriculum was not found in your active curricula")
+    return Response(status_code=204)
