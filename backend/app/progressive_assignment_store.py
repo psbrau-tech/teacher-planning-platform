@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from contextlib import suppress
+
 from .models import MeetingPattern
 from .supabase_persistence import (
     PersistenceError,
@@ -81,8 +83,12 @@ class ProgressiveSupabaseTeachingAssignmentStore(SupabaseTeachingAssignmentStore
                 **base_payload,
                 "teacher_id": teacher_id,
                 "academic_year_id": _required_text(academic_year, "id"),
-                "starts_on": _parse_date(academic_year.get("starts_on"), key="starts_on").isoformat(),
-                "ends_on": _parse_date(academic_year.get("ends_on"), key="ends_on").isoformat(),
+                "starts_on": _parse_date(
+                    academic_year.get("starts_on"), key="starts_on"
+                ).isoformat(),
+                "ends_on": _parse_date(
+                    academic_year.get("ends_on"), key="ends_on"
+                ).isoformat(),
                 "is_active": True,
             }
             try:
@@ -95,15 +101,20 @@ class ProgressiveSupabaseTeachingAssignmentStore(SupabaseTeachingAssignmentStore
                     )
                 )
                 if not rows:
-                    raise PersistenceError("Teaching assignment save returned no record", status_code=503)
+                    raise PersistenceError(
+                        "Teaching assignment save returned no record",
+                        status_code=503,
+                    )
                 created_id = _required_text(rows[0], "id")
                 try:
                     self._replace_patterns(created_id, meeting_patterns)
                 except (PersistenceError, ValueError):
-                    try:
-                        self.client.request("DELETE", "teaching_assignments", params={"id": f"eq.{created_id}"})
-                    except SupabaseRestError:
-                        pass
+                    with suppress(SupabaseRestError):
+                        self.client.request(
+                            "DELETE",
+                            "teaching_assignments",
+                            params={"id": f"eq.{created_id}"},
+                        )
                     raise
                 created = self.get(teacher_id, created_id)
                 if created is None:
