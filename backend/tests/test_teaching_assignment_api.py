@@ -5,12 +5,16 @@ from app.main import app
 client = TestClient(app)
 
 
-def _payload(*, schedule_type: str = "period") -> dict[str, object]:
+def _payload(
+    *,
+    schedule_type: str = "period",
+    curriculum_id: str | None = "jrotc-let-1",
+) -> dict[str, object]:
     return {
         "school_id": "anniston-high-school",
         "course_name": "Army JROTC LET 1",
         "course_code": "JROTC-1",
-        "curriculum_id": "jrotc-let-1",
+        "curriculum_id": curriculum_id,
         "grade_band": "9-12",
         "meeting_patterns": [
             {
@@ -45,6 +49,19 @@ def test_teacher_can_create_list_and_reopen_assignment() -> None:
     assert any(item["id"] == record["id"] for item in listed.json())
     assert reopened.status_code == 200
     assert reopened.json()["course_name"] == "Army JROTC LET 1"
+
+
+def test_teacher_can_create_class_before_adding_curriculum() -> None:
+    headers = {"X-TPP-Teacher-ID": "teacher-progressive-setup"}
+    created = client.post(
+        "/api/v1/teaching-assignments",
+        json=_payload(curriculum_id=None),
+        headers=headers,
+    )
+
+    assert created.status_code == 201
+    assert created.json()["curriculum_id"] is None
+    assert created.json()["course_name"] == "Army JROTC LET 1"
 
 
 def test_teacher_can_update_schedule_with_revision_protection() -> None:

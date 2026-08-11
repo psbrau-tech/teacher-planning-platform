@@ -8,9 +8,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, model_validator
 
 from .auth import AuthenticatedTeacher, require_teacher
+from .progressive_assignment_store import ProgressiveSupabaseTeachingAssignmentStore
 from .settings import Settings, get_settings
-from .supabase_persistence import PersistenceError, SupabaseTeachingAssignmentStore
+from .supabase_persistence import PersistenceError
 from .supabase_rest import SupabaseRestClient, SupabaseRestError
+from .week_dates import require_monday
 
 router = APIRouter(prefix="/api/v1/schedule-exceptions", tags=["planning"])
 
@@ -64,7 +66,7 @@ def _require_assignment(
     identity: AuthenticatedTeacher,
     assignment_id: UUID,
 ) -> None:
-    store = SupabaseTeachingAssignmentStore(client, identity.subject)
+    store = ProgressiveSupabaseTeachingAssignmentStore(client, identity.subject)
     try:
         assignment = store.get(identity.subject, str(assignment_id))
     except PersistenceError as error:
@@ -101,6 +103,7 @@ def list_schedule_exceptions(
     identity: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> list[ScheduleExceptionRead]:
+    require_monday(week_start)
     client = _client(identity, settings)
     _require_assignment(client, identity, assignment_id)
     week_end = week_start + timedelta(days=4)

@@ -12,16 +12,21 @@ MIGRATIONS = ROOT / "supabase" / "migrations"
 
 def test_final_weekly_plan_controls_match_browser_acceptance() -> None:
     shell = (FRONTEND / "TeacherPlanningShell.tsx").read_text(encoding="utf-8")
+    pdf_fields = (FRONTEND / "PlanningPdfFieldsPanel.tsx").read_text(encoding="utf-8")
     assert "hasSavedStandards={savedStandardsCount > 0}" in shell
     assert "onSelectionSaved=" in shell
-    assert "Selected authoritative standards" in shell
-    assert 'readOnly aria-readonly="true"' in shell
+    assert "Authoritative standards" in shell
+    assert "Selected authoritative standards" in pdf_fields
+    assert 'readOnly aria-readonly="true"' in pdf_fields
     assert "Next: Review PDFs" not in shell
     assert "pdf-modal-backdrop" in shell
     assert 'window.open("", "_blank")' not in shell
     assert "toast-alert" in shell
-    assert "Submit Friday closeout & plan next week" in shell
+    assert "Submit Friday closeout & continue" in shell
+    assert "Review completed weekly packet" in shell
     assert "Submit weekly plan" in shell
+    assert "Build Week" in shell
+    assert "Review PDF" in shell
 
 
 def test_standards_selection_stays_stable_and_filters_stale_catalog_ids() -> None:
@@ -41,7 +46,9 @@ def test_pacing_template_is_valid_and_standards_family_is_removed_from_pacing() 
     course_setup = (FRONTEND / "CourseSetupPanel.tsx").read_text(encoding="utf-8")
     template = (FRONTEND / "pacingTemplate.ts").read_text(encoding="utf-8")
     editor = (FRONTEND / "PacingSequenceEditor.tsx").read_text(encoding="utf-8")
-    assert "Download Excel pacing template" in course_setup
+    assert "Download current Excel template" in course_setup
+    assert "Upload Excel" in course_setup
+    assert "Save Curriculum & Pacing & Continue" in course_setup
     assert "tpp-curriculum-pacing-template.xlsx" in template
     assert "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" in template
     encoded = re.search(r'PACING_TEMPLATE_BASE64 = "([A-Za-z0-9+/=]+)"', template)
@@ -132,18 +139,24 @@ def test_admin_bulk_review_supports_multiple_teachers_and_both_submission_types(
     assert ".submission-mode-bar" in styles
 
 
-def test_help_page_covers_separate_first_week_friday_and_admin_records() -> None:
+def test_help_page_covers_progressive_setup_friday_and_admin_records() -> None:
     help_source = (FRONTEND / "HelpPage.tsx").read_text(encoding="utf-8")
     main_source = (FRONTEND / "main.tsx").read_text(encoding="utf-8")
-    assert '=== "/help"' in main_source
-    assert "First week" in help_source
+    shell_source = (FRONTEND / "TeacherPlanningShell.tsx").read_text(encoding="utf-8")
+    assert "<TeacherPlanningShell />" in main_source
+    assert '=== "/help"' in shell_source
+    assert 'view === "help"' in shell_source
+    assert 'setView("help")' in shell_source
+    assert "<HelpPage roles={identity.roles}" in shell_source
+    assert "Set up each class once" in help_source
+    assert "Build a weekly plan" in help_source
     assert "Every Friday after the first week" in help_source
-    assert "The reflection belongs to the week that was just taught" in help_source
-    assert "completed packet" in help_source
-    assert "following week's lesson plan" in help_source
+    assert "teacher-authored reflection" in help_source
+    assert "completed weekly packet" in help_source.lower()
+    assert "Continue to the following week" in help_source
     assert "Upcoming lesson plan" in help_source
     assert "Completed weekly packet" in help_source
     assert "Administrator workflow" in help_source
-    assert "Weekly Reflection / PLC Discussion" in help_source
+    assert "Reflection / PLC Discussion prompts" in help_source
     assert "Do not enter student names" in help_source
     assert "Review many records" in help_source

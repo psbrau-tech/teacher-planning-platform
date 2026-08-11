@@ -46,6 +46,7 @@ type StandardsCourseMappingPanelProps = {
   assignmentId: string | null;
   disabled?: boolean;
   onMappingSaved?: (result: MappingWriteResult) => void;
+  onMappingStatus?: (mapped: boolean) => void;
 };
 
 async function readError(response: Response, fallback: string): Promise<string> {
@@ -63,6 +64,7 @@ export function StandardsCourseMappingPanel({
   assignmentId,
   disabled = false,
   onMappingSaved,
+  onMappingStatus,
 }: StandardsCourseMappingPanelProps) {
   const [categories, setCategories] = useState<CatalogCategory[]>([]);
   const [courses, setCourses] = useState<CatalogCourse[]>([]);
@@ -95,6 +97,7 @@ export function StandardsCourseMappingPanel({
     setError(null);
     setConfirming(false);
     setConfirmChecked(false);
+    onMappingStatus?.(false);
 
     if (!assignmentId) return () => { active = false; };
 
@@ -119,6 +122,7 @@ export function StandardsCourseMappingPanel({
         if (!active) return;
         setCategories(nextCategories);
         setMapping(nextMapping);
+        onMappingStatus?.(nextMapping.mapped);
         if (nextMapping.mapped && nextMapping.category && nextMapping.course) {
           setCategoryId(nextMapping.category.id);
           const coursesResponse = await fetch(
@@ -143,7 +147,7 @@ export function StandardsCourseMappingPanel({
 
     void load();
     return () => { active = false; };
-  }, [accessToken, assignmentId]);
+  }, [accessToken, assignmentId, onMappingStatus]);
 
   const changeCategory = async (nextCategoryId: string) => {
     setCategoryId(nextCategoryId);
@@ -218,6 +222,7 @@ export function StandardsCourseMappingPanel({
           ? `Standards mapping updated. ${result.open_selection_count_cleared} unvalidated weekly standards selection${result.open_selection_count_cleared === 1 ? " was" : "s were"} cleared; validated history was preserved.`
           : "Standards mapping saved.",
       );
+      onMappingStatus?.(true);
       onMappingSaved?.(result);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Standards mapping could not be saved.");

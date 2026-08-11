@@ -5,8 +5,9 @@ from pydantic import BaseModel, Field
 
 from .auth import AuthenticatedTeacher, require_teacher
 from .models import MeetingPattern
+from .progressive_assignment_store import ProgressiveSupabaseTeachingAssignmentStore
 from .settings import Settings, get_settings
-from .supabase_persistence import PersistenceError, SupabaseTeachingAssignmentStore
+from .supabase_persistence import PersistenceError
 from .supabase_rest import SupabaseRestClient, SupabaseRestError
 from .teaching_assignments import (
     TeachingAssignmentRecord,
@@ -21,7 +22,7 @@ class TeachingAssignmentWrite(BaseModel):
     school_id: str = Field(min_length=1)
     course_name: str = Field(min_length=1, max_length=120)
     course_code: str | None = Field(default=None, max_length=40)
-    curriculum_id: str = Field(min_length=1)
+    curriculum_id: str | None = Field(default=None, min_length=1)
     grade_band: str | None = Field(default=None, max_length=40)
     meeting_patterns: list[MeetingPattern] = Field(min_length=1)
     expected_revision: int | None = Field(default=None, ge=0)
@@ -33,7 +34,7 @@ class TeachingAssignmentRead(BaseModel):
     school_id: str
     course_name: str
     course_code: str | None
-    curriculum_id: str
+    curriculum_id: str | None
     grade_band: str | None
     meeting_patterns: list[MeetingPattern]
     revision: int
@@ -58,10 +59,10 @@ def _to_read_model(record: TeachingAssignmentRecord) -> TeachingAssignmentRead:
 def _store_for(
     teacher: AuthenticatedTeacher,
     settings: Settings,
-) -> TeachingAssignmentStore | SupabaseTeachingAssignmentStore:
+) -> TeachingAssignmentStore | ProgressiveSupabaseTeachingAssignmentStore:
     if teacher.access_token is None:
         return teaching_assignment_store
-    return SupabaseTeachingAssignmentStore(
+    return ProgressiveSupabaseTeachingAssignmentStore(
         client=SupabaseRestClient.from_settings(
             settings,
             access_token=teacher.access_token,

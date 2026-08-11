@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { parseCurriculumRows } from "./curriculumRows";
-import { PacingSequenceEditor } from "./PacingSequenceEditor";
+import { PacingSequenceEditor, type PacingInitialRow } from "./PacingSequenceEditor";
 import { downloadPacingTemplate } from "./pacingTemplate";
 import { StandardsCourseMappingPanel } from "./StandardsCourseMappingPanel";
 
@@ -11,6 +11,29 @@ type Curriculum = {
   version: string;
   standards_family: string | null;
   is_active: boolean;
+};
+
+type CurriculumLessonDetail = {
+  sequence: number;
+  unit_title: string;
+  lesson_title: string;
+  estimated_minutes: number | null;
+  standards: string[];
+  learning_targets: string[];
+  assessment: string;
+  can_split: boolean;
+};
+
+type CurriculumDetail = Curriculum & {
+  lessons: CurriculumLessonDetail[];
+  active_class_count: number;
+  locked_through_sequence: number;
+};
+
+type CurriculumRevisionRead = {
+  curriculum: CurriculumDetail;
+  replaced_curriculum_id: string;
+  active_classes_updated: number;
 };
 
 type MeetingPattern = {
@@ -29,7 +52,7 @@ type Assignment = {
   school_id: string;
   course_name: string;
   course_code: string | null;
-  curriculum_id: string;
+  curriculum_id: string | null;
   grade_band: string | null;
   meeting_patterns: MeetingPattern[];
   revision: number;
@@ -49,13 +72,23 @@ type Props = {
   onMessage: (message: string) => void;
   onError: (message: string) => void;
   onStandardsMappingSaved: () => void;
+  onOpenWeeklyPlan?: (assignmentId: string) => void;
 };
+
+type PacingMode = "upload" | "build" | "reuse" | null;
 
 function academicVersion(pattern?: MeetingPattern): string {
   if (!pattern?.effective_start || !pattern.effective_end) return "Current year";
   const start = Number(pattern.effective_start.slice(0, 4));
   const end = Number(pattern.effective_end.slice(0, 4));
-  return Number.isFinite(start) && Number.isFinite(end) ? `${start}-${String(end).slice(-2)}` : "Current year";
+  return Number.isFinite(start) && Number.isFinite(end)
+    ? `${start}-${String(end).slice(-2)}`
+    : "Current year";
+}
+
+function weekdayLabel(weekdays: number[]): string {
+  const labels = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+  return weekdays.map((value) => labels[value - 1]).filter(Boolean).join(", ");
 }
 
 async function readError(response: Response, fallback: string): Promise<string> {
@@ -65,6 +98,46 @@ async function readError(response: Response, fallback: string): Promise<string> 
   } catch {
     return fallback;
   }
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = window.document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  window.document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+function StepMarker({
+  number,
+  title,
+  complete,
+  active,
+}: {
+  number: number;
+  title: string;
+  complete: boolean;
+  active: boolean;
+}) {
+  return (
+    <div className={`setup-step-marker ${complete ? "complete" : ""} ${active ? "active" : ""}`}>
+      <span className="step-number" aria-hidden="true">{complete ? "✓" : number}</span>
+      <span><strong>Step {number}</strong><small>{title}</small></span>
+    </div>
+  );
+}
+
+function detailRows(detail: CurriculumDetail): PacingInitialRow[] {
+  return detail.lessons.map((lesson) => ({
+    unit: lesson.unit_title,
+    lesson: lesson.lesson_title,
+    targets: lesson.learning_targets.join("; "),
+    assessment: lesson.assessment,
+    minutes: lesson.estimated_minutes === null ? "" : String(lesson.estimated_minutes),
+  }));
 }
 
 export function CourseSetupPanel({
@@ -80,18 +153,24 @@ export function CourseSetupPanel({
   onMessage,
   onError,
   onStandardsMappingSaved,
+  onOpenWeeklyPlan,
 }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
-  const [pacingAssignmentId, setPacingAssignmentId] = useState(selectedAssignmentId);
+  const [pacingMode, setPacingMode] = useState<PacingMode>(null);
   const [reuseCurriculumId, setReuseCurriculumId] = useState("");
+  const [standardsMapped, setStandardsMapped] = useState(false);
+  const [standardsEditing, setStandardsEditing] = useState(false);
+  const [curriculumDetail, setCurriculumDetail] = useState<CurriculumDetail | null>(null);
+  const [sharedEditConfirmed, setSharedEditConfirmed] = useState(false);
+  const [copyVersionOpen, setCopyVersionOpen] = useState(false);
+
+  const selectedAssignment = assignments.find((item) => item.id === selectedAssignmentId) ?? null;
   const editing = assignments.find((item) => item.id === editingId) ?? null;
-  const pacingAssignment = assignments.find((item) => item.id === pacingAssignmentId)
-    ?? assignments.find((item) => item.id === selectedAssignmentId)
-    ?? assignments[0]
-    ?? null;
   const pattern = editing?.meeting_patterns[0];
-  const currentPacing = curricula.find((item) => item.id === pacingAssignment?.curriculum_id) ?? null;
+  const currentPacing = selectedAssignment?.curriculum_id
+    ? curricula.find((item) => item.id === selectedAssignment.curriculum_id) ?? null
+    : null;
   const sortedAssignments = useMemo(
     () => [...assignments].sort((a, b) => {
       const aTime = a.meeting_patterns[0]?.start_time ?? "";
@@ -100,18 +179,37 @@ export function CourseSetupPanel({
     }),
     [assignments],
   );
-  const authHeaders = { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" };
+  const authHeaders = {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+  };
+  const step1Complete = Boolean(selectedAssignment);
+  const step2Complete = Boolean(selectedAssignment?.curriculum_id && currentPacing);
+  const step3Complete = step2Complete && standardsMapped;
+  const curriculumManagerOpen = curriculumDetail !== null || copyVersionOpen;
 
-  async function createPlaceholderCurriculum(courseName: string, version: string): Promise<Curriculum> {
-    const response = await fetch("/api/v1/curricula", {
-      method: "POST",
-      headers: authHeaders,
-      body: JSON.stringify({ name: `${courseName} Curriculum & Pacing`, version, standards_family: null, lessons: [] }),
-    });
-    if (!response.ok) throw new Error(await readError(response, "Course pacing placeholder could not be created."));
-    const created = await response.json() as Curriculum;
-    onCurriculaChanged([...curricula, created].sort((a, b) => a.name.localeCompare(b.name)));
-    return created;
+  useEffect(() => {
+    setStandardsMapped(false);
+    setStandardsEditing(false);
+    setPacingMode(null);
+    setReuseCurriculumId("");
+    setCurriculumDetail(null);
+    setSharedEditConfirmed(false);
+    setCopyVersionOpen(false);
+  }, [selectedAssignmentId]);
+
+  async function refreshTeacherData() {
+    const [curriculaResponse, assignmentsResponse] = await Promise.all([
+      fetch("/api/v1/curricula", { headers: { Authorization: `Bearer ${accessToken}` } }),
+      fetch("/api/v1/teaching-assignments", {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }),
+    ]);
+    if (!curriculaResponse.ok || !assignmentsResponse.ok) {
+      throw new Error("Teacher planning data could not be refreshed after the curriculum change.");
+    }
+    onCurriculaChanged(await curriculaResponse.json() as Curriculum[]);
+    onAssignmentsChanged(await assignmentsResponse.json() as Assignment[]);
   }
 
   async function saveClass(event: React.FormEvent<HTMLFormElement>) {
@@ -124,16 +222,11 @@ export function CourseSetupPanel({
     setWorking(true);
     onError("");
     try {
-      let curriculumId = String(form.get("curriculum_id") ?? "");
-      if (!curriculumId) {
-        const version = start && end ? `${start.slice(0, 4)}-${end.slice(2, 4)}` : "Current year";
-        curriculumId = (await createPlaceholderCurriculum(courseName, version)).id;
-      }
       const payload = {
         school_id: schoolId,
         course_name: courseName,
         course_code: String(form.get("course_code") ?? "") || null,
-        curriculum_id: curriculumId,
+        curriculum_id: editing?.curriculum_id ?? null,
         grade_band: String(form.get("grade_band") ?? "") || null,
         meeting_patterns: [{
           schedule_type: String(form.get("schedule_type") ?? "period"),
@@ -147,17 +240,27 @@ export function CourseSetupPanel({
         expected_revision: editing?.revision ?? null,
       };
       const response = await fetch(
-        editing ? `/api/v1/teaching-assignments/${encodeURIComponent(editing.id)}` : "/api/v1/teaching-assignments",
-        { method: editing ? "PUT" : "POST", headers: authHeaders, body: JSON.stringify(payload) },
+        editing
+          ? `/api/v1/teaching-assignments/${encodeURIComponent(editing.id)}`
+          : "/api/v1/teaching-assignments",
+        {
+          method: editing ? "PUT" : "POST",
+          headers: authHeaders,
+          body: JSON.stringify(payload),
+        },
       );
-      if (!response.ok) throw new Error(await readError(response, "Class schedule could not be saved."));
+      if (!response.ok) {
+        throw new Error(await readError(response, "Class schedule could not be saved."));
+      }
       const saved = await response.json() as Assignment;
-      const next = editing ? assignments.map((item) => item.id === saved.id ? saved : item) : [...assignments, saved];
+      const next = editing
+        ? assignments.map((item) => item.id === saved.id ? saved : item)
+        : [...assignments, saved];
       onAssignmentsChanged(next);
       onSelectAssignment(saved.id);
-      setPacingAssignmentId(saved.id);
       setEditingId(null);
-      onMessage(`${saved.course_name} class schedule saved.`);
+      setPacingMode(null);
+      onMessage(`${saved.course_name} saved. Step 1 complete — add Curriculum & Pacing next.`);
     } catch (caught) {
       onError(caught instanceof Error ? caught.message : "Class schedule could not be saved.");
     } finally {
@@ -166,17 +269,25 @@ export function CourseSetupPanel({
   }
 
   async function removeClass(assignment: Assignment) {
-    if (!window.confirm(`Remove ${assignment.course_name} from active planning?\n\nExisting planning and submission history will be preserved.`)) return;
+    if (!window.confirm(
+      `Remove ${assignment.course_name} from active planning?\n\nExisting planning, submitted packets, and reusable curricula will be preserved.`,
+    )) return;
     setWorking(true);
     onError("");
     try {
-      const response = await fetch(`/api/v1/teaching-assignments/${encodeURIComponent(assignment.id)}`, { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } });
-      if (!response.ok) throw new Error(await readError(response, "Class could not be removed."));
+      const response = await fetch(
+        `/api/v1/teaching-assignments/${encodeURIComponent(assignment.id)}`,
+        { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } },
+      );
+      if (!response.ok) {
+        throw new Error(await readError(response, "Class could not be removed."));
+      }
       const next = assignments.filter((item) => item.id !== assignment.id);
       onAssignmentsChanged(next);
       if (selectedAssignmentId === assignment.id) onSelectAssignment(next[0]?.id ?? "");
-      if (pacingAssignmentId === assignment.id) setPacingAssignmentId(next[0]?.id ?? "");
-      onMessage(`${assignment.course_name} removed from active planning.`);
+      onMessage(
+        `${assignment.course_name} removed from active planning. Its planning history is preserved.`,
+      );
     } catch (caught) {
       onError(caught instanceof Error ? caught.message : "Class could not be removed.");
     } finally {
@@ -185,35 +296,72 @@ export function CourseSetupPanel({
   }
 
   async function attachCurriculum(assignment: Assignment, curriculumId: string) {
-    if (!assignment.meeting_patterns[0]) throw new Error("This class schedule has no meeting pattern.");
-    const response = await fetch(`/api/v1/teaching-assignments/${encodeURIComponent(assignment.id)}`, {
-      method: "PUT",
-      headers: authHeaders,
-      body: JSON.stringify({
-        school_id: assignment.school_id,
-        course_name: assignment.course_name,
-        course_code: assignment.course_code,
-        curriculum_id: curriculumId,
-        grade_band: assignment.grade_band,
-        meeting_patterns: assignment.meeting_patterns,
-        expected_revision: assignment.revision,
-      }),
-    });
-    if (!response.ok) throw new Error(await readError(response, "Curriculum & Pacing could not be attached."));
+    if (!assignment.meeting_patterns[0]) {
+      throw new Error("This class schedule has no meeting pattern.");
+    }
+    const response = await fetch(
+      `/api/v1/teaching-assignments/${encodeURIComponent(assignment.id)}`,
+      {
+        method: "PUT",
+        headers: authHeaders,
+        body: JSON.stringify({
+          school_id: assignment.school_id,
+          course_name: assignment.course_name,
+          course_code: assignment.course_code,
+          curriculum_id: curriculumId,
+          grade_band: assignment.grade_band,
+          meeting_patterns: assignment.meeting_patterns,
+          expected_revision: assignment.revision,
+        }),
+      },
+    );
+    if (!response.ok) {
+      throw new Error(await readError(response, "Curriculum & Pacing could not be attached."));
+    }
     const updated = await response.json() as Assignment;
     onAssignmentsChanged(assignments.map((item) => item.id === updated.id ? updated : item));
     return updated;
   }
 
   async function useExistingCurriculum() {
-    if (!pacingAssignment || !reuseCurriculumId) return;
+    if (!selectedAssignment || !reuseCurriculumId) return;
     setWorking(true);
     onError("");
     try {
-      const updated = await attachCurriculum(pacingAssignment, reuseCurriculumId);
-      onMessage(`Curriculum & Pacing updated for ${updated.course_name}.`);
+      const updated = await attachCurriculum(selectedAssignment, reuseCurriculumId);
+      setPacingMode(null);
+      setReuseCurriculumId("");
+      onMessage(`Curriculum & Pacing attached to ${updated.course_name}. Step 2 complete.`);
     } catch (caught) {
-      onError(caught instanceof Error ? caught.message : "Curriculum & Pacing could not be attached.");
+      onError(
+        caught instanceof Error
+          ? caught.message
+          : "Curriculum & Pacing could not be attached.",
+      );
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function retireCurriculum(curriculum: Curriculum) {
+    if (!window.confirm(
+      `Remove ${curriculum.name} · ${curriculum.version} from your active curriculum list?\n\nThis does not delete historical planning records.`,
+    )) return;
+    setWorking(true);
+    onError("");
+    try {
+      const response = await fetch(`/api/v1/curricula/${encodeURIComponent(curriculum.id)}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!response.ok) {
+        throw new Error(await readError(response, "Curriculum could not be removed."));
+      }
+      onCurriculaChanged(curricula.filter((item) => item.id !== curriculum.id));
+      if (reuseCurriculumId === curriculum.id) setReuseCurriculumId("");
+      onMessage(`${curriculum.name} removed from your active curriculum list.`);
+    } catch (caught) {
+      onError(caught instanceof Error ? caught.message : "Curriculum could not be removed.");
     } finally {
       setWorking(false);
     }
@@ -221,14 +369,16 @@ export function CourseSetupPanel({
 
   async function savePacing(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!pacingAssignment) return;
+    if (!selectedAssignment) return;
     const form = new FormData(event.currentTarget);
     let rows;
     try {
       rows = parseCurriculumRows(String(form.get("lesson_rows") ?? ""));
       if (!rows.length) throw new Error("Add at least one pacing lesson before saving.");
     } catch (caught) {
-      onError(caught instanceof Error ? caught.message : "Curriculum & Pacing rows are invalid.");
+      onError(
+        caught instanceof Error ? caught.message : "Curriculum & Pacing rows are invalid.",
+      );
       return;
     }
     setWorking(true);
@@ -244,58 +394,524 @@ export function CourseSetupPanel({
           lessons: rows,
         }),
       });
-      if (!response.ok) throw new Error(await readError(response, "Curriculum & Pacing could not be saved."));
+      if (!response.ok) {
+        throw new Error(await readError(response, "Curriculum & Pacing could not be saved."));
+      }
       const curriculum = await response.json() as Curriculum;
-      onCurriculaChanged([...curricula, curriculum].sort((a, b) => a.name.localeCompare(b.name)));
-      const updated = await attachCurriculum(pacingAssignment, curriculum.id);
-      onMessage(`Curriculum & Pacing saved and attached to ${updated.course_name}.`);
+      onCurriculaChanged(
+        [...curricula, curriculum].sort((a, b) => a.name.localeCompare(b.name)),
+      );
+      const updated = await attachCurriculum(selectedAssignment, curriculum.id);
+      setPacingMode(null);
+      onMessage(
+        `${rows.length} pacing lesson${rows.length === 1 ? "" : "s"} saved and attached to ${updated.course_name}. Step 2 complete.`,
+      );
     } catch (caught) {
-      onError(caught instanceof Error ? caught.message : "Curriculum & Pacing could not be saved.");
+      onError(
+        caught instanceof Error
+          ? caught.message
+          : "Curriculum & Pacing could not be saved.",
+      );
     } finally {
       setWorking(false);
     }
   }
 
+  async function loadCurriculumDetail() {
+    if (!currentPacing) return;
+    setWorking(true);
+    onError("");
+    try {
+      const response = await fetch(`/api/v1/curricula/${encodeURIComponent(currentPacing.id)}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!response.ok) {
+        throw new Error(await readError(response, "Curriculum could not be opened."));
+      }
+      const detail = await response.json() as CurriculumDetail;
+      setCurriculumDetail(detail);
+      setSharedEditConfirmed(detail.active_class_count <= 1);
+      setCopyVersionOpen(false);
+    } catch (caught) {
+      onError(caught instanceof Error ? caught.message : "Curriculum could not be opened.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function downloadCurriculum() {
+    if (!currentPacing) return;
+    setWorking(true);
+    onError("");
+    try {
+      const response = await fetch(
+        `/api/v1/curricula/${encodeURIComponent(currentPacing.id)}/export.xlsx`,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      );
+      if (!response.ok) {
+        throw new Error(await readError(response, "Curriculum download failed."));
+      }
+      const blob = await response.blob();
+      const safe = `${currentPacing.name}-${currentPacing.version}`.replace(/[^A-Za-z0-9._-]+/g, "-");
+      downloadBlob(blob, `${safe || "curriculum"}.xlsx`);
+      onMessage("Current Curriculum & Pacing downloaded as Excel.");
+    } catch (caught) {
+      onError(caught instanceof Error ? caught.message : "Curriculum download failed.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function createCurriculumCopy(
+    source: Curriculum,
+    name: string,
+    version: string,
+  ): Promise<Curriculum> {
+    const response = await fetch(`/api/v1/curricula/${encodeURIComponent(source.id)}/copy`, {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ name, version }),
+    });
+    if (!response.ok) {
+      throw new Error(await readError(response, "Curriculum copy could not be created."));
+    }
+    return await response.json() as Curriculum;
+  }
+
+  async function createSeparateCopyForClass() {
+    if (!selectedAssignment || !currentPacing) return;
+    setWorking(true);
+    onError("");
+    try {
+      const copied = await createCurriculumCopy(
+        currentPacing,
+        `${currentPacing.name} — ${selectedAssignment.course_name}`,
+        currentPacing.version,
+      );
+      const updated = await attachCurriculum(selectedAssignment, copied.id);
+      await refreshTeacherData();
+      const detailResponse = await fetch(`/api/v1/curricula/${encodeURIComponent(copied.id)}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!detailResponse.ok) {
+        throw new Error(await readError(detailResponse, "Copied curriculum could not be opened."));
+      }
+      setCurriculumDetail(await detailResponse.json() as CurriculumDetail);
+      setSharedEditConfirmed(true);
+      setPacingMode(null);
+      onMessage(
+        `${updated.course_name} now has its own curriculum copy. Edit its future pacing below; other classes remain unchanged.`,
+      );
+    } catch (caught) {
+      onError(caught instanceof Error ? caught.message : "Class-specific copy could not be created.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function createNextVersion(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!currentPacing) return;
+    const form = new FormData(event.currentTarget);
+    setWorking(true);
+    onError("");
+    try {
+      const copied = await createCurriculumCopy(
+        currentPacing,
+        String(form.get("copy_name") ?? currentPacing.name),
+        String(form.get("copy_version") ?? "Next year"),
+      );
+      await refreshTeacherData();
+      setCopyVersionOpen(false);
+      onMessage(
+        `${copied.name} · ${copied.version} created from the current saved curriculum. It is available under Reuse mine and has no class progress attached.`,
+      );
+    } catch (caught) {
+      onError(caught instanceof Error ? caught.message : "New curriculum version could not be created.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function saveCurriculumRevision(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!curriculumDetail) return;
+    const form = new FormData(event.currentTarget);
+    let rows;
+    try {
+      rows = parseCurriculumRows(String(form.get("lesson_rows") ?? ""));
+      if (!rows.length) throw new Error("The curriculum must contain at least one lesson.");
+    } catch (caught) {
+      onError(caught instanceof Error ? caught.message : "Curriculum pacing rows are invalid.");
+      return;
+    }
+    setWorking(true);
+    onError("");
+    try {
+      const response = await fetch(
+        `/api/v1/curricula/${encodeURIComponent(curriculumDetail.id)}/pacing`,
+        {
+          method: "PUT",
+          headers: authHeaders,
+          body: JSON.stringify({
+            name: String(form.get("name") ?? curriculumDetail.name),
+            version: String(form.get("version") ?? curriculumDetail.version),
+            lessons: rows,
+          }),
+        },
+      );
+      if (!response.ok) {
+        throw new Error(await readError(response, "Current-year curriculum changes could not be saved."));
+      }
+      const result = await response.json() as CurriculumRevisionRead;
+      await refreshTeacherData();
+      setCurriculumDetail(null);
+      setSharedEditConfirmed(false);
+      onMessage(
+        `Curriculum & Pacing updated for ${result.active_classes_updated} active class${result.active_classes_updated === 1 ? "" : "es"}. Historical weekly records were preserved.`,
+      );
+    } catch (caught) {
+      onError(
+        caught instanceof Error
+          ? caught.message
+          : "Current-year curriculum changes could not be saved.",
+      );
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  function renderPacingChoices() {
+    return (
+      <div className="choice-grid" aria-label="Curriculum and pacing method">
+        <button
+          type="button"
+          className={`choice-card ${pacingMode === "upload" ? "selected" : ""}`}
+          onClick={() => setPacingMode("upload")}
+        >
+          <strong>Upload Excel</strong>
+          <span>I already have a year or semester pacing plan.</span>
+        </button>
+        <button
+          type="button"
+          className={`choice-card ${pacingMode === "build" ? "selected" : ""}`}
+          onClick={() => setPacingMode("build")}
+        >
+          <strong>Build in TPP</strong>
+          <span>I want to enter units and lessons here.</span>
+        </button>
+        <button
+          type="button"
+          className={`choice-card ${pacingMode === "reuse" ? "selected" : ""}`}
+          onClick={() => setPacingMode("reuse")}
+        >
+          <strong>Reuse mine</strong>
+          <span>I already created this curriculum for another class.</span>
+        </button>
+      </div>
+    );
+  }
+
+  function renderPacingMode() {
+    if (!selectedAssignment || !pacingMode) return null;
+    if (pacingMode === "reuse") {
+      return (
+        <div className="pacing-mode-panel">
+          {curricula.length === 0 ? (
+            <div className="empty-state">
+              <p>You do not have a saved curriculum to reuse yet. Choose Upload Excel or Build in TPP.</p>
+            </div>
+          ) : <>
+            <label>
+              My Curriculum & Pacing
+              <select
+                value={reuseCurriculumId}
+                onChange={(event) => setReuseCurriculumId(event.target.value)}
+              >
+                <option value="">Choose one of your saved sequences</option>
+                {curricula
+                  .filter((item) => item.id !== selectedAssignment.curriculum_id)
+                  .map((item) => (
+                    <option value={item.id} key={item.id}>
+                      {item.name} · {item.version}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <div className="button-row">
+              <button
+                type="button"
+                className="primary"
+                disabled={!reuseCurriculumId || working}
+                onClick={() => void useExistingCurriculum()}
+              >
+                Use this curriculum & continue
+              </button>
+            </div>
+            <details className="curriculum-cleanup">
+              <summary>Manage my saved curricula</summary>
+              <p className="supporting">
+                Unused demo or outdated curricula can be retired here. TPP will not remove a
+                curriculum that is still attached to an active class.
+              </p>
+              {curricula.map((item) => (
+                <div className="curriculum-cleanup-row" key={item.id}>
+                  <span>{item.name} · {item.version}</span>
+                  <button
+                    type="button"
+                    className="link-button danger-link"
+                    disabled={working}
+                    onClick={() => void retireCurriculum(item)}
+                  >
+                    Remove from my list
+                  </button>
+                </div>
+              ))}
+            </details>
+          </>}
+        </div>
+      );
+    }
+    return (
+      <div className="pacing-mode-panel">
+        {pacingMode === "upload" && (
+          <div className="guidance-card">
+            <strong>Upload, review, then save.</strong>
+            <p>
+              Loading an Excel workbook reads it into the lesson editor. Nothing is saved until
+              you select <strong>Save Curriculum & Pacing & Continue</strong>.
+            </p>
+            <button type="button" className="secondary" onClick={downloadPacingTemplate}>
+              Download current Excel template
+            </button>
+          </div>
+        )}
+        <form className="form-grid" onSubmit={(event) => void savePacing(event)}>
+          <label>
+            Curriculum name
+            <input
+              name="name"
+              required
+              defaultValue={`${selectedAssignment.course_name} Curriculum & Pacing`}
+            />
+          </label>
+          <label>
+            Version
+            <input
+              name="version"
+              required
+              defaultValue={academicVersion(selectedAssignment.meeting_patterns[0])}
+            />
+          </label>
+          <PacingSequenceEditor disabled={disabled || working} />
+          <div className="guidance-card full-width">
+            <strong>Normal lesson minutes come from the class schedule.</strong>
+            <p>
+              Leave the optional minutes override blank to use the saved class schedule. Enter a
+              value only when a lesson intentionally uses a different duration.
+            </p>
+          </div>
+          <div className="form-actions full-width">
+            <button className="primary" disabled={disabled || working}>
+              {working ? "Saving…" : "Save Curriculum & Pacing & Continue"}
+            </button>
+          </div>
+        </form>
+      </div>
+    );
+  }
+
   return (
     <section className="panel course-setup-panel">
-      <div className="section-heading compact"><div><p className="eyebrow">Course Setup</p><h2>Your class schedules</h2><p className="supporting">Create the classes you actually teach first. Curriculum & Pacing can be added, reused, or changed afterward.</p></div></div>
+      <div className="section-heading compact">
+        <div>
+          <p className="eyebrow">Course Setup</p>
+          <h2>Set up one class at a time</h2>
+          <p className="supporting">
+            TPP reveals each setup step after the previous step is saved. Class and schedule come
+            first; Curriculum & Pacing and standards are separate steps.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => {
+            setEditingId(null);
+            onSelectAssignment("");
+          }}
+        >
+          Add another class
+        </button>
+      </div>
 
-      {assignments.length > 0 && <div className="grid course-management-grid">{sortedAssignments.map((assignment) => {
-        const coursePattern = assignment.meeting_patterns[0];
-        const curriculum = curricula.find((item) => item.id === assignment.curriculum_id);
-        return <article className={`card ${selectedAssignmentId === assignment.id ? "selected" : ""}`} key={assignment.id}>
-          <div className="card-row"><span className="badge">Revision {assignment.revision}</span><span className="status">Active</span></div>
-          <h3>{assignment.course_name}</h3><p>{coursePattern ? `${coursePattern.start_time.slice(0, 5)}–${coursePattern.end_time.slice(0, 5)}` : "Schedule not set"}</p><small>{curriculum ? `${curriculum.name} · ${curriculum.version}` : "Curriculum & Pacing not added"}</small>
-          <div className="button-row"><button type="button" className="secondary" onClick={() => { setEditingId(assignment.id); onSelectAssignment(assignment.id); }}>Edit class</button><button type="button" className="link-button" onClick={() => { onSelectAssignment(assignment.id); setPacingAssignmentId(assignment.id); }}>Curriculum & Pacing</button><button type="button" className="link-button danger-link" onClick={() => void removeClass(assignment)}>Remove</button></div>
-        </article>;
-      })}</div>}
+      <div className="setup-stepper" aria-label="Course setup progress">
+        <StepMarker number={1} title="Class & Schedule" complete={step1Complete} active={!step1Complete || editing !== null} />
+        <StepMarker number={2} title="Curriculum & Pacing" complete={step2Complete} active={step1Complete && (!step2Complete || pacingMode !== null || curriculumManagerOpen)} />
+        <StepMarker number={3} title="Standards" complete={step3Complete} active={step2Complete && pacingMode === null && !curriculumManagerOpen && (!step3Complete || standardsEditing)} />
+        <StepMarker number={4} title="Ready" complete={step3Complete} active={step3Complete && pacingMode === null && !curriculumManagerOpen && !standardsEditing} />
+      </div>
 
-      <details className="setup-section" open={assignments.length === 0 || editing !== null}>
-        <summary>{editing ? `Edit ${editing.course_name}` : "Add a class"}</summary>
-        <form className="form-grid" key={editing?.id ?? "new-class"} onSubmit={(event) => void saveClass(event)}>
-          <label>Course name<input name="course_name" required defaultValue={editing?.course_name ?? ""} placeholder="Army JROTC LET 1" /></label>
-          <label>Course code<input name="course_code" defaultValue={editing?.course_code ?? ""} placeholder="JROTC-1" /></label>
-          <label>Grade(s)<input name="grade_band" defaultValue={editing?.grade_band ?? ""} placeholder="9–12" /></label>
-          <label>Curriculum & Pacing<select name="curriculum_id" defaultValue={editing?.curriculum_id ?? ""}><option value="">Add after class setup</option>{curricula.map((curriculum) => <option value={curriculum.id} key={curriculum.id}>{curriculum.name} · {curriculum.version}</option>)}</select></label>
-          <label>Schedule type<select name="schedule_type" defaultValue={pattern?.schedule_type ?? "period"}><option value="period">Period</option><option value="block">Block</option><option value="custom">Custom</option></select></label>
-          <label>Rotation label<input name="rotation_label" defaultValue={pattern?.rotation_label ?? ""} placeholder="Daily, A Day, B Day" /></label>
-          <label>Start time<input name="start_time" type="time" defaultValue={pattern?.start_time.slice(0, 5) ?? "08:00"} required /></label>
-          <label>End time<input name="end_time" type="time" defaultValue={pattern?.end_time.slice(0, 5) ?? "08:50"} required /></label>
-          <label>Effective start<input name="effective_start" type="date" defaultValue={pattern?.effective_start ?? "2026-08-10"} required /></label>
-          <label>Effective end<input name="effective_end" type="date" defaultValue={pattern?.effective_end ?? "2027-05-28"} required /></label>
-          <fieldset className="full-width"><legend>Meeting weekdays</legend><div className="weekday-row">{[[1,"Mon"],[2,"Tue"],[3,"Wed"],[4,"Thu"],[5,"Fri"]].map(([value,label]) => <label className="check" key={value}><input type="checkbox" name="weekday" value={value} defaultChecked={!pattern || pattern.weekdays.includes(Number(value))} />{label}</label>)}</div></fieldset>
-          <div className="form-actions full-width"><button className="primary" disabled={disabled || working}>{working ? "Saving…" : editing ? "Save class changes" : "Save class schedule"}</button>{editing && <button type="button" className="secondary" onClick={() => setEditingId(null)}>Cancel edit</button>}</div>
-        </form>
-      </details>
+      {assignments.length > 0 && (
+        <section className="setup-class-picker">
+          <div className="section-heading compact">
+            <div><p className="eyebrow">Your classes</p><h3>Choose a class to continue or edit setup</h3></div>
+          </div>
+          <div className="grid course-management-grid">
+            {sortedAssignments.map((assignment) => {
+              const coursePattern = assignment.meeting_patterns[0];
+              const curriculum = assignment.curriculum_id
+                ? curricula.find((item) => item.id === assignment.curriculum_id)
+                : null;
+              return (
+                <article className={`card ${selectedAssignmentId === assignment.id ? "selected" : ""}`} key={assignment.id}>
+                  <div className="card-row">
+                    <span className="badge">Revision {assignment.revision}</span>
+                    <span className="status">{curriculum ? "Pacing added" : "Setup in progress"}</span>
+                  </div>
+                  <h3>{assignment.course_name}</h3>
+                  <p>{coursePattern ? `${weekdayLabel(coursePattern.weekdays)} · ${coursePattern.start_time.slice(0, 5)}–${coursePattern.end_time.slice(0, 5)}` : "Schedule not set"}</p>
+                  <small>{curriculum ? `${curriculum.name} · ${curriculum.version}` : "Curriculum & Pacing not added yet"}</small>
+                  <div className="button-row">
+                    <button type="button" className="secondary" onClick={() => onSelectAssignment(assignment.id)}>
+                      {selectedAssignmentId === assignment.id ? "Selected" : "Continue setup"}
+                    </button>
+                    <button type="button" className="link-button" onClick={() => { setEditingId(assignment.id); onSelectAssignment(assignment.id); }}>
+                      Edit class
+                    </button>
+                    <button type="button" className="link-button danger-link" onClick={() => void removeClass(assignment)}>Remove</button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
-      {assignments.length > 0 && <section className="setup-section pacing-setup" id="curriculum-pacing">
-        <div className="section-heading compact"><div><p className="eyebrow">Curriculum & Pacing</p><h2>Set the instructional sequence</h2><p className="supporting">TPP uses this longer-term sequence to build each week. Friday validation keeps the pacing position current when instruction is completed, moved, skipped, or carried forward.</p></div><button type="button" className="secondary" onClick={downloadPacingTemplate}>Download Excel pacing template</button></div>
-        <div className="toolbar"><label>Class<select value={pacingAssignment?.id ?? ""} onChange={(event) => { setPacingAssignmentId(event.target.value); onSelectAssignment(event.target.value); }}>{sortedAssignments.map((assignment) => <option value={assignment.id} key={assignment.id}>{assignment.course_name} · {assignment.meeting_patterns[0]?.start_time.slice(0, 5) ?? ""}</option>)}</select></label><div className="guidance-card compact-guidance"><strong>Current pacing source</strong><p>{currentPacing ? `${currentPacing.name} · ${currentPacing.version}` : "Not added yet"}</p></div></div>
-        {pacingAssignment && curricula.length > 1 && <div className="toolbar reuse-pacing"><label>Reuse an existing curriculum<select value={reuseCurriculumId} onChange={(event) => setReuseCurriculumId(event.target.value)}><option value="">Choose an existing sequence</option>{curricula.filter((item) => item.id !== pacingAssignment.curriculum_id).map((item) => <option value={item.id} key={item.id}>{item.name} · {item.version}</option>)}</select></label><button type="button" className="secondary" disabled={!reuseCurriculumId || working} onClick={() => void useExistingCurriculum()}>Use this curriculum</button></div>}
-        <details><summary>Add or replace this class's pacing sequence</summary><p className="supporting">Use the form below or the Excel template as a planning worksheet. Standards are selected later from the governed catalog in Weekly Plan.</p><form className="form-grid" onSubmit={(event) => void savePacing(event)}><label>Curriculum name<input name="name" required defaultValue={pacingAssignment ? `${pacingAssignment.course_name} Curriculum & Pacing` : ""} /></label><label>Version<input name="version" required defaultValue={academicVersion(pacingAssignment?.meeting_patterns[0])} /></label><PacingSequenceEditor disabled={disabled || working} /><div className="guidance-card full-width"><strong>Normal lesson minutes come from the class schedule.</strong><p>Use the optional minutes override only when a lesson intentionally spans multiple meetings or uses a different duration.</p></div><div className="form-actions full-width"><button className="primary" disabled={disabled || working}>{working ? "Saving…" : "Save Curriculum & Pacing"}</button></div></form></details>
-      </section>}
+      {(!selectedAssignment || editing !== null) && (
+        <section className="setup-step-card active-step" aria-labelledby="course-step-1">
+          <div className="step-heading">
+            <span className="step-number">1</span>
+            <div><p className="eyebrow">Step 1</p><h2 id="course-step-1">Class & Schedule</h2><p className="supporting">Enter only the class you teach and when you teach it. Curriculum comes next.</p></div>
+          </div>
+          <form className="form-grid" key={editing?.id ?? "new-class"} onSubmit={(event) => void saveClass(event)}>
+            <label>Course name<input name="course_name" required defaultValue={editing?.course_name ?? ""} placeholder="Army JROTC LET 1" /></label>
+            <label>Course code<input name="course_code" defaultValue={editing?.course_code ?? ""} placeholder="JROTC-1" /></label>
+            <label>Grade(s)<input name="grade_band" defaultValue={editing?.grade_band ?? ""} placeholder="9–12" /></label>
+            <label>Schedule type<select name="schedule_type" defaultValue={pattern?.schedule_type ?? "period"}><option value="period">Period</option><option value="block">Block</option><option value="custom">Custom</option></select></label>
+            <label>Rotation label<input name="rotation_label" defaultValue={pattern?.rotation_label ?? ""} placeholder="Daily, A Day, B Day" /></label>
+            <label>Start time<input name="start_time" type="time" defaultValue={pattern?.start_time.slice(0, 5) ?? "08:00"} required /></label>
+            <label>End time<input name="end_time" type="time" defaultValue={pattern?.end_time.slice(0, 5) ?? "08:50"} required /></label>
+            <label>Effective start<input name="effective_start" type="date" defaultValue={pattern?.effective_start ?? "2026-08-10"} required /></label>
+            <label>Effective end<input name="effective_end" type="date" defaultValue={pattern?.effective_end ?? "2027-05-28"} required /></label>
+            <fieldset className="full-width"><legend>Meeting weekdays</legend><div className="weekday-row">
+              {[[1, "Mon"], [2, "Tue"], [3, "Wed"], [4, "Thu"], [5, "Fri"]].map(([value, label]) => (
+                <label className="check" key={value}><input type="checkbox" name="weekday" value={value} defaultChecked={!pattern || pattern.weekdays.includes(Number(value))} />{label}</label>
+              ))}
+            </div></fieldset>
+            <div className="form-actions full-width">
+              <button className="primary" disabled={disabled || working}>{working ? "Saving…" : editing ? "Save class changes" : "Save class & continue"}</button>
+              {editing && <button type="button" className="secondary" onClick={() => setEditingId(null)}>Cancel edit</button>}
+            </div>
+          </form>
+        </section>
+      )}
 
-      {selectedAssignmentId && <section className="setup-section standards-setup"><div className="section-heading compact"><div><p className="eyebrow">Standards setup</p><h2>Authoritative standards mapping</h2><p className="supporting">Set the primary standards course once here. Weekly Plan uses this mapping without asking you to repeat it each week.</p></div></div><StandardsCourseMappingPanel accessToken={accessToken} assignmentId={selectedAssignmentId} disabled={disabled || working} onMappingSaved={onStandardsMappingSaved} /><p className="muted-text">Some classes may legitimately use supplemental standards from another course. Multi-source standards mapping remains a post-demo enhancement; TPP will not fabricate standards outside the selected approved source.</p></section>}
+      {selectedAssignment && editing === null && (
+        <section className="setup-step-summary complete-summary">
+          <div className="step-heading"><span className="step-number">✓</span><div><p className="eyebrow">Step 1 complete</p><h2>{selectedAssignment.course_name}</h2><p>{selectedAssignment.meeting_patterns[0] ? `${weekdayLabel(selectedAssignment.meeting_patterns[0].weekdays)} · ${selectedAssignment.meeting_patterns[0].start_time.slice(0, 5)}–${selectedAssignment.meeting_patterns[0].end_time.slice(0, 5)}` : "Schedule saved"}</p></div></div>
+          <button type="button" className="secondary" onClick={() => setEditingId(selectedAssignment.id)}>Edit Class & Schedule</button>
+        </section>
+      )}
+
+      {selectedAssignment && !step2Complete && editing === null && (
+        <section className="setup-step-card active-step" aria-labelledby="course-step-2">
+          <div className="step-heading"><span className="step-number">2</span><div><p className="eyebrow">Step 2</p><h2 id="course-step-2">Curriculum & Pacing</h2><p className="supporting">Choose how this class should move through the year. Only curricula you created appear here.</p></div></div>
+          {renderPacingChoices()}{renderPacingMode()}
+        </section>
+      )}
+
+      {selectedAssignment && step2Complete && (
+        <section className="setup-step-summary complete-summary">
+          <div className="step-heading"><span className="step-number">✓</span><div><p className="eyebrow">Step 2 complete</p><h2>Curriculum & Pacing</h2><p>{currentPacing?.name} · {currentPacing?.version}</p></div></div>
+          <div className="button-row">
+            <button type="button" className="secondary" disabled={working} onClick={() => void loadCurriculumDetail()}>Edit current curriculum</button>
+            <button type="button" className="secondary" disabled={working} onClick={() => void downloadCurriculum()}>Download Excel</button>
+            <button type="button" className="secondary" disabled={working} onClick={() => { setCopyVersionOpen(true); setCurriculumDetail(null); setPacingMode(null); }}>Create new version / copy</button>
+            <button type="button" className="secondary" disabled={working} onClick={() => { setPacingMode((current) => current ? null : "reuse"); setCurriculumDetail(null); setCopyVersionOpen(false); }}>
+              {pacingMode ? "Cancel curriculum change" : "Change / reuse curriculum"}
+            </button>
+          </div>
+        </section>
+      )}
+
+      {selectedAssignment && step2Complete && pacingMode && !curriculumManagerOpen && (
+        <section className="setup-step-card active-step">
+          <div className="step-heading"><span className="step-number">2</span><div><p className="eyebrow">Change Step 2</p><h2>Use a different Curriculum & Pacing</h2><p className="supporting">Create a new sequence or attach one of your existing saved curricula. The current saved curriculum remains available unless you explicitly retire it.</p></div></div>
+          {renderPacingChoices()}{renderPacingMode()}
+        </section>
+      )}
+
+      {selectedAssignment && step2Complete && copyVersionOpen && currentPacing && (
+        <section className="setup-step-card active-step">
+          <div className="step-heading"><span className="step-number">2</span><div><p className="eyebrow">Curriculum copy</p><h2>Create a reusable new version</h2><p className="supporting">This copies the latest saved curriculum without carrying any class progress. Use it next year or attach it to another class through Reuse mine.</p></div></div>
+          <form className="form-grid" onSubmit={(event) => void createNextVersion(event)}>
+            <label>Curriculum name<input name="copy_name" required defaultValue={currentPacing.name} /></label>
+            <label>Version<input name="copy_version" required defaultValue="2027-28" /></label>
+            <div className="form-actions full-width"><button className="primary" disabled={working}>Create version / copy</button><button type="button" className="secondary" onClick={() => setCopyVersionOpen(false)}>Cancel</button></div>
+          </form>
+        </section>
+      )}
+
+      {selectedAssignment && step2Complete && curriculumDetail && currentPacing && !sharedEditConfirmed && (
+        <section className="setup-step-card active-step">
+          <div className="step-heading"><span className="step-number">2</span><div><p className="eyebrow">Shared curriculum</p><h2>Choose how this change should apply</h2><p className="supporting">This curriculum is currently used by {curriculumDetail.active_class_count} active classes. Their progress is independent, but they share the future curriculum sequence.</p></div></div>
+          <div className="choice-grid">
+            <button type="button" className="choice-card" onClick={() => setSharedEditConfirmed(true)}><strong>Update shared future pacing</strong><span>Apply future unscheduled changes to every class using this curriculum. Lessons already scheduled by any attached class remain locked.</span></button>
+            <button type="button" className="choice-card" disabled={working} onClick={() => void createSeparateCopyForClass()}><strong>Create a separate copy for this class</strong><span>Keep other classes on the current curriculum and give {selectedAssignment.course_name} its own future pacing path.</span></button>
+          </div>
+          <button type="button" className="secondary" onClick={() => setCurriculumDetail(null)}>Cancel</button>
+        </section>
+      )}
+
+      {selectedAssignment && step2Complete && curriculumDetail && sharedEditConfirmed && (
+        <section className="setup-step-card active-step">
+          <div className="step-heading"><span className="step-number">2</span><div><p className="eyebrow">Edit current year</p><h2>Curriculum & Pacing</h2><p className="supporting">The current-year curriculum is a living pacing document. Already scheduled instruction is preserved; change the future sequence, add lessons, replace a future block, or extend the year.</p></div></div>
+          <form className="form-grid" onSubmit={(event) => void saveCurriculumRevision(event)}>
+            <label>Curriculum name<input name="name" required defaultValue={curriculumDetail.name} /></label>
+            <label>Version<input name="version" required defaultValue={curriculumDetail.version} /></label>
+            <PacingSequenceEditor key={curriculumDetail.id} disabled={disabled || working} initialRows={detailRows(curriculumDetail)} lockedThroughSequence={curriculumDetail.locked_through_sequence} allowExcelImport={false} />
+            <div className="guidance-card full-width"><strong>Download always reflects the latest saved curriculum.</strong><p>After you save these changes, Download Excel exports the revised current sequence. Submitted weekly plans and completed packets remain unchanged.</p></div>
+            <div className="form-actions full-width"><button className="primary" disabled={working}>Save current-year curriculum changes</button><button type="button" className="secondary" onClick={() => { setCurriculumDetail(null); setSharedEditConfirmed(false); }}>Cancel</button></div>
+          </form>
+        </section>
+      )}
+
+      {selectedAssignment && step2Complete && pacingMode === null && !curriculumManagerOpen && (!step3Complete || standardsEditing) && (
+        <section className="setup-step-card active-step" aria-labelledby="course-step-3">
+          <div className="step-heading"><span className="step-number">3</span><div><p className="eyebrow">{step3Complete ? "Edit Step 3" : "Step 3"}</p><h2 id="course-step-3">Authoritative Standards</h2><p className="supporting">Map this class once to the governed standards course used during weekly planning.</p></div></div>
+          <StandardsCourseMappingPanel accessToken={accessToken} assignmentId={selectedAssignment.id} disabled={disabled || working} onMappingStatus={setStandardsMapped} onMappingSaved={() => { onStandardsMappingSaved(); setStandardsMapped(true); setStandardsEditing(false); onMessage("Standards mapping saved. Step 3 complete."); }} />
+          {standardsEditing && step3Complete && <div className="button-row"><button type="button" className="secondary" onClick={() => setStandardsEditing(false)}>Cancel standards changes</button></div>}
+        </section>
+      )}
+
+      {selectedAssignment && step2Complete && pacingMode === null && !curriculumManagerOpen && step3Complete && !standardsEditing && (
+        <section className="setup-step-summary complete-summary">
+          <div className="step-heading"><span className="step-number">✓</span><div><p className="eyebrow">Step 3 complete</p><h2>Authoritative Standards</h2><p>Governed standards course mapping saved.</p></div></div>
+          <button type="button" className="secondary" onClick={() => setStandardsEditing(true)}>Edit standards mapping</button>
+        </section>
+      )}
+
+      {selectedAssignment && step3Complete && pacingMode === null && !curriculumManagerOpen && !standardsEditing && (
+        <section className="setup-ready-card" aria-labelledby="course-step-4">
+          <div className="step-heading"><span className="step-number">✓</span><div><p className="eyebrow">Step 4 · Ready</p><h2 id="course-step-4">{selectedAssignment.course_name} is ready for weekly planning</h2><p className="supporting">Class schedule, Curriculum & Pacing, and authoritative standards mapping are configured.</p></div></div>
+          <div className="ready-summary-grid">
+            <div><strong>Class & Schedule</strong><span>{selectedAssignment.meeting_patterns[0] ? `${weekdayLabel(selectedAssignment.meeting_patterns[0].weekdays)} · ${selectedAssignment.meeting_patterns[0].start_time.slice(0, 5)}–${selectedAssignment.meeting_patterns[0].end_time.slice(0, 5)}` : "Saved"}</span></div>
+            <div><strong>Curriculum & Pacing</strong><span>{currentPacing?.name} · {currentPacing?.version}</span></div>
+            <div><strong>Standards</strong><span>Governed course mapping saved</span></div>
+          </div>
+          {onOpenWeeklyPlan && <div className="button-row"><button type="button" className="primary" onClick={() => onOpenWeeklyPlan(selectedAssignment.id)}>Go to Weekly Plan</button></div>}
+        </section>
+      )}
     </section>
   );
 }
