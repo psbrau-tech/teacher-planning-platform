@@ -283,6 +283,7 @@ export function TeacherPlanningShell() {
   const [selectedAssignmentId, setSelectedAssignmentId] = useState("");
   const [weekStart, setWeekStart] = useState(mondayFor());
   const [plan, setPlan] = useState<PlannedLesson[]>([]);
+  const [weekCurriculumConfirmed, setWeekCurriculumConfirmed] = useState(false);
   const [carryForwardLessonIds, setCarryForwardLessonIds] = useState<string[]>([]);
   const [scheduleExceptions, setScheduleExceptions] = useState<ScheduleException[]>([]);
   const [savedStandardsCount, setSavedStandardsCount] = useState(0);
@@ -330,6 +331,7 @@ export function TeacherPlanningShell() {
 
   function clearPlanningContext(assignment: Assignment | null, nextWeek: string) {
     setPlan([]);
+    setWeekCurriculumConfirmed(false);
     setCarryForwardLessonIds([]);
     setScheduleExceptions([]);
     setSavedStandardsCount(0);
@@ -431,6 +433,39 @@ export function TeacherPlanningShell() {
   useEffect(() => () => {
     if (pdfPreview) URL.revokeObjectURL(pdfPreview.url);
   }, [pdfPreview]);
+
+  useEffect(() => {
+    if (
+      view !== "validation"
+      || !session?.access_token
+      || !selectedAssignmentId
+    ) return;
+    let cancelled = false;
+    void (async () => {
+      const response = await fetch(
+        `/api/v1/teacher-submissions/${encodeURIComponent(selectedAssignmentId)}/completed-packet?week_start=${encodeURIComponent(weekStart)}`,
+        { headers: { Authorization: `Bearer ${session.access_token}` } },
+      );
+      if (cancelled) return;
+      if (response.ok) {
+        setCompletedPacketSubmitted(true);
+        setCompletedPacketReviewed(false);
+        setValidationFinalized(true);
+        setMessage(
+          "This Friday closeout was already submitted. Review the completed weekly packet to continue.",
+        );
+        return;
+      }
+      if (response.status === 404) {
+        setCompletedPacketSubmitted(false);
+        return;
+      }
+      setError(await responseDetail(response, "Friday closeout status could not be restored."));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.access_token, selectedAssignmentId, view, weekStart]);
 
   const resolveSelectedStandards = useCallback((selected: StandardEntry[]) => {
     const exactText = selected
@@ -544,6 +579,7 @@ export function TeacherPlanningShell() {
     setBusy(true);
     setError("");
     setMessage("");
+    setWeekCurriculumConfirmed(false);
     setSavedStandardsCount(0);
     setWeekStandardsEditing(false);
     setPlanningAssistComplete(false);
@@ -567,7 +603,7 @@ export function TeacherPlanningShell() {
       await loadExistingValidation(generated);
       setMessage(
         generated.length
-          ? `Built ${generated.length} scheduled lesson${generated.length === 1 ? "" : "s"}. Step 1 complete — confirm authoritative standards next.`
+          ? `Built ${generated.length} scheduled lesson${generated.length === 1 ? "" : "s"}. Review this week's curriculum and confirm Step 1 before continuing.`
           : "No curriculum lessons were available for this week. Review Curriculum & Pacing in Course Setup, then build the week again.",
       );
     } catch (caught) {
@@ -618,6 +654,7 @@ export function TeacherPlanningShell() {
     }
     setBusy(true);
     setError("");
+    setWeekCurriculumConfirmed(false);
     try {
       const loaded = await api<PlannedLesson[]>(
         `/api/v1/plans?assignment_id=${encodeURIComponent(selectedAssignmentId)}&week_start=${weekStart}`,
@@ -634,7 +671,7 @@ export function TeacherPlanningShell() {
       await loadExistingValidation(loaded);
       setMessage(
         loaded.length
-          ? `Reopened ${loaded.length} scheduled lesson${loaded.length === 1 ? "" : "s"}.`
+          ? `Reopened ${loaded.length} scheduled lesson${loaded.length === 1 ? "" : "s"}. Review and confirm this week's curriculum before continuing.`
           : "No saved week was found for this Monday-starting week.",
       );
     } catch (caught) {
@@ -1073,11 +1110,14 @@ export function TeacherPlanningShell() {
             : item
         )),
       ));
+      setWeekCurriculumConfirmed(false);
+      setSavedStandardsCount(0);
+      setWeekStandardsEditing(false);
       setPlanningAssistComplete(false);
       setPlanningAssistEditing(false);
       setPdfReviewed(false);
       setMessage(
-        `${lesson.lesson_title} moved to ${nextDate}. Review standards/planning assistance again before final PDF review.`,
+        `${lesson.lesson_title} moved to ${nextDate}. Confirm this week's curriculum again, then review standards and planning assistance.`,
       );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Lesson day could not be changed.");
@@ -1121,7 +1161,7 @@ export function TeacherPlanningShell() {
     );
   }
 
-  const weekStep1 = plan.length > 0;
+  const weekStep1 = plan.length > 0 && weekCurriculumConfirmed;
   const weekStep2 = weekStep1 && savedStandardsCount > 0;
   const weekStep3 = weekStep2 && planningAssistComplete;
   const weekStep4 = weekStep3 && savedForReview;
@@ -1814,8 +1854,9 @@ export function TeacherPlanningShell() {
                     <h2>Build or reconcile the week</h2>
                     <p className="supporting">
                       Choose a class and Monday-starting week. TPP uses its saved Curriculum &
-                      Pacing, class schedule, calendar, exceptions, and teacher-selected
-                      carry-forward.
+                      Pacing, class-specific progress, class schedule, calendar, exceptions, and
+                      teacher-selected carry-forward. Review the resulting lessons before you
+                      confirm this step.
                     </p>
                   </div>
                 </div>
@@ -1856,6 +1897,7 @@ export function TeacherPlanningShell() {
                       onExceptionsChanged={setScheduleExceptions}
                       onChanged={() => {
                         setPlan([]);
+                        setWeekCurriculumConfirmed(false);
                         setCarryForwardLessonIds([]);
                         setSavedStandardsCount(0);
                         setWeekStandardsEditing(false);
@@ -1885,13 +1927,90 @@ export function TeacherPlanningShell() {
                     </div>
                   </>
                 )}
+
+                {plan.length > 0 && (
+                  <section className="week-curriculum-section">
+                    <div className="section-heading compact">
+                      <div>
+                        <p className="eyebrow">Review Step 1</p>
+                        <h3>This week's Curriculum & Pacing</h3>
+                        <p className="supporting">
+                          Confirm these lessons and teaching days before standards or planning
+                          assistance appear.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="weekly-curriculum-list">
+                      {plan.map((lesson) => {
+                        const carried = carryForwardLessonIds.includes(lesson.curriculum_lesson_id);
+                        return (
+                          <article
+                            className={`weekly-curriculum-item ${carried ? "carried-forward" : ""}`}
+                            key={lesson.scheduled_lesson_id}
+                          >
+                            <div>
+                              <div className="card-row">
+                                {carried ? (
+                                  <span className="badge carry-badge">Carried forward</span>
+                                ) : (
+                                  <span className="badge">Scheduled curriculum</span>
+                                )}
+                                <span>{lesson.planned_minutes} minutes</span>
+                              </div>
+                              <small>{lesson.unit_title}</small>
+                              <h3>
+                                {lesson.lesson_title}
+                                {lesson.segment_number > 1 ? ` · Segment ${lesson.segment_number}` : ""}
+                              </h3>
+                            </div>
+                            <label>
+                              Teach on
+                              <select
+                                value={lesson.lesson_date}
+                                disabled={busy}
+                                onChange={(event) => void movePlannedLesson(lesson, event.target.value)}
+                              >
+                                {meetingDates.map((date) => (
+                                  <option value={date} key={date}>
+                                    {new Date(`${date}T12:00:00`).toLocaleDateString(undefined, {
+                                      weekday: "long",
+                                      month: "short",
+                                      day: "numeric",
+                                    })}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          </article>
+                        );
+                      })}
+                    </div>
+                    <div className="action-bar">
+                      <div>
+                        <strong>{plan.length} scheduled lesson{plan.length === 1 ? "" : "s"}</strong>
+                        <span>Nothing advances to standards until you confirm this sequence.</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="primary"
+                        disabled={busy}
+                        onClick={() => {
+                          setWeekCurriculumConfirmed(true);
+                          setMessage("Step 1 complete — this week's Curriculum & Pacing is confirmed. Review authoritative standards next.");
+                        }}
+                      >
+                        Confirm this week's curriculum & continue
+                      </button>
+                    </div>
+                  </section>
+                )}
               </section>
             )}
 
             {weekStep1 && (
               <section className="setup-step-summary complete-summary">
                 <div>
-                  <strong>Step 1 complete · This week's curriculum</strong>
+                  <strong>Step 1 complete · This week's curriculum confirmed</strong>
                   <p>
                     {plan.length} scheduled lesson{plan.length === 1 ? "" : "s"} for the week of
                     {` ${weekStart}`}.
@@ -1900,7 +2019,7 @@ export function TeacherPlanningShell() {
                 <button
                   className="secondary"
                   onClick={() => {
-                    setPlan([]);
+                    setWeekCurriculumConfirmed(false);
                     setSavedStandardsCount(0);
                     setWeekStandardsEditing(false);
                     setPlanningAssistComplete(false);
@@ -1910,56 +2029,6 @@ export function TeacherPlanningShell() {
                 >
                   Review/change week
                 </button>
-              </section>
-            )}
-
-            {weekStep1 && (
-              <section className="week-curriculum-section">
-                <div className="weekly-curriculum-list">
-                  {plan.map((lesson) => {
-                    const carried = carryForwardLessonIds.includes(lesson.curriculum_lesson_id);
-                    return (
-                      <article
-                        className={`weekly-curriculum-item ${carried ? "carried-forward" : ""}`}
-                        key={lesson.scheduled_lesson_id}
-                      >
-                        <div>
-                          <div className="card-row">
-                            {carried ? (
-                              <span className="badge carry-badge">Carried forward from last week</span>
-                            ) : (
-                              <span className="badge">Scheduled curriculum</span>
-                            )}
-                            <span>{lesson.planned_minutes} minutes</span>
-                          </div>
-                          <small>{lesson.unit_title}</small>
-                          <h3>
-                            {lesson.lesson_title}
-                            {lesson.segment_number > 1 ? ` · Segment ${lesson.segment_number}` : ""}
-                          </h3>
-                        </div>
-                        <label>
-                          Teach on
-                          <select
-                            value={lesson.lesson_date}
-                            disabled={busy}
-                            onChange={(event) => void movePlannedLesson(lesson, event.target.value)}
-                          >
-                            {meetingDates.map((date) => (
-                              <option value={date} key={date}>
-                                {new Date(`${date}T12:00:00`).toLocaleDateString(undefined, {
-                                  weekday: "long",
-                                  month: "short",
-                                  day: "numeric",
-                                })}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      </article>
-                    );
-                  })}
-                </div>
               </section>
             )}
 
