@@ -41,6 +41,10 @@ _INLINE_GENERAL = re.compile(
 )
 _PAGE_SUFFIX = re.compile(r"(?<=[.!?)])\d{1,3}$")
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+_AAS_MISSING_DOT = re.compile(
+    r"\b(?P<prefix>ELA(?:21)?\.AAS)(?=(?:K|[1-9]|1[0-2])\.)",
+    flags=re.IGNORECASE,
+)
 _MATH_LAYOUT_CODE = re.compile(
     r"M\s*\.\s*(?:(?P<domain>G|A)\s*\.\s*)?AAS\s*\.\s*"
     r"(?P<grade>K|[1-9]|1[0-2])\s*\.\s*(?P<number>\d+)(?P<suffix>[a-z]?)",
@@ -70,7 +74,7 @@ class _SubjectSpec:
 
 _ELA = _SubjectSpec(
     parser_key="alabama_aas_ela_2021",
-    parser_version="gate-e-alabama-aas-ela-2021-v1",
+    parser_version="gate-e-alabama-aas-ela-2021-v2",
     code_prefixes=("ELA21.", "ELA."),
     courses=tuple(
         _CourseSpec(
@@ -216,7 +220,9 @@ def _parse_math_layout(extracted: ExtractedDocument) -> ParsedStandardsDocument:
     try:
         reader = PdfReader(BytesIO(extracted.source_content))
     except Exception as error:
-        raise StandardsIngestError("Alabama alternate mathematics PDF could not be parsed") from error
+        raise StandardsIngestError(
+            "Alabama alternate mathematics PDF could not be parsed"
+        ) from error
 
     standards_by_course: dict[str, list[ParsedStandard]] = {
         course.course_key: [] for course in _MATH.courses
@@ -488,14 +494,15 @@ def _matches_subject(code: str, spec: _SubjectSpec) -> bool:
 
 
 def _fragments(line: str) -> tuple[str, ...]:
-    starts = {0, len(line)}
-    starts.update(match.start() for match in _INLINE_CODE.finditer(line))
-    starts.update(match.start() for match in _INLINE_GENERAL.finditer(line))
+    normalized_line = _AAS_MISSING_DOT.sub(r"\g<prefix>.", line)
+    starts = {0, len(normalized_line)}
+    starts.update(match.start() for match in _INLINE_CODE.finditer(normalized_line))
+    starts.update(match.start() for match in _INLINE_GENERAL.finditer(normalized_line))
     boundaries = sorted(starts)
     return tuple(
-        line[boundaries[index] : boundaries[index + 1]].strip()
+        normalized_line[boundaries[index] : boundaries[index + 1]].strip()
         for index in range(len(boundaries) - 1)
-        if line[boundaries[index] : boundaries[index + 1]].strip()
+        if normalized_line[boundaries[index] : boundaries[index + 1]].strip()
     )
 
 
