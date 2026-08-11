@@ -134,7 +134,7 @@ Standards maintenance uses three layers. **Annual full validation** runs before 
 | STD-AI-05 | Review AI breakdown of standards | Suggestions include useful learning targets and Know/Understand/Do components aligned to the selected standard text | Comparison note | |
 | STD-AI-06 | Review additional HQI suggestions | Activities, assessments, resources, Literacy Standards/ACT connections where appropriate, and other suggested HQI fields remain visibly draft suggestions | Screenshot | |
 | STD-AI-07 | Accept some AI suggestions, edit one, and reject one | Only teacher-approved/edited values enter the working plan; rejected suggestions do not overwrite teacher content | Before/after evidence | |
-| STD-AI-08 | Complete Friday validation and invoke Weekly Reflection assistance | Reflection suggestion is grounded in the saved plan and validation outcome, is teacher-reviewable, and can be accepted/edited/rejected | Screenshot/result note | |
+| STD-AI-08 | Complete Friday validation and all 12 Weekly Reflection / PLC Discussion prompts | Reflection is entirely teacher-authored at the class/group level; TPP does not generate or rewrite responses, and the disabled AI-reflection endpoint remains fail-closed if directly invoked | Screenshot/result note | |
 | STD-AI-09 | Inspect AI usage/cost evidence | Model/request usage and estimated cost are logged without exposing API keys, tokens, or student data | Redacted usage record | |
 | STD-AI-10 | Force or simulate an AI-service failure | Clear bounded failure is shown; existing manual planning remains intact and usable with no partial overwrite | Result note | |
 | STD-AI-11 | Inspect AI request boundary | Inputs contain only governed teacher/curriculum/standards/planning/validation context; no student-specific data is sent | Redacted review note | |
@@ -144,7 +144,7 @@ Standards maintenance uses three layers. **Annual full validation** runs before 
 | STD-AI-13C | Execute/simulate an event-driven reconciliation for one affected source | Only the named affected source is revalidated; any changed candidate is staged and the approved snapshot remains active until human approval | Event-driven run record plus snapshot comparison | |
 | STD-AI-13D | Reopen a validated historical plan after a newer standards candidate/version exists | Historical plan still resolves the exact standard entries, wording, and source snapshot originally validated | Historical plan comparison | |
 
-Release-blocking defects include fabricated or altered standard text presented as authoritative, missing provenance, cross-course standards leakage, silent standards replacement after a source change, failure of the annual/quarterly/event-driven reconciliation contract, historical standards being rewritten, silent AI overwrite, student data entering AI requests, unbounded AI errors, or inability to plan when the external standards source is temporarily unavailable.
+Release-blocking defects include fabricated or altered standard text presented as authoritative, missing provenance, cross-course standards leakage, silent standards replacement after a source change, failure of the annual/quarterly/event-driven reconciliation contract, historical standards being rewritten, silent AI overwrite, student data entering AI requests, unbounded AI errors, AI-generated or AI-rewritten Weekly Reflection / PLC Discussion responses, or inability to plan when the external standards source is temporarily unavailable.
 
 ## Gate F — Anniston document exports
 
@@ -213,6 +213,7 @@ The controlled pilot may proceed only when:
 - any detected standards-source change is staged for human review rather than silently replacing the approved snapshot;
 - validated historical lesson plans remain pinned to the exact standards version/snapshot used when validated;
 - AI suggestions are demonstrably teacher-invoked, teacher-controlled, logged for usage/cost, and constrained to teacher/curriculum data with no student data;
+- Weekly Reflection / PLC Discussion remains entirely teacher-authored, class/group-level only, and unavailable for AI generation or rewrite;
 - no release-blocking or high-severity defect remains open;
 - the Platform Owner dual-role session is verified;
 - the unapproved-account denial is verified;
