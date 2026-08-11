@@ -126,21 +126,25 @@ def create_curriculum(
     if "teacher" not in identity.roles:
         raise HTTPException(status_code=403, detail="Teacher role is required")
 
-    imported = validate_curriculum_import(
-        [
-            CurriculumLessonImport(
-                sequence=lesson.sequence,
-                unit_title=lesson.unit_title,
-                lesson_title=lesson.lesson_title,
-                estimated_minutes=lesson.estimated_minutes,
-                standards=tuple(lesson.standards),
-                learning_targets=tuple(lesson.learning_targets),
-                assessment=lesson.assessment,
-                can_split=lesson.can_split,
-            )
-            for lesson in payload.lessons
-        ]
-    ) if payload.lessons else ()
+    imported = (
+        validate_curriculum_import(
+            [
+                CurriculumLessonImport(
+                    sequence=lesson.sequence,
+                    unit_title=lesson.unit_title,
+                    lesson_title=lesson.lesson_title,
+                    estimated_minutes=lesson.estimated_minutes,
+                    standards=tuple(lesson.standards),
+                    learning_targets=tuple(lesson.learning_targets),
+                    assessment=lesson.assessment,
+                    can_split=lesson.can_split,
+                )
+                for lesson in payload.lessons
+            ]
+        )
+        if payload.lessons
+        else ()
+    )
     client = _client(identity, settings)
     curriculum_id: str | None = None
     try:
@@ -170,7 +174,9 @@ def create_curriculum(
         for lesson in imported:
             unit_groups.setdefault(lesson.unit_title, []).append(lesson)
 
-        for unit_sequence, (unit_title, unit_lessons) in enumerate(unit_groups.items(), start=1):
+        for unit_sequence, (unit_title, unit_lessons) in enumerate(
+            unit_groups.items(), start=1
+        ):
             unit_rows = _records(
                 client.request(
                     "POST",
@@ -244,7 +250,10 @@ def archive_curriculum(
             )
         )
         if not owned:
-            raise HTTPException(status_code=404, detail="Curriculum was not found in your active curricula")
+            raise HTTPException(
+                status_code=404,
+                detail="Curriculum was not found in your active curricula",
+            )
         active_assignments = _records(
             client.request(
                 "GET",
@@ -261,7 +270,10 @@ def archive_curriculum(
         if active_assignments:
             raise HTTPException(
                 status_code=409,
-                detail="This curriculum is still attached to an active class. Replace or remove it from that class first.",
+                detail=(
+                    "This curriculum is still attached to an active class. "
+                    "Replace or remove it from that class first."
+                ),
             )
         rows = _records(
             client.request(
@@ -279,5 +291,8 @@ def archive_curriculum(
     except SupabaseRestError as error:
         _raise_data_error(error, "Curriculum retirement")
     if not rows:
-        raise HTTPException(status_code=404, detail="Curriculum was not found in your active curricula")
+        raise HTTPException(
+            status_code=404,
+            detail="Curriculum was not found in your active curricula",
+        )
     return Response(status_code=204)
