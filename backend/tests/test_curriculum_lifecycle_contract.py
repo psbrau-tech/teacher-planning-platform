@@ -6,9 +6,9 @@ from zipfile import ZipFile
 from app.curriculum_api import (
     CurriculumDetailRead,
     CurriculumLessonRead,
-    _StoredLesson,
     _contiguous_unit_groups,
     _same_locked_content,
+    _StoredLesson,
     _xlsx_bytes,
 )
 from app.curriculum_import import CurriculumLessonImport
