@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from .standards_alabama_aas import (
-    parse_alabama_aas_ela_2021,
+from .standards_alabama_aas import parse_alabama_aas_ela_2021
+from .standards_alabama_aas_math_spatial import parse_alabama_aas_math_2019_spatial
+from .standards_alabama_aas_science_social import (
     parse_alabama_aas_science_2017,
     parse_alabama_aas_social_studies_2017,
 )
-from .standards_alabama_aas_math_spatial import parse_alabama_aas_math_2019_spatial
 from .standards_alabama_algebra_finance import parse_alabama_algebra_finance
 from .standards_alabama_arts import parse_alabama_arts_2024
 from .standards_alabama_career_mathematics import parse_alabama_career_mathematics
