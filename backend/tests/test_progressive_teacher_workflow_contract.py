@@ -69,7 +69,7 @@ def test_teacher_curriculum_list_is_explicitly_owner_scoped() -> None:
     source = (APP / "curriculum_api.py").read_text(encoding="utf-8")
 
     list_block = source.split('@router.get("", response_model=list[CurriculumRead])', 1)[1].split(
-        '@router.post("", response_model=CurriculumRead', 1
+        '@router.get("/{curriculum_id}"', 1
     )[0]
     assert '"created_by": f"eq.{identity.subject}"' in list_block
     assert '"is_active": "eq.true"' in list_block
@@ -112,8 +112,12 @@ def test_help_and_excel_import_explain_persistence_boundary() -> None:
     pacing = (FRONTEND / "PacingSequenceEditor.tsx").read_text(encoding="utf-8")
     setup = (FRONTEND / "CourseSetupPanel.tsx").read_text(encoding="utf-8")
 
-    assert "Upload Excel reads the workbook into the lesson editor" in help_source
-    assert "Nothing is saved merely by selecting the file" in help_source
-    assert "loaded from Excel. Review the lesson cards, then save Curriculum & Pacing" in pacing
+    assert "Upload Excel" in help_source
+    assert "reads the workbook into a compact review" in help_source
+    assert "Nothing is saved" in help_source
+    assert "Save Curriculum & Pacing & Continue" in help_source
+    assert "loaded from Excel. Review the sequence below, then save Curriculum & Pacing" in pacing
+    assert "Nothing is saved yet" in pacing
     assert "Upload, review, then save" in setup
-    assert "Nothing is saved until you select" in setup
+    assert "Nothing is saved" in setup
+    assert "Save Curriculum & Pacing & Continue" in setup
