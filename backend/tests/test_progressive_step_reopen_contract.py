@@ -20,7 +20,10 @@ def test_completed_course_setup_steps_remain_editable() -> None:
     setup = (FRONTEND / "CourseSetupPanel.tsx").read_text(encoding="utf-8")
 
     assert "Edit Class & Schedule" in setup
-    assert "Edit or replace Curriculum & Pacing" in setup
+    assert "Edit current curriculum" in setup
+    assert "Download Excel" in setup
+    assert "Create new version / copy" in setup
+    assert "Change / reuse curriculum" in setup
     assert "Edit standards mapping" in setup
     assert "Go to Weekly Plan" in setup
 
