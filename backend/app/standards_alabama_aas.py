@@ -2,9 +2,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from io import BytesIO
-
-from pypdf import PdfReader
 
 from .standards_ingest import (
     ExtractedDocument,
@@ -142,10 +139,20 @@ _SCIENCE = _SubjectSpec(
     courses=(
         _CourseSpec("kindergarten", "Kindergarten", "K", ("kindergarten science",)),
         *tuple(
-            _CourseSpec(f"grade_{grade}", f"Grade {grade}", str(grade), (f"grade {grade} science",))
+            _CourseSpec(
+                f"grade_{grade}",
+                f"Grade {grade}",
+                str(grade),
+                (f"grade {grade} science",),
+            )
             for grade in range(1, 9)
         ),
-        _CourseSpec("grade_9", "Grade 9 Physical Science", "9", ("grade 9 physical science",)),
+        _CourseSpec(
+            "grade_9",
+            "Grade 9 Physical Science",
+            "9",
+            ("grade 9 physical science",),
+        ),
         _CourseSpec("grade_10", "Grade 10 Biology", "10", ("grade 10 biology",)),
         _CourseSpec(
             "grade_11",
@@ -198,8 +205,8 @@ def parse_alabama_aas_ela_2021(extracted: ExtractedDocument) -> ParsedStandardsD
 
 
 def parse_alabama_aas_math_2019(extracted: ExtractedDocument) -> ParsedStandardsDocument:
-    if extracted.document_format == "pdf" and extracted.source_content is not None:
-        return _parse_math_layout(extracted)
+    """Parse synthetic/plain-text Math fixtures; production PDF uses the spatial parser."""
+
     parsed = _parse_aas(extracted, _MATH)
     _validate_math_document(parsed)
     return parsed
@@ -213,127 +220,6 @@ def parse_alabama_aas_social_studies_2017(
     extracted: ExtractedDocument,
 ) -> ParsedStandardsDocument:
     return _parse_aas(extracted, _SOCIAL_STUDIES)
-
-
-def _parse_math_layout(extracted: ExtractedDocument) -> ParsedStandardsDocument:
-    assert extracted.source_content is not None
-    try:
-        reader = PdfReader(BytesIO(extracted.source_content))
-    except Exception as error:
-        raise StandardsIngestError(
-            "Alabama alternate mathematics PDF could not be parsed"
-        ) from error
-
-    standards_by_course: dict[str, list[ParsedStandard]] = {
-        course.course_key: [] for course in _MATH.courses
-    }
-    current_course: _CourseSpec | None = None
-    current_code: str | None = None
-    current_parts: list[str] = []
-    prior_aas_column_start: int | None = None
-
-    def flush() -> None:
-        nonlocal current_code, current_parts
-        if current_course is not None and current_code is not None:
-            text = _clean_text(" ".join(current_parts))
-            if text:
-                standards_by_course[current_course.course_key].append(
-                    ParsedStandard(
-                        code=current_code,
-                        text=text,
-                        strand="Alternate Achievement Standards",
-                    )
-                )
-        current_code = None
-        current_parts = []
-
-    for page in reader.pages:
-        try:
-            layout_text = page.extract_text(
-                extraction_mode="layout",
-                layout_mode_space_vertically=False,
-            ) or ""
-        except Exception as error:
-            raise StandardsIngestError(
-                "Alabama alternate mathematics layout extraction failed"
-            ) from error
-
-        raw_lines = layout_text.splitlines()
-        code_starts = [
-            match.start()
-            for raw_line in raw_lines
-            for match in _MATH_LAYOUT_CODE.finditer(raw_line)
-        ]
-        header_starts = [
-            index
-            for raw_line in raw_lines
-            if (index := raw_line.find("2019 AAS Standard")) >= 0
-        ]
-        if code_starts:
-            aas_column_start = min(code_starts)
-            prior_aas_column_start = aas_column_start
-        elif header_starts:
-            aas_column_start = min(header_starts)
-            prior_aas_column_start = aas_column_start
-        else:
-            aas_column_start = prior_aas_column_start
-
-        page_course = _math_course_on_page(raw_lines)
-        if page_course is not None and page_course != current_course:
-            flush()
-            current_course = page_course
-
-        if aas_column_start is None:
-            continue
-
-        for raw_line in raw_lines:
-            if len(raw_line) <= aas_column_start:
-                continue
-            lane = _clean_text(raw_line[aas_column_start:])
-            if not lane or _is_math_layout_noise(lane):
-                continue
-
-            code_match = _MATH_LAYOUT_CODE.search(lane)
-            if code_match is not None:
-                flush()
-                if current_course is None:
-                    continue
-                current_code = _canonical_math_code(code_match)
-                initial = lane[code_match.end() :].lstrip(" -–")
-                current_parts = [initial] if initial else []
-                continue
-
-            if current_code is not None:
-                current_parts.append(lane)
-
-    flush()
-
-    courses: list[ParsedCourse] = []
-    for course in _MATH.courses:
-        standards = tuple(standards_by_course[course.course_key])
-        if len(standards) < 3:
-            raise StandardsIngestError(
-                "Alabama alternate mathematics layout parser found incomplete "
-                f"{course.display_name} data"
-            )
-        courses.append(
-            ParsedCourse(
-                course_key=course.course_key,
-                display_name=course.display_name,
-                source_course_code=course.display_name,
-                grade_band=course.grade_band,
-                standards=standards,
-            )
-        )
-
-    parsed = ParsedStandardsDocument(
-        parser_key=_MATH.parser_key,
-        parser_version=_MATH.parser_version,
-        normalized_sha256=extracted.normalized_sha256,
-        courses=tuple(courses),
-    )
-    _validate_math_document(parsed)
-    return parsed
 
 
 def _math_course_on_page(raw_lines: list[str]) -> _CourseSpec | None:
