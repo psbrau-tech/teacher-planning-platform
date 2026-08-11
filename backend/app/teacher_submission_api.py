@@ -40,16 +40,11 @@ def completed_packet(
     try:
         rows = _records(
             _client(identity, settings).request(
-                "GET",
-                "weekly_plan_submissions",
-                params={
-                    "teaching_assignment_id": f"eq.{assignment_id}",
-                    "teacher_id": f"eq.{identity.subject}",
-                    "week_start": f"eq.{week_start.isoformat()}",
-                    "submission_kind": "eq.completed_packet",
-                    "select": "revision,submitted_at,source_data",
-                    "order": "revision.desc,submitted_at.desc",
-                    "limit": "1",
+                "POST",
+                "rpc/teacher_completed_weekly_submission_document",
+                payload={
+                    "target_assignment_id": assignment_id,
+                    "target_week_start": week_start.isoformat(),
                 },
             )
         )
