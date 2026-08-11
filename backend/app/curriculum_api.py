@@ -329,11 +329,11 @@ def _active_assignment_ids(
 
 
 def _sequence_position(value: object) -> int:
-    if isinstance(value, bool) or value is None:
+    if isinstance(value, bool) or not isinstance(value, (str, int, float)):
         raise HTTPException(status_code=503, detail="Pilot pacing history is invalid")
     try:
         sequence = int(float(value))
-    except (TypeError, ValueError) as error:
+    except ValueError as error:
         raise HTTPException(status_code=503, detail="Pilot pacing history is invalid") from error
     if sequence < 1:
         raise HTTPException(status_code=503, detail="Pilot pacing history is invalid")
