@@ -19,7 +19,7 @@ def test_help_covers_current_teacher_workflow_and_curriculum_lifecycle() -> None
         "Download Excel",
         "Create new version / copy",
         "Monday through Friday",
-        "Weekly Reflection / PLC Discussion",
+        "Reflection / PLC Discussion prompts",
         "Completed Weekly Packet",
         "Do not enter student names",
     )
