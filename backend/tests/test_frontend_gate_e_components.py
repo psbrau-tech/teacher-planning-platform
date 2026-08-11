@@ -97,7 +97,9 @@ def test_course_setup_is_progressive_and_keeps_curriculum_out_of_step_one() -> N
     assert "Edit class" in setup
     assert "submitted packets, and reusable curricula will be preserved" in setup
     # Class creation no longer exposes or silently creates a curriculum selector/placeholder.
-    save_class = setup.split("async function saveClass", 1)[1].split("async function removeClass", 1)[0]
+    save_class = setup.split("async function saveClass", 1)[1].split(
+        "async function removeClass", 1
+    )[0]
     assert "createPlaceholderCurriculum" not in setup
     assert 'form.get("curriculum_id")' not in save_class
     assert "curriculum_id: editing?.curriculum_id ?? null" in save_class
