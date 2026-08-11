@@ -1,0 +1,25 @@
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+FRONTEND = ROOT / "frontend" / "src"
+
+
+def test_course_setup_ready_requires_saved_standards_mapping() -> None:
+    setup = (FRONTEND / "CourseSetupPanel.tsx").read_text(encoding="utf-8")
+    mapping = (FRONTEND / "StandardsCourseMappingPanel.tsx").read_text(encoding="utf-8")
+
+    assert "const [standardsMapped, setStandardsMapped]" in setup
+    assert "const step3Complete = step2Complete && standardsMapped" in setup
+    assert "onMappingStatus={setStandardsMapped}" in setup
+    assert "onMappingStatus?: (mapped: boolean) => void" in mapping
+    assert "onMappingStatus(Boolean(body.course))" in mapping
+    assert "onMappingStatus(false)" in mapping
+
+
+def test_ready_step_exposes_weekly_plan_only_after_all_setup_steps() -> None:
+    setup = (FRONTEND / "CourseSetupPanel.tsx").read_text(encoding="utf-8")
+
+    ready_block = setup.split('aria-labelledby="course-step-4"', 1)[1]
+    assert "step3Complete" in setup
+    assert "is ready for weekly planning" in ready_block
+    assert "Go to Weekly Plan" in ready_block
