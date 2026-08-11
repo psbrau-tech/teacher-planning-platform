@@ -16,9 +16,10 @@ def test_weekly_plan_mounts_schedule_exception_controls() -> None:
     assert "assignmentId={selectedAssignmentId}" in shell_source
     assert "weekStart={weekStart}" in shell_source
     assert "onExceptionsChanged={setScheduleExceptions}" in shell_source
-    assert "scheduleExceptions.filter" in shell_source
-    assert "!exception.is_available" in shell_source
+    assert "const unavailable = new Set(" in shell_source
+    assert ".filter((exception) => !exception.is_available)" in shell_source
     assert "setPlan([]);" in shell_source
+    assert "setWeekCurriculumConfirmed(false);" in shell_source
     assert "setValidations({});" in shell_source
 
     assert "/api/v1/schedule-exceptions?assignment_id=" in panel_source
