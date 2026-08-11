@@ -12,7 +12,6 @@ client = TestClient(app)
 
 
 def test_monday_helper_rejects_non_monday_week_start() -> None:
-    # The draft endpoint reaches the week invariant before storage access.
     response = client.get(
         "/api/v1/weekly-drafts",
         headers={"X-TPP-Teacher-ID": "monday-contract-teacher"},
@@ -32,6 +31,22 @@ def test_monday_invariant_is_applied_to_core_weekly_api_surfaces() -> None:
     assert friday.count("require_monday(") >= 2
     assert drafts.count("require_monday(") >= 4
     assert "require_monday(week_start)" in schedule
+
+
+def test_database_preserves_one_canonical_monday_week_identity() -> None:
+    migration = (
+        MIGRATIONS / "20260811030200_enforce_monday_week_start.sql"
+    ).read_text(encoding="utf-8")
+
+    for table in (
+        "weekly_plan_snapshots",
+        "weekly_plan_submissions",
+        "friday_validation_snapshots",
+        "weekly_standard_selections",
+    ):
+        assert f"alter table public.{table}" in migration
+        assert f"{table}_week_start_monday" in migration
+    assert migration.count("check (extract(isodow from week_start) = 1)") == 4
 
 
 def test_teacher_curriculum_list_is_explicitly_owner_scoped() -> None:
@@ -71,7 +86,7 @@ def test_teacher_completed_packet_is_owned_and_immutable() -> None:
     assert "wps.submission_kind = 'completed_packet'" in migration
     assert "order by wps.revision desc" in migration
     assert "grant execute" in migration
-    assert "weekly_plan_submissions" not in api  # API may not bypass the governed RPC.
+    assert "weekly_plan_submissions" not in api
     assert "rpc/teacher_completed_weekly_submission_document" in api
     assert "generate_anniston_hqi_packet" in api
 
