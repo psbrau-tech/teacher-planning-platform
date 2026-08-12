@@ -21,12 +21,12 @@ router = APIRouter(prefix="/api/v1/curricula", tags=["curriculum"])
 
 class CurriculumLessonWrite(BaseModel):
     sequence: int = Field(ge=1)
-    unit_title: str = Field(min_length=1, max_length=160)
-    lesson_title: str = Field(min_length=1, max_length=200)
+    unit_title: str = Field(min_length=1, max_length=300)
+    lesson_title: str = Field(min_length=1, max_length=1000)
     estimated_minutes: int | None = Field(default=None, gt=0)
     standards: list[str] = Field(default_factory=list)
     learning_targets: list[str] = Field(default_factory=list)
-    assessment: str = ""
+    assessment: str = Field(default="", max_length=2000)
     can_split: bool = True
 
 
