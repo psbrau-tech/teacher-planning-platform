@@ -34,8 +34,10 @@ class CurriculumLessonImport:
                 f"lesson {self.sequence} Lesson / Focus exceeds the "
                 f"{PACING_LESSON_TITLE_MAX} character limit"
             )
-        learning_targets_text = "; ".join(self.learning_targets)
-        if len(learning_targets_text) > PACING_LEARNING_TARGETS_MAX:
+        learning_targets_length = sum(len(target) for target in self.learning_targets)
+        if self.learning_targets:
+            learning_targets_length += len(self.learning_targets) - 1
+        if learning_targets_length > PACING_LEARNING_TARGETS_MAX:
             raise ValueError(
                 f"lesson {self.sequence} Learning Target(s) exceeds the "
                 f"{PACING_LEARNING_TARGETS_MAX} character limit"
