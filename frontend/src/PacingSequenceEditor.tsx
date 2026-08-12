@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { PACING_LIMITS, validatePacingRowLimits } from "./pacingLimits";
 import { readPacingWorkbook } from "./pacingWorkbookImport";
 import "./pacing-sequence.css";
 
@@ -43,6 +44,21 @@ function serialize(rows: PacingRow[]): string {
         .join(" | ")
     ))
     .join("\n");
+}
+
+function CharacterCounter({ id, value, limit }: { id: string; value: string; limit: number }) {
+  const remaining = Math.max(0, limit - value.length);
+  const nearLimit = remaining <= Math.ceil(limit * 0.1);
+  const reached = remaining === 0;
+  return (
+    <span
+      id={id}
+      className={`pacing-character-counter ${nearLimit ? "near-limit" : ""} ${reached ? "limit-reached" : ""}`}
+      role={reached ? "status" : undefined}
+    >
+      {reached ? "Character limit reached" : `${remaining.toLocaleString()} characters remaining`}
+    </span>
+  );
 }
 
 export function PacingSequenceEditor({
@@ -104,6 +120,7 @@ export function PacingSequenceEditor({
     setImportError(null);
     try {
       const imported = await readPacingWorkbook(file);
+      imported.forEach((row, index) => validatePacingRowLimits(row, index + 1));
       const nextRows = imported.map((row, index) => ({ id: index + 1, ...row }));
       setRows(nextRows);
       setNextId(nextRows.length + 1);
@@ -224,6 +241,10 @@ export function PacingSequenceEditor({
         <div className="pacing-row-list">
           {rows.map((row, index) => {
             const locked = index < lockedThroughSequence;
+            const unitCounterId = `pacing-${row.id}-unit-counter`;
+            const lessonCounterId = `pacing-${row.id}-lesson-counter`;
+            const targetsCounterId = `pacing-${row.id}-targets-counter`;
+            const assessmentCounterId = `pacing-${row.id}-assessment-counter`;
             return (
               <article className={`pacing-row-card ${locked ? "locked-pacing-row" : ""}`} key={row.id}>
                 <div className="card-row">
@@ -246,38 +267,50 @@ export function PacingSequenceEditor({
                     Unit / Topic
                     <input
                       value={row.unit}
+                      maxLength={PACING_LIMITS.unit}
+                      aria-describedby={unitCounterId}
                       disabled={disabled || locked}
                       placeholder="Chapter 1"
                       onChange={(event) => update(row.id, "unit", event.target.value)}
                     />
+                    <CharacterCounter id={unitCounterId} value={row.unit} limit={PACING_LIMITS.unit} />
                   </label>
                   <label>
                     Lesson / Focus
                     <input
                       value={row.lesson}
+                      maxLength={PACING_LIMITS.lesson}
+                      aria-describedby={lessonCounterId}
                       disabled={disabled || locked}
                       placeholder="Facing movements"
                       onChange={(event) => update(row.id, "lesson", event.target.value)}
                     />
+                    <CharacterCounter id={lessonCounterId} value={row.lesson} limit={PACING_LIMITS.lesson} />
                   </label>
                   <label className="full-width">
                     Learning target(s)
                     <textarea
                       rows={2}
                       value={row.targets}
+                      maxLength={PACING_LIMITS.targets}
+                      aria-describedby={targetsCounterId}
                       disabled={disabled || locked}
                       placeholder="Conduct left face, right face, and about face"
                       onChange={(event) => update(row.id, "targets", event.target.value)}
                     />
+                    <CharacterCounter id={targetsCounterId} value={row.targets} limit={PACING_LIMITS.targets} />
                   </label>
                   <label>
                     Assessment / Evidence
                     <input
                       value={row.assessment}
+                      maxLength={PACING_LIMITS.assessment}
+                      aria-describedby={assessmentCounterId}
                       disabled={disabled || locked}
                       placeholder="Individual performance check"
                       onChange={(event) => update(row.id, "assessment", event.target.value)}
                     />
+                    <CharacterCounter id={assessmentCounterId} value={row.assessment} limit={PACING_LIMITS.assessment} />
                   </label>
                   <label>
                     Optional minutes override

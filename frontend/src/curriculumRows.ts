@@ -1,3 +1,5 @@
+import { validatePacingRowLimits } from "./pacingLimits";
+
 export type CurriculumLessonPayload = {
   sequence: number;
   unit_title: string;
@@ -51,6 +53,8 @@ export function parseCurriculumRows(value: string): CurriculumLessonPayload[] {
       const targets = legacyMinutes ? parts[4] ?? "" : earlierSixColumn ? parts[3] ?? "" : parts[2] ?? "";
       const assessment = legacyMinutes ? parts[5] ?? "" : earlierSixColumn ? parts[4] ?? "" : parts[3] ?? "";
       const minutesOverride = legacyMinutes ? parts[2] ?? "" : earlierSixColumn ? parts[5] ?? "" : parts[4] ?? "";
+
+      validatePacingRowLimits({ unit, lesson, targets, assessment }, rowNumber);
 
       return {
         sequence: rowNumber,

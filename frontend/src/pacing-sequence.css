@@ -70,6 +70,25 @@
   border-right: 0;
 }
 
+.pacing-character-counter {
+  display: block;
+  margin-top: .25rem;
+  color: #667085;
+  font-size: .74rem;
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: right;
+}
+
+.pacing-character-counter.near-limit {
+  color: #8a5a00;
+}
+
+.pacing-character-counter.limit-reached {
+  color: #b42318;
+  font-weight: 700;
+}
+
 @media (max-width: 760px) {
   .pacing-import-summary {
     grid-template-columns: 1fr;
