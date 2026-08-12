@@ -1,5 +1,10 @@
 from dataclasses import dataclass
 
+PACING_UNIT_TITLE_MAX = 300
+PACING_LESSON_TITLE_MAX = 1000
+PACING_LEARNING_TARGETS_MAX = 3000
+PACING_ASSESSMENT_MAX = 2000
+
 
 @dataclass(frozen=True, slots=True)
 class CurriculumLessonImport:
@@ -19,6 +24,27 @@ class CurriculumLessonImport:
             raise ValueError("unit title is required")
         if not self.lesson_title.strip():
             raise ValueError("lesson title is required")
+        if len(self.unit_title) > PACING_UNIT_TITLE_MAX:
+            raise ValueError(
+                f"lesson {self.sequence} Unit / Topic exceeds the "
+                f"{PACING_UNIT_TITLE_MAX} character limit"
+            )
+        if len(self.lesson_title) > PACING_LESSON_TITLE_MAX:
+            raise ValueError(
+                f"lesson {self.sequence} Lesson / Focus exceeds the "
+                f"{PACING_LESSON_TITLE_MAX} character limit"
+            )
+        learning_targets_text = "; ".join(self.learning_targets)
+        if len(learning_targets_text) > PACING_LEARNING_TARGETS_MAX:
+            raise ValueError(
+                f"lesson {self.sequence} Learning Target(s) exceeds the "
+                f"{PACING_LEARNING_TARGETS_MAX} character limit"
+            )
+        if len(self.assessment) > PACING_ASSESSMENT_MAX:
+            raise ValueError(
+                f"lesson {self.sequence} Assessment / Evidence exceeds the "
+                f"{PACING_ASSESSMENT_MAX} character limit"
+            )
         if self.estimated_minutes is not None and self.estimated_minutes < 1:
             raise ValueError("estimated minutes must be at least 1 when provided")
 
