@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type TeacherRow = { school_id: string; school_name: string; teacher_id: string; teacher_name: string };
 type AdminUsage = {
@@ -55,6 +55,7 @@ export function AdminSelectedTeacherUsageReport({ accessToken }: Props) {
   const [usage, setUsage] = useState<AdminUsage | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const teacherFilterRef = useRef<HTMLDetailsElement>(null);
 
   const period = useMemo(() => {
     if (periodKind === "current_week") return { start: currentMonday, end: addDays(currentMonday, 6), label: "Current week" };
@@ -106,6 +107,16 @@ export function AdminSelectedTeacherUsageReport({ accessToken }: Props) {
     return () => { active = false; };
   }, [accessToken, period.end, period.start, selectedIds]);
 
+  useEffect(() => {
+    function closeTeacherFilterOnOutsidePointer(event: PointerEvent) {
+      const filter = teacherFilterRef.current;
+      if (!filter?.open) return;
+      if (event.target instanceof Node && !filter.contains(event.target)) filter.open = false;
+    }
+    document.addEventListener("pointerdown", closeTeacherFilterOnOutsidePointer);
+    return () => document.removeEventListener("pointerdown", closeTeacherFilterOnOutsidePointer);
+  }, []);
+
   function toggleTeacher(id: string) {
     setSelected((current) => {
       const next = new Set(current);
@@ -125,7 +136,7 @@ export function AdminSelectedTeacherUsageReport({ accessToken }: Props) {
       </div>
 
       <div className="admin-selected-scope-controls">
-        <details className="teacher-multi-filter admin-report-teacher-filter">
+        <details ref={teacherFilterRef} className="teacher-multi-filter admin-report-teacher-filter">
           <summary>{selected.size ? `${selected.size} teacher${selected.size === 1 ? "" : "s"} selected` : "Select teachers"}</summary>
           <div className="teacher-filter-options">
             <div className="teacher-filter-actions">
