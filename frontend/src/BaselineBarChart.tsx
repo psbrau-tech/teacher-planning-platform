@@ -1,3 +1,5 @@
+import "./BaselineBarChart.css";
+
 type Props = {
   averageUsefulness: number;
   averageBurden: number;
