@@ -1,8 +1,9 @@
 from pathlib import Path
 
-from app.identity_api import PilotFeedbackWrite
-from pydantic import ValidationError
 import pytest
+from pydantic import ValidationError
+
+from app.identity_api import PilotFeedbackWrite
 
 ROOT = Path(__file__).resolve().parents[2]
 MIGRATION = ROOT / "supabase" / "migrations" / "20260812214500_pilot_feedback_survey.sql"
