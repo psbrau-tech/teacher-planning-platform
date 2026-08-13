@@ -91,6 +91,7 @@ returns table (
   period_end date,
   teachers_authorized integer,
   teachers_authenticated integer,
+  teachers_pilot_cohort integer,
   teachers_active integer,
   classes_configured integer,
   shared_curriculum_teachers integer,
@@ -144,6 +145,9 @@ with bounds as (
 ), configured as (
   select
     count(distinct p.id)::integer as teachers_authenticated,
+    count(distinct p.id) filter (
+      where p.created_at < timestamptz '2026-08-21 05:00:00+00'
+    )::integer as teachers_pilot_cohort,
     count(distinct ta.id)::integer as classes_configured
   from public.profiles p
   join public.profile_roles pr
@@ -251,6 +255,7 @@ select
   b.end_date,
   coalesce(az.teachers_authorized, 0),
   coalesce(c.teachers_authenticated, 0),
+  coalesce(c.teachers_pilot_cohort, 0),
   coalesce(ac.active_teachers, 0),
   coalesce(c.classes_configured, 0),
   coalesce(sh.shared_curriculum_teachers, 0),
