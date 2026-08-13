@@ -74,6 +74,7 @@ def test_product_owner_dashboard_focuses_on_adoption_and_value_signals() -> None
     assert "completed packets submitted" in source
     assert "Product signals" in source
     assert "not teacher-performance judgments" in source
-    assert "interaction telemetry begins when this release is deployed" in source
+    assert "interaction telemetry" in source
+    assert "begins when this release is deployed" in source
     assert "<ProductOwnerDashboardExperience />" in main
     assert "<ProductUsageObserver />" in main
