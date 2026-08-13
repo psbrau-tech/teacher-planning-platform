@@ -48,6 +48,22 @@ type Usage = {
   pilot_feedback_responses: number;
 };
 
+type ActiveTime = {
+  period_start: string;
+  period_end: string;
+  active_time_teachers: number;
+  course_setup_total_seconds: number;
+  weekly_planning_total_seconds: number;
+  friday_closeout_total_seconds: number;
+  median_course_setup_seconds_per_teacher: number;
+  median_weekly_planning_seconds_per_teacher_week: number;
+  median_friday_closeout_seconds_per_teacher_week: number;
+  onboarding_weekly_planning_teacher_weeks: number;
+  median_onboarding_weekly_planning_seconds: number;
+  steady_state_weekly_planning_teacher_weeks: number;
+  median_steady_state_weekly_planning_seconds: number;
+};
+
 type PeriodKind = "pilot" | "current_week" | "last_4_weeks" | "custom";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ?? "";
@@ -76,6 +92,12 @@ function mondayFor(date = new Date()): string {
   const day = copy.getDay();
   copy.setDate(copy.getDate() + (day === 0 ? -6 : 1 - day));
   return localIsoDate(copy);
+}
+
+function activeMinutes(seconds: number): string {
+  if (!seconds) return "—";
+  const minutes = seconds / 60;
+  return minutes < 10 ? minutes.toFixed(1) : Math.round(minutes).toString();
 }
 
 async function readError(response: Response, fallback: string): Promise<string> {
@@ -135,6 +157,7 @@ export function ProductOwnerDashboardExperience() {
   const [customStart, setCustomStart] = useState("2026-08-06");
   const [customEnd, setCustomEnd] = useState(localIsoDate());
   const [usage, setUsage] = useState<Usage | null>(null);
+  const [activeTime, setActiveTime] = useState<ActiveTime | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -164,6 +187,7 @@ export function ProductOwnerDashboardExperience() {
       setSession(nextSession);
       setIdentity(null);
       setUsage(null);
+      setActiveTime(null);
       setOpen(false);
       if (nextSession) void loadIdentity(nextSession);
     });
@@ -184,15 +208,25 @@ export function ProductOwnerDashboardExperience() {
     setError("");
     try {
       const query = new URLSearchParams({ period_start: period.start, period_end: period.end });
-      const response = await fetch(`/api/v1/product-owner/usage?${query.toString()}`, {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
-      if (!response.ok) {
-        throw new Error(await readError(response, "Product usage could not be loaded."));
+      const [usageResponse, activeTimeResponse] = await Promise.all([
+        fetch(`/api/v1/product-owner/usage?${query.toString()}`, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        }),
+        fetch(`/api/v1/product-owner/active-time?${query.toString()}`, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        }),
+      ]);
+      if (!usageResponse.ok) {
+        throw new Error(await readError(usageResponse, "Product usage could not be loaded."));
       }
-      setUsage(await response.json() as Usage);
+      if (!activeTimeResponse.ok) {
+        throw new Error(await readError(activeTimeResponse, "Active-time reporting could not be loaded."));
+      }
+      setUsage(await usageResponse.json() as Usage);
+      setActiveTime(await activeTimeResponse.json() as ActiveTime);
     } catch (caught) {
       setUsage(null);
+      setActiveTime(null);
       setError(caught instanceof Error ? caught.message : "Product usage could not be loaded.");
     } finally {
       setLoading(false);
@@ -252,8 +286,18 @@ export function ProductOwnerDashboardExperience() {
         + "in this selected period. That may reflect an in-progress week or an incomplete closeout.",
       );
     }
+
+    if (activeTime?.steady_state_weekly_planning_teacher_weeks) {
+      items.push(
+        `Median weekly-planning active interaction is ${activeMinutes(activeTime.median_steady_state_weekly_planning_seconds)} minutes after the first 14 days of measured use, compared with ${activeMinutes(activeTime.median_onboarding_weekly_planning_seconds)} minutes during onboarding. This is active TPP interaction time, not total planning time.`,
+      );
+    } else if (activeTime?.onboarding_weekly_planning_teacher_weeks) {
+      items.push(
+        "Active-time data is still in the first-14-day familiarization window. A steady-state comparison will appear after teachers have enough measured use beyond day 14.",
+      );
+    }
     return items;
-  }, [usage]);
+  }, [activeTime, usage]);
 
   if (!ownerSupabase || !session || !isPlatformAdmin) return null;
 
@@ -334,8 +378,9 @@ export function ProductOwnerDashboardExperience() {
             <div className="owner-telemetry-note" role="note">
               <strong>Interpretation note.</strong> Plan, AI, and submission counts use existing
               authoritative TPP records. Curriculum-pathway and PDF-view interaction telemetry
-              begins when this release is deployed, so earlier zeros do not mean a feature was
-              never used. Authorized access can include staff who are not yet in the active rollout.
+              begins when its telemetry release is deployed, so earlier zeros do not mean a feature
+              was never used. Active-time estimates begin with this release and count conservative
+              30-second interaction heartbeats only while TPP is visible and recently used.
             </div>
 
             {error && <p className="error-message" role="alert">{error}</p>}
@@ -343,7 +388,7 @@ export function ProductOwnerDashboardExperience() {
               <p className="working-status" role="status">Updating Product Owner usage…</p>
             )}
 
-            {usage && !loading && (
+            {usage && activeTime && !loading && (
               <>
                 <section className="owner-section owner-onboarding">
                   <div className="section-heading compact">
@@ -440,6 +485,57 @@ export function ProductOwnerDashboardExperience() {
                     <span><strong>{usage.ai_fields_accepted}</strong> AI fields accepted</span>
                     <span><strong>{usage.ai_fields_edited}</strong> edited before use</span>
                     <span><strong>{usage.ai_fields_rejected}</strong> rejected</span>
+                  </div>
+                </section>
+
+                <section className="owner-section">
+                  <div className="section-heading compact">
+                    <div>
+                      <p className="eyebrow">Active TPP interaction time</p>
+                      <h3>How much active application time is the workflow taking?</h3>
+                      <p className="supporting">
+                        Platform Owner only. These are conservative active-interaction estimates,
+                        not login duration and not total teacher planning time. TPP stops counting
+                        when the tab is hidden or there has been no recent interaction. The first
+                        14 days of measured use for each teacher are treated as onboarding and
+                        familiarization; day 15 forward is steady-state use. These metrics are not
+                        exposed to school or district administrators.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="owner-summary-grid compact-grid">
+                    <Metric
+                      value={activeMinutes(activeTime.median_course_setup_seconds_per_teacher)}
+                      label="median Course Setup active minutes"
+                      detail="per teacher in selected period"
+                    />
+                    <Metric
+                      value={activeMinutes(activeTime.median_weekly_planning_seconds_per_teacher_week)}
+                      label="median weekly-planning active minutes"
+                      detail="per teacher-week"
+                    />
+                    <Metric
+                      value={activeMinutes(activeTime.median_friday_closeout_seconds_per_teacher_week)}
+                      label="median Friday-closeout active minutes"
+                      detail="per teacher-week"
+                    />
+                    <Metric
+                      value={activeTime.active_time_teachers}
+                      label="teachers with measured active time"
+                      detail="selected period"
+                    />
+                  </div>
+                  <div className="owner-summary-grid">
+                    <Metric
+                      value={activeMinutes(activeTime.median_onboarding_weekly_planning_seconds)}
+                      label="onboarding weekly-plan median"
+                      detail={`${activeTime.onboarding_weekly_planning_teacher_weeks} teacher-weeks · first 14 days`}
+                    />
+                    <Metric
+                      value={activeMinutes(activeTime.median_steady_state_weekly_planning_seconds)}
+                      label="steady-state weekly-plan median"
+                      detail={`${activeTime.steady_state_weekly_planning_teacher_weeks} teacher-weeks · day 15+`}
+                    />
                   </div>
                 </section>
 
