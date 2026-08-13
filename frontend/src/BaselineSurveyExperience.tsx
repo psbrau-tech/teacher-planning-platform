@@ -181,7 +181,8 @@ export function BaselineSurveyExperience() {
                   <option value="">Select</option>
                   <option value="under_30">Less than 30 minutes</option>
                   <option value="30_60">30–60 minutes</option>
-                  <option value="61_120">61–120 minutes</option>
+                  <option value="61_90">61–90 minutes</option>
+                  <option value="91_120">91–120 minutes</option>
                   <option value="121_180">121–180 minutes</option>
                   <option value="over_180">More than 3 hours</option>
                   <option value="not_sure">Not sure</option>
