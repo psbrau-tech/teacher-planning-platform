@@ -89,7 +89,8 @@ create or replace function public.platform_product_usage_summary(
 returns table (
   period_start date,
   period_end date,
-  teachers_configured integer,
+  teachers_authorized integer,
+  teachers_authenticated integer,
   teachers_active integer,
   classes_configured integer,
   shared_curriculum_teachers integer,
@@ -135,9 +136,14 @@ with bounds as (
     target_start::timestamptz as start_ts,
     (target_end + 1)::timestamptz as end_ts
   where target_end >= target_start
+), authorized as (
+  select count(*)::integer as teachers_authorized
+  from private.pilot_access_allowlist pa
+  where pa.is_active
+    and 'teacher'::public.app_role = any(pa.roles)
 ), configured as (
   select
-    count(distinct p.id)::integer as teachers_configured,
+    count(distinct p.id)::integer as teachers_authenticated,
     count(distinct ta.id)::integer as classes_configured
   from public.profiles p
   join public.profile_roles pr
@@ -177,8 +183,7 @@ with bounds as (
     count(*) filter (where e.event_key = 'lesson_plan_pdf_viewed')::integer as lesson_plan_pdf_views,
     count(distinct e.actor_id) filter (where e.event_key = 'lesson_plan_pdf_viewed')::integer as lesson_plan_pdf_view_teachers,
     count(*) filter (where e.event_key = 'completed_packet_viewed')::integer as completed_packet_views,
-    count(distinct e.actor_id) filter (where e.event_key = 'completed_packet_viewed')::integer as completed_packet_view_teachers,
-    count(distinct e.actor_id)::integer as telemetry_active_teachers
+    count(distinct e.actor_id) filter (where e.event_key = 'completed_packet_viewed')::integer as completed_packet_view_teachers
   from public.product_usage_events e
   cross join bounds b
   where e.occurred_at >= b.start_ts and e.occurred_at < b.end_ts
@@ -244,7 +249,8 @@ with bounds as (
 select
   b.start_date,
   b.end_date,
-  coalesce(c.teachers_configured, 0),
+  coalesce(az.teachers_authorized, 0),
+  coalesce(c.teachers_authenticated, 0),
   coalesce(ac.active_teachers, 0),
   coalesce(c.classes_configured, 0),
   coalesce(sh.shared_curriculum_teachers, 0),
@@ -278,6 +284,7 @@ select
   coalesce(t.completed_packet_view_teachers, 0),
   coalesce(f.responses, 0)
 from bounds b
+cross join authorized az
 cross join configured c
 cross join shared sh
 cross join telemetry t
