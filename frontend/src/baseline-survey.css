@@ -1,0 +1,105 @@
+.baseline-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, .64);
+}
+
+.baseline-modal {
+  width: min(820px, 100%);
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  padding: 1.25rem;
+  border: 1px solid #d7dfeb;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.baseline-heading {
+  margin-bottom: .85rem;
+}
+
+.baseline-heading h2,
+.baseline-heading p {
+  margin-bottom: .35rem;
+}
+
+.baseline-prior-note {
+  display: grid;
+  gap: .35rem;
+  margin-bottom: .85rem;
+  padding: .8rem .9rem;
+  border: 2px solid #243b64;
+  border-radius: 12px;
+  background: #f7faff;
+  color: #172033;
+}
+
+.baseline-boundary {
+  margin-bottom: 1rem;
+}
+
+.baseline-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .85rem;
+}
+
+.baseline-grid label {
+  display: grid;
+  gap: .35rem;
+  align-content: start;
+  font-weight: 650;
+}
+
+.baseline-grid .full-width {
+  grid-column: 1 / -1;
+}
+
+.baseline-grid small,
+.baseline-reminder-note {
+  color: #667085;
+  font-size: .82rem;
+}
+
+.baseline-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: .65rem;
+  margin-top: 1rem;
+}
+
+.baseline-reminder-note {
+  margin: .55rem 0 0;
+  text-align: right;
+}
+
+.baseline-thanks {
+  display: grid;
+  gap: .65rem;
+}
+
+.baseline-thanks .primary {
+  justify-self: start;
+}
+
+@media (max-width: 680px) {
+  .baseline-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .baseline-grid .full-width {
+    grid-column: auto;
+  }
+
+  .baseline-actions {
+    flex-direction: column-reverse;
+  }
+
+  .baseline-reminder-note {
+    text-align: left;
+  }
+}
