@@ -30,6 +30,7 @@ def test_product_owner_summary_uses_authoritative_records_and_onboarding_funnel(
     assert "private.pilot_access_allowlist" in source
     assert "teachers_authorized" in source
     assert "teachers_authenticated" in source
+    assert "teachers_pilot_cohort" in source
     assert "weekly_plan_snapshots" in source
     assert "ai_usage_events" in source
     assert "ai_suggestion_decisions" in source
@@ -38,6 +39,7 @@ def test_product_owner_summary_uses_authoritative_records_and_onboarding_funnel(
     assert "Depends(require_platform_admin)" in api
     assert "teachers_authorized: int = 0" in api
     assert "teachers_authenticated: int = 0" in api
+    assert "teachers_pilot_cohort: int = 0" in api
     assert '"/api/v1/product-owner/usage"' in api
     assert "app.include_router(product_usage_router)" in main
 
@@ -64,6 +66,7 @@ def test_product_owner_dashboard_focuses_on_adoption_and_value_signals() -> None
     assert "Authorized → authenticated → active" in source
     assert "authorized teachers" in source
     assert "authenticated teachers" in source
+    assert "pre-rollout Pilot cohort" in source
     assert "active in selected period" in source
     assert "Pilot to date" in source
     assert "Excel pacing" in source
