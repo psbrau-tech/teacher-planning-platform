@@ -104,7 +104,10 @@ def product_owner_usage(
     period_end: Annotated[date, Query()],
 ) -> ProductOwnerUsageRead:
     if period_end < period_start:
-        raise HTTPException(status_code=422, detail="Reporting period end must be on or after start")
+        raise HTTPException(
+            status_code=422,
+            detail="Reporting period end must be on or after start",
+        )
     try:
         payload = _client(identity, settings).request(
             "POST",
