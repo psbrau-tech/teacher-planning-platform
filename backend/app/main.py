@@ -36,6 +36,7 @@ from .models import PlannedLesson
 from .pdf_fields import ALL_HQI_FIELDS
 from .planned_lesson_api import router as planned_lesson_router
 from .planner import build_weekly_plan
+from .product_usage_api import router as product_usage_router
 from .readiness_api import router as readiness_router
 from .reporting import (
     AdminUsageEvent,
@@ -65,6 +66,7 @@ app = FastAPI(
 app.include_router(identity_router)
 app.include_router(readiness_router)
 app.include_router(administration_router)
+app.include_router(product_usage_router)
 app.include_router(act_reference_admin_router)
 app.include_router(curriculum_router)
 app.include_router(teaching_assignment_router)
