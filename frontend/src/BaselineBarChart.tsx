@@ -61,27 +61,26 @@ export function BaselineBarChart({ responses }: Props) {
           <h4>Baseline response distribution</h4>
           <p>Number of teacher responses at each 1–5 score for each scaled baseline question.</p>
         </div>
-        <div className="baseline-chart-legend" aria-label="Score legend">
-          {[1, 2, 3, 4, 5].map((score) => <span key={score}><i className={`score-${score}`} />Score {score}</span>)}
-        </div>
       </div>
       <div className="baseline-grouped-chart" role="img" aria-label="Grouped vertical bar chart showing response counts for scores one through five across plan usefulness, submission burden, revisiting reflections, and use in PLC or faculty discussion">
         {questions.map((question) => (
           <div className="baseline-question-group" key={question.key}>
+            <strong>{question.label}</strong>
             <div className="baseline-bars">
               {question.scores.map((count, index) => (
                 <div className="baseline-bar-column" key={`${question.key}-${index + 1}`}>
                   <span className="baseline-bar-count">{count}</span>
-                  <div
-                    className={`baseline-score-bar score-${index + 1}`}
-                    style={{ height: count === 0 ? "0" : `${Math.max(8, (count / maxCount) * 100)}%` }}
-                    title={`${question.label}: score ${index + 1} — ${count} response${count === 1 ? "" : "s"}`}
-                  />
-                  <span className="baseline-score-label">{index + 1}</span>
+                  <div className="baseline-bar-track">
+                    <div
+                      className="baseline-score-bar"
+                      style={{ height: count === 0 ? "0" : `${Math.max(10, (count / maxCount) * 100)}%` }}
+                      title={`${question.label}: score ${index + 1} — ${count} response${count === 1 ? "" : "s"}`}
+                    />
+                  </div>
+                  <span className="baseline-score-label">Score {index + 1}</span>
                 </div>
               ))}
             </div>
-            <strong>{question.label}</strong>
           </div>
         ))}
       </div>
