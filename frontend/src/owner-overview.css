@@ -23,6 +23,18 @@
   color: #fff;
 }
 
+/* The weekly-submission workflow is the primary administration report.
+   The older aggregate period summary remains available server-side but is
+   intentionally not presented in the default administration UI. */
+.administration-overview [aria-label="Administration reporting"] > .report-period-control,
+.administration-overview [aria-label="Administration reporting"] > .guidance-text,
+.administration-overview [aria-label="Administration reporting"] > .working-status,
+.administration-overview [aria-label="Administration reporting"] > .summary,
+.administration-overview [aria-label="Administration reporting"] > .admin-activity-grid,
+.administration-overview [aria-label="Administration reporting"] > .empty-state {
+  display: none;
+}
+
 .owner-tab {
   display: grid;
   gap: 1rem;
@@ -35,6 +47,24 @@
 .owner-tab > section:nth-of-type(1) { order: 3; }
 .owner-tab > section:nth-of-type(2) { order: 4; }
 .owner-tab > section:nth-of-type(3) { order: 5; }
+
+/* Give each Owner report a clear visual boundary so adjacent reports do not
+   read as one continuous block. */
+.owner-tab > .owner-section,
+.owner-tab > .owner-active-time-breakout,
+.owner-tab > section:not(.owner-section) {
+  padding: 1rem;
+  border: 1px solid #d7dfeb;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(23, 32, 51, .04);
+}
+
+.owner-tab > .owner-section + .owner-section,
+.owner-tab > .owner-section + .owner-active-time-breakout,
+.owner-tab > .owner-active-time-breakout + .owner-section {
+  margin-top: .25rem;
+}
 
 .owner-tool-grid {
   align-items: stretch;
