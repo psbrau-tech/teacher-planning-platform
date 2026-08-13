@@ -1,7 +1,6 @@
--- Broaden the one-time feedback cohort to every governed Pilot teacher who
--- authenticated and configured at least one teaching assignment before the survey opens.
--- A teacher who was blocked before successfully saving a weekly plan is valuable feedback,
--- not someone to exclude from the survey.
+-- Broaden the one-time feedback cohort to every governed Pilot teacher who authenticated
+-- before the survey opens. A teacher who was blocked before successfully configuring a class
+-- or saving a weekly plan is valuable feedback, not someone to exclude from the survey.
 
 create or replace function public.pilot_feedback_status()
 returns table (
@@ -43,14 +42,7 @@ with governed as (
 ), cohort as (
   select
     g.*,
-    (
-      g.created_at < timestamptz '2026-08-21 05:00:00+00'
-      and exists (
-        select 1
-        from public.teaching_assignments ta
-        where ta.teacher_id = g.teacher_id
-      )
-    ) as is_eligible
+    (g.created_at < timestamptz '2026-08-21 05:00:00+00') as is_eligible
   from governed g
 ), closeout_assignments as (
   select ta.id, ta.teacher_id
