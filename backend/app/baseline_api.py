@@ -14,7 +14,8 @@ router = APIRouter(prefix="/api/v1/baseline", tags=["baseline"])
 PlanningTimeBefore = Literal[
     "under_30",
     "30_60",
-    "61_120",
+    "61_90",
+    "91_120",
     "121_180",
     "over_180",
     "not_sure",
