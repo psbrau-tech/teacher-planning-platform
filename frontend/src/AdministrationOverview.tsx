@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { AdminSubmissionPanel } from "./AdminSubmissionPanel";
+import { BaselineBarChart } from "./BaselineBarChart";
 import { PilotFeedbackResultsPanel } from "./PilotFeedbackResultsPanel";
 import { ProductOwnerDashboardExperience } from "./ProductOwnerDashboardExperience";
 import { StandardsAdministrationPanel } from "./StandardsAdministrationPanel";
@@ -390,6 +391,13 @@ export function AdministrationOverview({ accessToken, roles, disabled = false }:
                       <div className="owner-metric"><strong>{summary.rarelyReviewReflection}/{summary.responses.length}</strong><span>never / rarely revisited reflections</span></div>
                       <div className="owner-metric"><strong>{summary.rarelyUseInPlc}/{summary.responses.length}</strong><span>never / rarely used plans or reflections in PLC/faculty discussion</span></div>
                     </div>
+                    <BaselineBarChart
+                      averageUsefulness={summary.averageUsefulness}
+                      averageBurden={summary.averageBurden}
+                      rarelyReviewReflection={summary.rarelyReviewReflection}
+                      rarelyUseInPlc={summary.rarelyUseInPlc}
+                      responseCount={summary.responses.length}
+                    />
                     {summary.responses.some((item) => item.biggest_burden_before) && (
                       <div className="baseline-owner-comments">
                         <strong>Optional pre-TPP burden comments</strong>
