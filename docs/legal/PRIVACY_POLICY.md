@@ -38,8 +38,10 @@ When a user invokes an AI-assisted feature, TPP may process the professional pla
 
 TPP may record operational metadata such as model/request usage, token or usage measurements, estimated cost, request status, error information, and teacher decision state. Secrets such as API keys must not be placed in application usage logs.
 
-### Technical and security information
-We may collect information reasonably necessary to operate and secure TPP, including IP address, request timing, browser or device characteristics supplied by standard web requests, authentication events, application events, error information, and security/audit records.
+### Technical, product-usage, and security information
+We may collect information reasonably necessary to operate, secure, and improve TPP, including IP address, request timing, browser or device characteristics supplied by standard web requests, authentication events, application events, error information, security/audit records, and bounded product-usage events.
+
+TPP may also record conservative active-interaction duration estimates for product-effectiveness measurement. These estimates use fixed 30-second activity-heartbeat event keys for product workflow areas such as Course Setup, Weekly Planning, Teacher Reflection, and Friday Closeout. TPP stops counting when the application tab is hidden or when recent interaction is absent. The active-time telemetry does not record keystroke contents, mouse coordinates, teacher-entered planning/reflection text, or continuous login duration. Product-duration reporting is restricted to the Platform Owner product-analysis role and is not provided through ordinary school/district administrator reporting.
 
 ### Support and communications
 If you contact Brau Consulting, we may collect your contact information and the contents of the communication.
@@ -54,6 +56,7 @@ We use information to:
 - provide customer support;
 - monitor reliability, troubleshoot errors, and protect the security of TPP;
 - measure AI usage and operational cost;
+- measure product adoption and workflow efficiency using bounded product-usage and active-interaction metadata;
 - maintain and improve TPP without using customer content in a manner inconsistent with this Policy or an applicable customer agreement;
 - comply with law, enforce agreements, and protect rights and safety.
 
@@ -73,7 +76,7 @@ We may disclose information to:
 We use vendors for cloud infrastructure, database/authentication, AI processing, and related technical services. Material current providers are identified in the TPP Subprocessor List. They may process information only for the purposes associated with providing their services to Brau Consulting, subject to applicable agreements and law.
 
 ### Customer organizations
-If your account is provided or managed by a school, district, employer, or other customer organization, authorized administrators may have access to account, planning, reporting, and audit information according to role permissions and the applicable institutional agreement.
+If your account is provided or managed by a school, district, employer, or other customer organization, authorized administrators may have access to account, planning, reporting, and audit information according to role permissions and the applicable institutional agreement. Platform Owner-only product-duration analytics are not part of the ordinary school/district administrator reporting surface.
 
 ### Legal and safety disclosures
 We may disclose information when reasonably necessary to comply with applicable law or valid legal process; enforce agreements; investigate fraud, abuse, or security incidents; or protect the rights, property, and safety of Brau Consulting, users, customer organizations, or others.
@@ -89,7 +92,9 @@ If the product later introduces advertising or a data practice materially differ
 
 ## 7. Cookies and local storage
 
-TPP may use cookies, browser storage, session mechanisms, or similar technologies that are necessary for authentication, security, application state, and core functionality. Any non-essential analytics or advertising technology must be separately reviewed and added to this Policy before production use.
+TPP may use cookies, browser storage, session mechanisms, or similar technologies that are necessary for authentication, security, application state, and core functionality. TPP's first-party active-time measurement uses temporary browser storage to coordinate a short-lived tab lease so that multiple simultaneously open TPP tabs do not double-count the same user's active interaction. That lease stores a temporary tab identifier and expiration time rather than teacher planning content.
+
+Any additional non-essential analytics, third-party tracking, session replay, or advertising technology must be separately reviewed and added to this Policy before production use.
 
 ## 8. Retention and deletion
 
@@ -97,7 +102,7 @@ Brau Consulting retains account and professional planning information for as lon
 
 The controlled pilot currently configures AWS application logs with a 30-day retention period. This does not mean every category of TPP data has a 30-day retention period.
 
-A final production retention schedule for active planning content, deleted-account content, database backups, audit history, AI operational metadata, and institutional termination is a release requirement and will be documented in the Data Retention & Deletion Policy before public launch.
+A final production retention schedule for active planning content, deleted-account content, database backups, audit history, AI operational metadata, product-usage telemetry, application logs, and institutional termination is a release requirement and will be documented in the Data Retention & Deletion Policy before public launch.
 
 When information is deleted from active systems, residual copies may remain temporarily in backups, disaster-recovery systems, security records, or legally required records until those systems cycle or the applicable retention obligation ends.
 
@@ -141,4 +146,4 @@ Brau Consulting LLC
 
 ## Verification notes before publication
 
-The following must be verified against production before this Policy becomes effective: final subprocessor list and locations; authentication providers; AI account data-sharing setting; production database region and backup retention; production application/audit log retention; deletion implementation; cookies/local-storage inventory; any analytics; and public privacy contact information.
+The following must be verified against production before this Policy becomes effective: final subprocessor list and locations; authentication providers; AI account data-sharing setting; production database region and backup retention; production application/audit log retention; deletion implementation; cookies/local-storage inventory; product-usage/active-time analytics; any additional analytics; and public privacy contact information.
