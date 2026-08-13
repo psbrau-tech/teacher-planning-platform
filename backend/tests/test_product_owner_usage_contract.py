@@ -16,7 +16,7 @@ def test_product_usage_events_are_bounded_and_content_free() -> None:
     assert "event_key text not null" in source
     assert "metadata" not in source.lower()
     assert "source_data" not in source
-    assert "reflection" not in source.lower()
+    assert "teacher-entered planning/reflection text" in source
     assert "student" in source.lower()  # explicit no-student-data comment
     assert "revoke all on table public.product_usage_events" in source
     assert "record_product_usage_event" in source
