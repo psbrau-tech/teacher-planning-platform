@@ -1,0 +1,114 @@
+[role="tabpanel"][aria-label="Administration reporting"] > .report-period-control,
+[role="tabpanel"][aria-label="Administration reporting"] > .summary[aria-label="School planning usage"],
+[role="tabpanel"][aria-label="Administration reporting"] > .admin-activity-grid {
+  display: none;
+}
+
+.admin-selected-usage-slot {
+  margin: 0 0 2rem;
+}
+
+.admin-selected-usage {
+  padding: 1rem 0 1.5rem;
+  border-bottom: 1px solid #e1e7ef;
+}
+
+.admin-selected-scope-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .8rem;
+  align-items: end;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border: 1px solid #e1e7ef;
+  border-radius: 14px;
+  background: #f7f9fc;
+}
+
+.admin-selected-scope-controls > label {
+  display: flex;
+  min-width: 170px;
+  flex: 1;
+  flex-direction: column;
+  gap: .4rem;
+  color: #4f5f76;
+  font-size: .82rem;
+  font-weight: 750;
+}
+
+.admin-selected-scope-controls input,
+.admin-selected-scope-controls select {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 10px 11px;
+  color: #172033;
+  background: #fff;
+}
+
+.admin-report-teacher-filter {
+  min-width: min(360px, 100%);
+}
+
+.admin-report-teacher-filter .teacher-filter-options {
+  max-height: 340px;
+  overflow: auto;
+}
+
+.admin-report-teacher-filter .check span {
+  display: grid;
+  gap: .15rem;
+}
+
+.admin-report-teacher-filter .check small {
+  margin: 0;
+  color: #65738a;
+  font-weight: 500;
+}
+
+.admin-report-empty {
+  margin-bottom: 1rem;
+}
+
+.admin-report-empty p {
+  margin-bottom: 0;
+}
+
+.admin-report-scope-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem 1rem;
+  align-items: center;
+  margin-bottom: 1rem;
+  color: #65738a;
+  font-size: .88rem;
+}
+
+.admin-report-scope-line strong {
+  color: #172033;
+}
+
+.admin-selected-usage .summary {
+  margin: 1rem 0 1.25rem;
+}
+
+.selected-admin-activity-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: .5rem;
+}
+
+@media (max-width: 720px) {
+  .admin-selected-scope-controls {
+    align-items: stretch;
+  }
+
+  .admin-selected-scope-controls > label,
+  .admin-report-teacher-filter {
+    width: 100%;
+    min-width: 100%;
+  }
+
+  .selected-admin-activity-grid {
+    grid-template-columns: 1fr;
+  }
+}

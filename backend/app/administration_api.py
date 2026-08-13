@@ -4,6 +4,7 @@ from datetime import date
 from decimal import Decimal
 from io import BytesIO
 from typing import Annotated, Any, Literal, cast
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -165,6 +166,7 @@ def school_usage(
     settings: Annotated[Settings, Depends(get_settings)],
     period_start: Annotated[date | None, Query()] = None,
     period_end: Annotated[date | None, Query()] = None,
+    teacher_ids: Annotated[list[UUID] | None, Query(alias="teacher_id")] = None,
 ) -> SchoolUsageRead:
     if identity.school_id is None:
         raise HTTPException(status_code=503, detail="Governed school context is unavailable")
@@ -172,18 +174,32 @@ def school_usage(
         raise HTTPException(status_code=422, detail="Both reporting period dates are required")
     if period_start is not None and period_end is not None and period_end < period_start:
         raise HTTPException(status_code=422, detail="Reporting period end must be on or after start")
+    if teacher_ids is not None and len(teacher_ids) > 300:
+        raise HTTPException(status_code=422, detail="A maximum of 300 teachers may be selected")
     try:
         client = _client(identity, settings)
         if period_start is not None and period_end is not None:
-            payload = client.request(
-                "POST",
-                "rpc/admin_usage_for_period",
-                payload={
-                    "target_start": period_start.isoformat(),
-                    "target_end": period_end.isoformat(),
-                    "target_school_id": identity.school_id,
-                },
-            )
+            if teacher_ids:
+                payload = client.request(
+                    "POST",
+                    "rpc/admin_usage_for_period_selected",
+                    payload={
+                        "target_start": period_start.isoformat(),
+                        "target_end": period_end.isoformat(),
+                        "target_school_id": identity.school_id,
+                        "target_teacher_ids": [str(teacher_id) for teacher_id in teacher_ids],
+                    },
+                )
+            else:
+                payload = client.request(
+                    "POST",
+                    "rpc/admin_usage_for_period",
+                    payload={
+                        "target_start": period_start.isoformat(),
+                        "target_end": period_end.isoformat(),
+                        "target_school_id": identity.school_id,
+                    },
+                )
         else:
             payload = client.request(
                 "GET",
