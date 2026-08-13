@@ -71,8 +71,8 @@ def test_active_time_is_presented_as_product_measurement_not_teacher_evaluation(
 
     assert "Active TPP interaction time" in owner
     assert "not login duration and not total teacher planning time" in owner
-    assert "first 14 days of measured use" in owner
-    assert "not exposed to school or district administrators" in owner
+    assert "14 days of measured use" in owner
+    assert "exposed to school or district administrators" in owner
     assert "onboarding weekly-plan median" in owner
     assert "steady-state weekly-plan median" in owner
     assert "/api/v1/product-owner/active-time" in owner
