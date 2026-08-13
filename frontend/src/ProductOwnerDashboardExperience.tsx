@@ -11,7 +11,8 @@ type Identity = {
 type Usage = {
   period_start: string;
   period_end: string;
-  teachers_configured: number;
+  teachers_authorized: number;
+  teachers_authenticated: number;
   teachers_active: number;
   classes_configured: number;
   shared_curriculum_teachers: number;
@@ -72,21 +73,30 @@ function addDays(iso: string, days: number): string {
 function mondayFor(date = new Date()): string {
   const copy = new Date(date);
   const day = copy.getDay();
-  const offset = day === 0 ? -6 : 1 - day;
-  copy.setDate(copy.getDate() + offset);
+  copy.setDate(copy.getDate() + (day === 0 ? -6 : 1 - day));
   return localIsoDate(copy);
 }
 
 async function readError(response: Response, fallback: string): Promise<string> {
   try {
     const payload = await response.json() as { detail?: unknown };
-    return typeof payload.detail === "string" && payload.detail.trim() ? payload.detail : fallback;
+    return typeof payload.detail === "string" && payload.detail.trim()
+      ? payload.detail
+      : fallback;
   } catch {
     return fallback;
   }
 }
 
-function Metric({ value, label, detail }: { value: string | number; label: string; detail?: string }) {
+function Metric({
+  value,
+  label,
+  detail,
+}: {
+  value: string | number;
+  label: string;
+  detail?: string;
+}) {
   return (
     <div className="owner-metric">
       <strong>{value}</strong>
@@ -96,7 +106,17 @@ function Metric({ value, label, detail }: { value: string | number; label: strin
   );
 }
 
-function UsageRow({ label, teachers, events, note }: { label: string; teachers: number; events: number; note?: string }) {
+function UsageRow({
+  label,
+  teachers,
+  events,
+  note,
+}: {
+  label: string;
+  teachers: number;
+  events: number;
+  note?: string;
+}) {
   return (
     <div className="owner-usage-row">
       <div><strong>{label}</strong>{note && <small>{note}</small>}</div>
@@ -166,7 +186,9 @@ export function ProductOwnerDashboardExperience() {
       const response = await fetch(`/api/v1/product-owner/usage?${query.toString()}`, {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
-      if (!response.ok) throw new Error(await readError(response, "Product usage could not be loaded."));
+      if (!response.ok) {
+        throw new Error(await readError(response, "Product usage could not be loaded."));
+      }
       setUsage(await response.json() as Usage);
     } catch (caught) {
       setUsage(null);
@@ -183,10 +205,20 @@ export function ProductOwnerDashboardExperience() {
   const signals = useMemo(() => {
     if (!usage) return [] as string[];
     const items: string[] = [];
-    const adoption = usage.teachers_configured
-      ? Math.round((usage.teachers_active / usage.teachers_configured) * 100)
+
+    const authenticationRate = usage.teachers_authorized
+      ? Math.round((usage.teachers_authenticated / usage.teachers_authorized) * 100)
       : 0;
-    items.push(`${adoption}% of configured teachers showed measurable TPP activity in this period.`);
+    items.push(
+      `${authenticationRate}% of authorized teachers have authenticated into TPP at least once.`,
+    );
+
+    const activeRate = usage.teachers_authenticated
+      ? Math.round((usage.teachers_active / usage.teachers_authenticated) * 100)
+      : 0;
+    items.push(
+      `${activeRate}% of authenticated teachers showed measurable TPP activity in this period.`,
+    );
 
     const pathways = [
       { label: "Excel pacing", teachers: usage.curriculum_excel_teachers },
@@ -194,22 +226,34 @@ export function ProductOwnerDashboardExperience() {
       { label: "Reuse curriculum", teachers: usage.curriculum_reuse_teachers },
     ].sort((a, b) => b.teachers - a.teachers);
     if (pathways[0]?.teachers) {
-      items.push(`${pathways[0].label} is currently the most-used measured curriculum setup pathway (${pathways[0].teachers} teachers).`);
+      items.push(
+        `${pathways[0].label} is the most-used measured curriculum setup pathway `
+        + `(${pathways[0].teachers} teachers).`,
+      );
     }
 
     const decisions = usage.ai_fields_accepted + usage.ai_fields_edited + usage.ai_fields_rejected;
     if (decisions) {
       const editedPct = Math.round((usage.ai_fields_edited / decisions) * 100);
-      items.push(`${editedPct}% of recorded AI field decisions were edited before use; accepted, edited, and rejected decisions remain teacher-controlled.`);
+      items.push(
+        `${editedPct}% of recorded AI field decisions were edited before use; `
+        + "accepted, edited, and rejected decisions remain teacher-controlled.",
+      );
     }
 
     if (usage.shared_curriculum_teachers) {
-      items.push(`${usage.shared_curriculum_teachers} teacher${usage.shared_curriculum_teachers === 1 ? " is" : "s are"} currently reusing the same curriculum across multiple active classes.`);
+      items.push(
+        `${usage.shared_curriculum_teachers} teacher${usage.shared_curriculum_teachers === 1 ? " is" : "s are"} `
+        + "currently reusing the same curriculum across multiple active classes.",
+      );
     }
 
     if (usage.teachers_active && usage.completed_packet_teachers < usage.teachers_active) {
       const gap = usage.teachers_active - usage.completed_packet_teachers;
-      items.push(`${gap} active teacher${gap === 1 ? " has" : "s have"} not submitted a completed weekly packet in this reporting period.`);
+      items.push(
+        `${gap} active teacher${gap === 1 ? " has" : "s have"} activity but no completed packet `
+        + "in this selected period. That may reflect an in-progress week or an incomplete closeout.",
+      );
     }
     return items;
   }, [usage]);
@@ -224,20 +268,33 @@ export function ProductOwnerDashboardExperience() {
 
       {open && (
         <div className="product-owner-backdrop" role="presentation">
-          <section className="product-owner-modal" role="dialog" aria-modal="true" aria-labelledby="product-owner-title">
+          <section
+            className="product-owner-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="product-owner-title"
+          >
             <div className="product-owner-heading">
               <div>
                 <p className="eyebrow">Platform Owner</p>
                 <h2 id="product-owner-title">Product usage</h2>
-                <p>See what teachers are actually using so product decisions follow evidence rather than assumptions.</p>
+                <p>
+                  See what teachers are actually using so product decisions follow evidence rather
+                  than assumptions.
+                </p>
               </div>
-              <button type="button" className="secondary" onClick={() => setOpen(false)}>Close</button>
+              <button type="button" className="secondary" onClick={() => setOpen(false)}>
+                Close
+              </button>
             </div>
 
             <div className="owner-period-control">
               <label>
                 Reporting period
-                <select value={periodKind} onChange={(event) => setPeriodKind(event.target.value as PeriodKind)}>
+                <select
+                  value={periodKind}
+                  onChange={(event) => setPeriodKind(event.target.value as PeriodKind)}
+                >
                   <option value="pilot">Pilot to date</option>
                   <option value="current_week">Current week</option>
                   <option value="last_4_weeks">Last 4 weeks</option>
@@ -246,49 +303,138 @@ export function ProductOwnerDashboardExperience() {
               </label>
               {periodKind === "custom" && (
                 <>
-                  <label>Start<input type="date" value={customStart} onChange={(event) => setCustomStart(event.target.value)} /></label>
-                  <label>End<input type="date" value={customEnd} onChange={(event) => setCustomEnd(event.target.value)} /></label>
+                  <label>
+                    Start
+                    <input
+                      type="date"
+                      value={customStart}
+                      onChange={(event) => setCustomStart(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    End
+                    <input
+                      type="date"
+                      value={customEnd}
+                      onChange={(event) => setCustomEnd(event.target.value)}
+                    />
+                  </label>
                 </>
               )}
-              <button type="button" className="secondary" disabled={loading} onClick={() => void loadUsage()}>Refresh</button>
-              <span className="owner-period-label">{period.label}: {period.start} through {period.end}</span>
+              <button
+                type="button"
+                className="secondary"
+                disabled={loading}
+                onClick={() => void loadUsage()}
+              >
+                Refresh
+              </button>
+              <span className="owner-period-label">
+                {period.label}: {period.start} through {period.end}
+              </span>
             </div>
 
             <div className="owner-telemetry-note" role="note">
-              <strong>Interpretation note.</strong> Plan, AI, and submission counts use existing authoritative TPP records. Curriculum-pathway and PDF-view interaction telemetry begins when this release is deployed, so earlier zeros do not mean a feature was never used.
+              <strong>Interpretation note.</strong> Plan, AI, and submission counts use existing
+              authoritative TPP records. Curriculum-pathway and PDF-view interaction telemetry
+              begins when this release is deployed, so earlier zeros do not mean a feature was
+              never used.
             </div>
 
             {error && <p className="error-message" role="alert">{error}</p>}
-            {loading && <p className="working-status" role="status">Updating Product Owner usage…</p>}
+            {loading && (
+              <p className="working-status" role="status">Updating Product Owner usage…</p>
+            )}
 
             {usage && !loading && (
               <>
-                <div className="owner-summary-grid" aria-label="Product adoption summary">
-                  <Metric value={`${usage.teachers_active}/${usage.teachers_configured}`} label="active / configured teachers" />
-                  <Metric value={usage.classes_configured} label="active classes configured" />
-                  <Metric value={usage.shared_curriculum_teachers} label="teachers sharing curriculum" detail={`${usage.shared_curriculum_classes} classes on shared sequences`} />
-                  <Metric value={usage.pilot_feedback_responses} label="Pilot feedback responses" />
-                </div>
-
-                <section className="owner-section">
-                  <div className="section-heading compact"><div><p className="eyebrow">Course Setup</p><h3>How teachers are starting</h3></div></div>
-                  <div className="owner-usage-table">
-                    <UsageRow label="Excel pacing" teachers={usage.curriculum_excel_teachers} events={usage.curriculum_excel_saves} note="successful curriculum saves after Upload Excel" />
-                    <UsageRow label="Build in TPP" teachers={usage.curriculum_builder_teachers} events={usage.curriculum_builder_saves} note="successful curriculum saves after Build in TPP" />
-                    <UsageRow label="Reuse mine" teachers={usage.curriculum_reuse_teachers} events={usage.curriculum_reuse_events} />
-                    <UsageRow label="Create curriculum copy" teachers={usage.curriculum_copy_teachers} events={usage.curriculum_copy_events} />
-                    <UsageRow label="Download current curriculum" teachers={usage.curriculum_export_teachers} events={usage.curriculum_export_events} />
+                <section className="owner-section owner-onboarding">
+                  <div className="section-heading compact">
+                    <div>
+                      <p className="eyebrow">Onboarding funnel</p>
+                      <h3>Authorized → authenticated → active</h3>
+                    </div>
+                  </div>
+                  <div className="owner-summary-grid" aria-label="Product adoption summary">
+                    <Metric value={usage.teachers_authorized} label="authorized teachers" />
+                    <Metric value={usage.teachers_authenticated} label="authenticated teachers" />
+                    <Metric value={usage.teachers_active} label="active in selected period" />
+                    <Metric value={usage.classes_configured} label="active classes configured" />
                   </div>
                 </section>
 
                 <section className="owner-section">
-                  <div className="section-heading compact"><div><p className="eyebrow">Weekly Planning</p><h3>Planning behavior</h3></div></div>
+                  <div className="section-heading compact">
+                    <div><p className="eyebrow">Course Setup</p><h3>How teachers are starting</h3></div>
+                  </div>
+                  <div className="owner-usage-table">
+                    <UsageRow
+                      label="Excel pacing"
+                      teachers={usage.curriculum_excel_teachers}
+                      events={usage.curriculum_excel_saves}
+                      note="successful curriculum saves after Upload Excel"
+                    />
+                    <UsageRow
+                      label="Build in TPP"
+                      teachers={usage.curriculum_builder_teachers}
+                      events={usage.curriculum_builder_saves}
+                      note="successful curriculum saves after Build in TPP"
+                    />
+                    <UsageRow
+                      label="Reuse mine"
+                      teachers={usage.curriculum_reuse_teachers}
+                      events={usage.curriculum_reuse_events}
+                    />
+                    <UsageRow
+                      label="Create curriculum copy"
+                      teachers={usage.curriculum_copy_teachers}
+                      events={usage.curriculum_copy_events}
+                    />
+                    <UsageRow
+                      label="Download current curriculum"
+                      teachers={usage.curriculum_export_teachers}
+                      events={usage.curriculum_export_events}
+                    />
+                  </div>
                   <div className="owner-summary-grid compact-grid">
-                    <Metric value={usage.weekly_plans_saved} label="weekly plans saved" detail={`${usage.weekly_plan_teachers} teachers`} />
-                    <Metric value={usage.weekly_plan_generate_events} label="Build / reconcile uses" detail={`${usage.weekly_plan_generate_teachers} teachers`} />
-                    <Metric value={usage.ai_requests} label="successful AI requests" detail={`${usage.ai_teachers} teachers`} />
-                    <Metric value={usage.lesson_plan_submissions} label="lesson-plan submissions" detail={`${usage.lesson_plan_submission_teachers} teachers`} />
-                    <Metric value={usage.lesson_plan_pdf_views} label="lesson-plan PDF views" detail={`${usage.lesson_plan_pdf_view_teachers} teachers`} />
+                    <Metric
+                      value={usage.shared_curriculum_teachers}
+                      label="teachers sharing curriculum"
+                      detail={`${usage.shared_curriculum_classes} classes on shared sequences`}
+                    />
+                  </div>
+                </section>
+
+                <section className="owner-section">
+                  <div className="section-heading compact">
+                    <div><p className="eyebrow">Weekly Planning</p><h3>Planning behavior</h3></div>
+                  </div>
+                  <div className="owner-summary-grid compact-grid">
+                    <Metric
+                      value={usage.weekly_plans_saved}
+                      label="weekly plans saved"
+                      detail={`${usage.weekly_plan_teachers} teachers`}
+                    />
+                    <Metric
+                      value={usage.weekly_plan_generate_events}
+                      label="Build / reconcile uses"
+                      detail={`${usage.weekly_plan_generate_teachers} teachers`}
+                    />
+                    <Metric
+                      value={usage.ai_requests}
+                      label="successful AI requests"
+                      detail={`${usage.ai_teachers} teachers`}
+                    />
+                    <Metric
+                      value={usage.lesson_plan_submissions}
+                      label="lesson-plan submissions"
+                      detail={`${usage.lesson_plan_submission_teachers} teachers`}
+                    />
+                    <Metric
+                      value={usage.lesson_plan_pdf_views}
+                      label="lesson-plan PDF views"
+                      detail={`${usage.lesson_plan_pdf_view_teachers} teachers`}
+                    />
                   </div>
                   <div className="owner-ai-decisions">
                     <span><strong>{usage.ai_fields_accepted}</strong> AI fields accepted</span>
@@ -298,17 +444,40 @@ export function ProductOwnerDashboardExperience() {
                 </section>
 
                 <section className="owner-section">
-                  <div className="section-heading compact"><div><p className="eyebrow">Friday Closeout</p><h3>Did the weekly loop get completed?</h3></div></div>
+                  <div className="section-heading compact">
+                    <div>
+                      <p className="eyebrow">Friday Closeout</p>
+                      <h3>Did the weekly loop get completed?</h3>
+                    </div>
+                  </div>
                   <div className="owner-summary-grid compact-grid">
-                    <Metric value={usage.completed_packet_submissions} label="completed packets submitted" detail={`${usage.completed_packet_teachers} teachers`} />
-                    <Metric value={usage.completed_packet_views} label="completed packet views" detail={`${usage.completed_packet_view_teachers} teachers`} />
+                    <Metric
+                      value={usage.completed_packet_submissions}
+                      label="completed packets submitted"
+                      detail={`${usage.completed_packet_teachers} teachers`}
+                    />
+                    <Metric
+                      value={usage.completed_packet_views}
+                      label="completed packet views"
+                      detail={`${usage.completed_packet_view_teachers} teachers`}
+                    />
                     <Metric value={usage.pilot_feedback_responses} label="Pilot survey responses" />
                   </div>
                 </section>
 
                 <section className="owner-section owner-signals">
-                  <div className="section-heading compact"><div><p className="eyebrow">Product signals</p><h3>What deserves attention</h3><p className="supporting">These are descriptive product signals, not teacher-performance judgments.</p></div></div>
-                  {signals.map((signal) => <div className="owner-signal" key={signal}>{signal}</div>)}
+                  <div className="section-heading compact">
+                    <div>
+                      <p className="eyebrow">Product signals</p>
+                      <h3>What deserves attention</h3>
+                      <p className="supporting">
+                        These are descriptive product signals, not teacher-performance judgments.
+                      </p>
+                    </div>
+                  </div>
+                  {signals.map((signal) => (
+                    <div className="owner-signal" key={signal}>{signal}</div>
+                  ))}
                 </section>
               </>
             )}
