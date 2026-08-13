@@ -15,7 +15,7 @@ export function HelpPage({ roles }: Props) {
           <h2>Teacher Planning Platform help</h2>
           <p className="supporting">
             Current guidance for Course Setup, Curriculum & Pacing, weekly planning, Friday
-            closeout, and administration.
+            closeout, surveys, administration, and Platform Owner reporting.
           </p>
         </div>
       </div>
@@ -33,6 +33,23 @@ export function HelpPage({ roles }: Props) {
       {isTeacher && (
         <section className="help-section">
           <h3>Teacher workflow</h3>
+          <div className="help-notes">
+            <h3>One-time pre-TPP baseline</h3>
+            <p>
+              <strong>TPP may ask for a short baseline after sign-in.</strong> The five required
+              questions should take about 60–90 seconds. Answer them based on your normal planning,
+              submission, and reflection experience <strong>before you began using TPP</strong>,
+              even if you have already used TPP during the Pilot. The optional written response is
+              also about the pre-TPP process.
+            </p>
+            <p>
+              Choose <strong>Continue for now</strong> if you need to get to your planning work.
+              TPP will ask again on a later sign-in until the one-time baseline is submitted. The
+              baseline is used to evaluate product workload/value over time, not to score teacher
+              performance. Keep the same no-student-information boundary in the optional comment.
+            </p>
+          </div>
+
           <div className="help-notes">
             <h3>Set up each class once</h3>
             <p>
@@ -251,13 +268,26 @@ export function HelpPage({ roles }: Props) {
 
       {isPlatformAdmin && (
         <section className="help-section">
-          <h3>Product Owner usage</h3>
+          <h3>Platform Owner workflow</h3>
           <div className="help-notes">
             <p>
-              <strong>Product Owner</strong> is a separate Platform Owner-only view for product
-              adoption, not teacher evaluation. It shows the authorized → authenticated → active
-              onboarding funnel, measured curriculum setup pathways, weekly planning and AI usage,
-              PDF review activity, submissions, closeouts, and Pilot survey response counts.
+              Open <strong>Administration</strong>, then choose the Platform Owner-only
+              <strong> Owner</strong> tab. Owner reporting is consolidated there instead of mixing
+              Platform Owner controls into school administration or using floating report buttons.
+              The Owner tab contains product-usage reporting, Pilot feedback, the pre-TPP teacher
+              baseline, governed standards operations, and AI cost reporting.
+            </p>
+            <p>
+              <strong>Product usage</strong> is for product adoption, not teacher evaluation. It
+              shows the authorized → authenticated → active onboarding funnel, measured curriculum
+              setup pathways, weekly planning and AI usage, PDF review activity, submissions,
+              closeouts, and Pilot survey response counts.
+            </p>
+            <p>
+              <strong>Teacher baseline</strong> reports pre-TPP workload/value measures by school
+              without returning teacher identity to the Owner view. Use it later as a comparison
+              point for planning time, usefulness, reflection reuse, and PLC/faculty use. Optional
+              comments are professional product/process feedback and remain subject to the no-student-data boundary.
             </p>
             <p>
               TPP uses existing authoritative records where they already exist. Interaction metrics
