@@ -66,7 +66,10 @@ def _client(identity: AuthenticatedTeacher, settings: Settings) -> SupabaseRestC
 
 def _records(payload: object) -> list[dict[str, Any]]:
     if not isinstance(payload, list):
-        raise HTTPException(status_code=503, detail="Teacher baseline service returned invalid data")
+        raise HTTPException(
+            status_code=503,
+            detail="Teacher baseline service returned invalid data",
+        )
     return [cast(dict[str, Any], item) for item in payload if isinstance(item, dict)]
 
 
@@ -111,7 +114,9 @@ def submit_baseline(
                 "target_planning_time_before": payload.planning_time_before,
                 "target_plan_usefulness_before": payload.plan_usefulness_before,
                 "target_submission_burden_before": payload.submission_burden_before,
-                "target_reflection_review_frequency_before": payload.reflection_review_frequency_before,
+                "target_reflection_review_frequency_before": (
+                    payload.reflection_review_frequency_before
+                ),
                 "target_plc_use_frequency_before": payload.plc_use_frequency_before,
                 "target_biggest_burden_before": payload.biggest_burden_before.strip(),
             },
@@ -120,7 +125,10 @@ def submit_baseline(
         raise _baseline_error(error) from error
     rows = _records(result)
     if not rows:
-        raise HTTPException(status_code=503, detail="Teacher baseline submission returned no record")
+        raise HTTPException(
+            status_code=503,
+            detail="Teacher baseline submission returned no record",
+        )
     return BaselineSubmitRead.model_validate(rows[0])
 
 
