@@ -19,13 +19,14 @@ def test_weekly_submission_report_waits_for_teacher_selection() -> None:
     assert "Select one or more teachers to build the weekly submission report." in source
 
 
-def test_owner_baseline_includes_accessible_bar_chart() -> None:
+def test_owner_baseline_uses_five_point_distribution_chart() -> None:
     overview = (FRONTEND / "AdministrationOverview.tsx").read_text(encoding="utf-8")
     chart = (FRONTEND / "BaselineBarChart.tsx").read_text(encoding="utf-8")
-    assert "<BaselineBarChart" in overview
-    assert "Baseline at a glance" in chart
-    assert 'aria-label="Pre-TPP baseline bar chart"' in chart
-    assert "averageUsefulness" in overview
-    assert "averageBurden" in overview
-    assert "rarelyReviewReflection" in overview
-    assert "rarelyUseInPlc" in overview
+    assert "averageReflectionReview" in overview
+    assert "averagePlcUse" in overview
+    assert "<BaselineBarChart responses={summary.responses}" in overview
+    assert "Baseline response distribution" in chart
+    assert "Grouped vertical bar chart" in chart
+    assert "countScores" in chart
+    assert "never: 1" in chart
+    assert "very_often: 5" in chart
