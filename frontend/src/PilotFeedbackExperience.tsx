@@ -36,7 +36,11 @@ type FeedbackResult = {
   submitted_at: string;
 };
 
-type TextField = "most_useful" | "biggest_challenge" | "dislike_or_simplify" | "recommended_improvement";
+type TextField =
+  | "most_useful"
+  | "biggest_challenge"
+  | "dislike_or_simplify"
+  | "recommended_improvement";
 
 const TEXT_LIMIT = 1500;
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ?? "";
@@ -65,7 +69,9 @@ const READINESS_LABELS: Record<string, string> = {
 async function readError(response: Response, fallback: string): Promise<string> {
   try {
     const payload = await response.json() as { detail?: unknown };
-    return typeof payload.detail === "string" && payload.detail.trim() ? payload.detail : fallback;
+    return typeof payload.detail === "string" && payload.detail.trim()
+      ? payload.detail
+      : fallback;
   } catch {
     return fallback;
   }
@@ -75,7 +81,9 @@ function Counter({ value }: { value: string }) {
   const remaining = TEXT_LIMIT - value.length;
   return (
     <small className={`pilot-feedback-counter ${remaining <= 150 ? "near-limit" : ""}`}>
-      {remaining === 0 ? "Character limit reached" : `${remaining.toLocaleString()} characters remaining`}
+      {remaining === 0
+        ? "Character limit reached"
+        : `${remaining.toLocaleString()} characters remaining`}
     </small>
   );
 }
@@ -106,6 +114,7 @@ export function PilotFeedbackExperience() {
   const shouldShowSurvey = Boolean(
     accessToken && isTeacher && status?.available && !status.submitted && !dismissed && !submitted,
   );
+  const shouldShowThanks = Boolean(accessToken && isTeacher && submitted && !dismissed);
 
   async function authenticatedFetch(path: string, init?: RequestInit): Promise<Response> {
     const headers = new Headers(init?.headers);
@@ -162,10 +171,9 @@ export function PilotFeedbackExperience() {
       if (isPlatformAdmin) void loadResults();
     }, 30_000);
     const onVisible = () => {
-      if (document.visibilityState === "visible") {
-        void loadStatus();
-        if (isPlatformAdmin) void loadResults();
-      }
+      if (document.visibilityState !== "visible") return;
+      void loadStatus();
+      if (isPlatformAdmin) void loadResults();
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => {
@@ -184,10 +192,15 @@ export function PilotFeedbackExperience() {
       setError("Complete the rating, time-impact, and rollout-readiness questions.");
       return;
     }
-    if (!text.most_useful.trim() || !text.biggest_challenge.trim() || !text.recommended_improvement.trim()) {
+    if (
+      !text.most_useful.trim()
+      || !text.biggest_challenge.trim()
+      || !text.recommended_improvement.trim()
+    ) {
       setError("Complete the three required written feedback questions.");
       return;
     }
+
     setWorking(true);
     setError("");
     try {
@@ -203,9 +216,13 @@ export function PilotFeedbackExperience() {
           rollout_readiness: rolloutReadiness,
         }),
       });
-      if (!response.ok) throw new Error(await readError(response, "Pilot feedback could not be submitted."));
+      if (!response.ok) {
+        throw new Error(await readError(response, "Pilot feedback could not be submitted."));
+      }
       setSubmitted(true);
-      setStatus((current) => current ? { ...current, submitted: true, available: false } : current);
+      setStatus((current) => current
+        ? { ...current, submitted: true, available: false }
+        : current);
       if (isPlatformAdmin) void loadResults();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Pilot feedback could not be submitted.");
@@ -217,8 +234,12 @@ export function PilotFeedbackExperience() {
   const summary = useMemo(() => {
     if (!results.length) return null;
     const average = results.reduce((sum, item) => sum + item.overall_usefulness, 0) / results.length;
-    const timeSaved = results.filter((item) => ["much_less", "somewhat_less"].includes(item.planning_time_change)).length;
-    const rolloutPositive = results.filter((item) => ["ready_now", "ready_minor_fixes"].includes(item.rollout_readiness)).length;
+    const timeSaved = results.filter(
+      (item) => ["much_less", "somewhat_less"].includes(item.planning_time_change),
+    ).length;
+    const rolloutPositive = results.filter(
+      (item) => ["ready_now", "ready_minor_fixes"].includes(item.rollout_readiness),
+    ).length;
     return { average, timeSaved, rolloutPositive };
   }, [results]);
 
@@ -226,15 +247,25 @@ export function PilotFeedbackExperience() {
 
   return (
     <>
-      {shouldShowSurvey && (
+      {(shouldShowSurvey || shouldShowThanks) && (
         <div className="pilot-feedback-backdrop" role="presentation">
-          <section className="pilot-feedback-modal" role="dialog" aria-modal="true" aria-labelledby="pilot-feedback-title">
-            {submitted ? (
+          <section
+            className="pilot-feedback-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pilot-feedback-title"
+          >
+            {shouldShowThanks ? (
               <div className="pilot-feedback-thanks">
                 <p className="eyebrow">Pilot feedback</p>
                 <h2 id="pilot-feedback-title">Thank you.</h2>
-                <p>Your feedback has been recorded and will be used to improve TPP before broader staff rollout.</p>
-                <button className="primary" type="button" onClick={() => setDismissed(true)}>Continue</button>
+                <p>
+                  Your feedback has been recorded and will be used to improve TPP before broader
+                  staff rollout.
+                </p>
+                <button className="primary" type="button" onClick={() => setDismissed(true)}>
+                  Continue
+                </button>
               </div>
             ) : (
               <form onSubmit={(event) => void submitFeedback(event)}>
@@ -242,23 +273,41 @@ export function PilotFeedbackExperience() {
                   <div>
                     <p className="eyebrow">One-time Pilot feedback</p>
                     <h2 id="pilot-feedback-title">Help us improve TPP before full staff rollout</h2>
-                    <p>This should take about 3 minutes. Tell us what saved time, what created friction, and what should change.</p>
+                    <p>
+                      This should take about 3 minutes. Tell us what saved time, what created
+                      friction, and what should change.
+                    </p>
                   </div>
-                  <button type="button" className="secondary" onClick={() => setDismissed(true)}>Remind me later</button>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => setDismissed(true)}
+                  >
+                    Remind me later
+                  </button>
                 </div>
 
                 <div className="boundary-notice pilot-feedback-boundary" role="note">
-                  Feedback is visible to the TPP Product Owner and is used to improve the Pilot. Do not include student names, grades, IEP/504 information, identifiable student work, or other student-specific information.
+                  Feedback is visible to the TPP Product Owner and is used to improve the Pilot.
+                  Do not include student names, grades, IEP/504 information, identifiable student
+                  work, or other student-specific information.
                 </div>
 
                 {status?.preferred_ready && (
-                  <p className="pilot-feedback-ready-note" role="status">You have completed the Pilot cycle TPP was waiting for: this week's closeouts and next week's saved planning.</p>
+                  <p className="pilot-feedback-ready-note" role="status">
+                    You have completed the Pilot cycle TPP was waiting for: this week's closeouts
+                    and next week's saved planning.
+                  </p>
                 )}
 
                 <div className="pilot-feedback-grid">
                   <label>
                     Overall, how useful has TPP been for your weekly planning? <span aria-hidden="true">*</span>
-                    <select required value={overallUsefulness} onChange={(event) => setOverallUsefulness(event.target.value)}>
+                    <select
+                      required
+                      value={overallUsefulness}
+                      onChange={(event) => setOverallUsefulness(event.target.value)}
+                    >
                       <option value="">Select</option>
                       <option value="1">1 — Not useful</option>
                       <option value="2">2</option>
@@ -269,8 +318,13 @@ export function PilotFeedbackExperience() {
                   </label>
 
                   <label>
-                    Compared with your previous process, how has TPP affected the time you spend on weekly planning? <span aria-hidden="true">*</span>
-                    <select required value={planningTimeChange} onChange={(event) => setPlanningTimeChange(event.target.value)}>
+                    Compared with your previous process, how has TPP affected the time you spend
+                    on weekly planning? <span aria-hidden="true">*</span>
+                    <select
+                      required
+                      value={planningTimeChange}
+                      onChange={(event) => setPlanningTimeChange(event.target.value)}
+                    >
                       <option value="">Select</option>
                       <option value="much_less">Much less time</option>
                       <option value="somewhat_less">Somewhat less time</option>
@@ -282,31 +336,60 @@ export function PilotFeedbackExperience() {
 
                   <label className="full-width">
                     What did you appreciate or find most useful? <span aria-hidden="true">*</span>
-                    <textarea required rows={3} maxLength={TEXT_LIMIT} value={text.most_useful} onChange={(event) => updateText("most_useful", event.target.value)} />
+                    <textarea
+                      required
+                      rows={3}
+                      maxLength={TEXT_LIMIT}
+                      value={text.most_useful}
+                      onChange={(event) => updateText("most_useful", event.target.value)}
+                    />
                     <Counter value={text.most_useful} />
                   </label>
 
                   <label className="full-width">
                     What was most challenging, confusing, or frustrating? <span aria-hidden="true">*</span>
-                    <textarea required rows={3} maxLength={TEXT_LIMIT} value={text.biggest_challenge} onChange={(event) => updateText("biggest_challenge", event.target.value)} />
+                    <textarea
+                      required
+                      rows={3}
+                      maxLength={TEXT_LIMIT}
+                      value={text.biggest_challenge}
+                      onChange={(event) => updateText("biggest_challenge", event.target.value)}
+                    />
                     <Counter value={text.biggest_challenge} />
                   </label>
 
                   <label className="full-width">
-                    What did you dislike, or what should we simplify or remove? <span className="optional-label">Optional</span>
-                    <textarea rows={3} maxLength={TEXT_LIMIT} value={text.dislike_or_simplify} onChange={(event) => updateText("dislike_or_simplify", event.target.value)} />
+                    What did you dislike, or what should we simplify or remove?
+                    <span className="optional-label">Optional</span>
+                    <textarea
+                      rows={3}
+                      maxLength={TEXT_LIMIT}
+                      value={text.dislike_or_simplify}
+                      onChange={(event) => updateText("dislike_or_simplify", event.target.value)}
+                    />
                     <Counter value={text.dislike_or_simplify} />
                   </label>
 
                   <label className="full-width">
-                    If we make one improvement before full staff rollout, what should it be? <span aria-hidden="true">*</span>
-                    <textarea required rows={3} maxLength={TEXT_LIMIT} value={text.recommended_improvement} onChange={(event) => updateText("recommended_improvement", event.target.value)} />
+                    If we make one improvement before full staff rollout, what should it be?
+                    <span aria-hidden="true">*</span>
+                    <textarea
+                      required
+                      rows={3}
+                      maxLength={TEXT_LIMIT}
+                      value={text.recommended_improvement}
+                      onChange={(event) => updateText("recommended_improvement", event.target.value)}
+                    />
                     <Counter value={text.recommended_improvement} />
                   </label>
 
                   <label className="full-width">
                     How ready is TPP for full staff rollout? <span aria-hidden="true">*</span>
-                    <select required value={rolloutReadiness} onChange={(event) => setRolloutReadiness(event.target.value)}>
+                    <select
+                      required
+                      value={rolloutReadiness}
+                      onChange={(event) => setRolloutReadiness(event.target.value)}
+                    >
                       <option value="">Select</option>
                       <option value="ready_now">Ready now</option>
                       <option value="ready_minor_fixes">Ready with minor fixes</option>
@@ -318,8 +401,17 @@ export function PilotFeedbackExperience() {
 
                 {error && <p className="error-message" role="alert">{error}</p>}
                 <div className="pilot-feedback-actions">
-                  <button type="button" className="secondary" disabled={working} onClick={() => setDismissed(true)}>Remind me later</button>
-                  <button type="submit" className="primary" disabled={working}>{working ? "Submitting…" : "Submit Pilot feedback"}</button>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={working}
+                    onClick={() => setDismissed(true)}
+                  >
+                    Remind me later
+                  </button>
+                  <button type="submit" className="primary" disabled={working}>
+                    {working ? "Submitting…" : "Submit Pilot feedback"}
+                  </button>
                 </div>
               </form>
             )}
@@ -327,31 +419,50 @@ export function PilotFeedbackExperience() {
         </div>
       )}
 
-      {isPlatformAdmin && !shouldShowSurvey && (
-        <button type="button" className="pilot-feedback-owner-button" onClick={() => setShowResults(true)}>
+      {isPlatformAdmin && !shouldShowSurvey && !shouldShowThanks && (
+        <button
+          type="button"
+          className="pilot-feedback-owner-button"
+          onClick={() => setShowResults(true)}
+        >
           Pilot feedback{results.length ? ` (${results.length})` : ""}
         </button>
       )}
 
       {showResults && isPlatformAdmin && (
         <div className="pilot-feedback-backdrop" role="presentation">
-          <section className="pilot-feedback-modal pilot-feedback-results" role="dialog" aria-modal="true" aria-labelledby="pilot-feedback-results-title">
+          <section
+            className="pilot-feedback-modal pilot-feedback-results"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pilot-feedback-results-title"
+          >
             <div className="pilot-feedback-heading">
               <div>
                 <p className="eyebrow">Platform Owner</p>
                 <h2 id="pilot-feedback-results-title">Pilot feedback</h2>
                 <p>Adult professional/product feedback submitted before broader staff rollout.</p>
               </div>
-              <button type="button" className="secondary" onClick={() => setShowResults(false)}>Close</button>
+              <button type="button" className="secondary" onClick={() => setShowResults(false)}>
+                Close
+              </button>
             </div>
+
             {summary && (
               <div className="pilot-feedback-summary" aria-label="Pilot feedback summary">
                 <div><strong>{results.length}</strong><span>responses</span></div>
                 <div><strong>{summary.average.toFixed(1)}/5</strong><span>average usefulness</span></div>
-                <div><strong>{summary.timeSaved}/{results.length}</strong><span>report less planning time</span></div>
-                <div><strong>{summary.rolloutPositive}/{results.length}</strong><span>ready / minor fixes</span></div>
+                <div>
+                  <strong>{summary.timeSaved}/{results.length}</strong>
+                  <span>report less planning time</span>
+                </div>
+                <div>
+                  <strong>{summary.rolloutPositive}/{results.length}</strong>
+                  <span>ready / minor fixes</span>
+                </div>
               </div>
             )}
+
             {results.length === 0 ? (
               <div className="empty-state"><p>No Pilot feedback has been submitted yet.</p></div>
             ) : (
@@ -360,13 +471,22 @@ export function PilotFeedbackExperience() {
                   <article className="pilot-feedback-response" key={item.id}>
                     <div className="card-row">
                       <div><strong>{item.teacher_name}</strong><small>{item.school_name}</small></div>
-                      <span className="badge">{new Date(item.submitted_at).toLocaleString()}</span>
+                      <span className="badge">
+                        {new Date(item.submitted_at).toLocaleString()}
+                      </span>
                     </div>
-                    <p><strong>Usefulness:</strong> {item.overall_usefulness}/5 · <strong>Time:</strong> {TIME_LABELS[item.planning_time_change] ?? item.planning_time_change} · <strong>Rollout:</strong> {READINESS_LABELS[item.rollout_readiness] ?? item.rollout_readiness}</p>
+                    <p>
+                      <strong>Usefulness:</strong> {item.overall_usefulness}/5 · <strong>Time:</strong>{" "}
+                      {TIME_LABELS[item.planning_time_change] ?? item.planning_time_change} ·{" "}
+                      <strong>Rollout:</strong>{" "}
+                      {READINESS_LABELS[item.rollout_readiness] ?? item.rollout_readiness}
+                    </p>
                     <dl>
                       <div><dt>Most useful</dt><dd>{item.most_useful}</dd></div>
                       <div><dt>Biggest challenge</dt><dd>{item.biggest_challenge}</dd></div>
-                      {item.dislike_or_simplify && <div><dt>Simplify / remove</dt><dd>{item.dislike_or_simplify}</dd></div>}
+                      {item.dislike_or_simplify && (
+                        <div><dt>Simplify / remove</dt><dd>{item.dislike_or_simplify}</dd></div>
+                      )}
                       <div><dt>One improvement</dt><dd>{item.recommended_improvement}</dd></div>
                     </dl>
                   </article>
