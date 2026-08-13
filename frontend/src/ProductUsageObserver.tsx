@@ -55,7 +55,10 @@ function activeHeartbeatEvent(): ProductUsageEventKey | null {
   const label = (active?.textContent ?? "").replace(/\s+/g, " ").trim();
   if (label === "Course Setup") return "active_course_setup_30s";
   if (label === "Weekly plan") return "active_weekly_planning_30s";
-  if (label === "Friday validation") return "active_friday_closeout_30s";
+  if (label === "Friday validation") {
+    if (document.querySelector(".ai-reflection-panel")) return "active_reflection_30s";
+    return "active_friday_closeout_30s";
+  }
   return null;
 }
 

@@ -67,14 +67,22 @@ class ProductOwnerActiveTimeRead(BaseModel):
     active_time_teachers: int = 0
     course_setup_total_seconds: int = 0
     weekly_planning_total_seconds: int = 0
+    reflection_total_seconds: int = 0
     friday_closeout_total_seconds: int = 0
+    other_friday_closeout_total_seconds: int = 0
     median_course_setup_seconds_per_teacher: int = 0
     median_weekly_planning_seconds_per_teacher_week: int = 0
+    median_reflection_seconds_per_teacher_week: int = 0
     median_friday_closeout_seconds_per_teacher_week: int = 0
+    median_other_friday_closeout_seconds_per_teacher_week: int = 0
     onboarding_weekly_planning_teacher_weeks: int = 0
     median_onboarding_weekly_planning_seconds: int = 0
     steady_state_weekly_planning_teacher_weeks: int = 0
     median_steady_state_weekly_planning_seconds: int = 0
+    onboarding_reflection_teacher_weeks: int = 0
+    median_onboarding_reflection_seconds: int = 0
+    steady_state_reflection_teacher_weeks: int = 0
+    median_steady_state_reflection_seconds: int = 0
 
 
 def _client(identity: AuthenticatedTeacher, settings: Settings) -> SupabaseRestClient:

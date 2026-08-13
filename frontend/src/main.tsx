@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BaselineSurveyExperience } from "./BaselineSurveyExperience";
+import { OwnerActiveTimeBreakout } from "./OwnerActiveTimeBreakout";
 import { PilotFeedbackExperience } from "./PilotFeedbackExperience";
 import { ProductUsageObserver } from "./ProductUsageObserver";
 import { TeacherPlanningShell } from "./TeacherPlanningShell";
@@ -12,5 +13,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <BaselineSurveyExperience />
     <PilotFeedbackExperience />
     <ProductUsageObserver />
+    <OwnerActiveTimeBreakout />
   </React.StrictMode>,
 );
