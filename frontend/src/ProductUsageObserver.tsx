@@ -11,10 +11,19 @@ const usageSupabase = supabaseUrl && supabaseAnonKey
   : null;
 
 const PENDING_WINDOW_MS = 20_000;
+const ACTIVE_HEARTBEAT_MS = 30_000;
+const ACTIVE_IDLE_CUTOFF_MS = 60_000;
+const ACTIVE_LEASE_MS = 45_000;
+const ACTIVE_LEASE_KEY = "tpp:active-time-leader";
 
 type PendingAction = {
   key: "curriculum_upload" | "curriculum_build" | "curriculum_reuse" | "lesson_pdf" | "packet_pdf";
   at: number;
+};
+
+type ActiveLease = {
+  tabId: string;
+  expiresAt: number;
 };
 
 function requestUrl(input: RequestInfo | URL): URL | null {
@@ -39,10 +48,43 @@ function buttonText(target: EventTarget | null): { button: HTMLButtonElement; te
   return { button, text: (button.textContent ?? "").replace(/\s+/g, " ").trim() };
 }
 
+function activeHeartbeatEvent(): ProductUsageEventKey | null {
+  if (document.visibilityState !== "visible") return null;
+  if (document.querySelector(".baseline-backdrop, .pilot-feedback-backdrop")) return null;
+  const active = document.querySelector<HTMLButtonElement>(".workflow-nav button.active");
+  const label = (active?.textContent ?? "").replace(/\s+/g, " ").trim();
+  if (label === "Course Setup") return "active_course_setup_30s";
+  if (label === "Weekly plan") return "active_weekly_planning_30s";
+  if (label === "Friday validation") return "active_friday_closeout_30s";
+  return null;
+}
+
+function readLease(): ActiveLease | null {
+  try {
+    const raw = window.localStorage.getItem(ACTIVE_LEASE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<ActiveLease>;
+    if (typeof parsed.tabId !== "string" || typeof parsed.expiresAt !== "number") return null;
+    return { tabId: parsed.tabId, expiresAt: parsed.expiresAt };
+  } catch {
+    return null;
+  }
+}
+
+function writeLease(lease: ActiveLease): void {
+  try {
+    window.localStorage.setItem(ACTIVE_LEASE_KEY, JSON.stringify(lease));
+  } catch {
+    // Active-time telemetry is best-effort and must never interrupt teacher work.
+  }
+}
+
 export function ProductUsageObserver() {
   const [session, setSession] = useState<Session | null>(null);
   const tokenRef = useRef("");
   const pendingRef = useRef<PendingAction | null>(null);
+  const lastInteractionRef = useRef(0);
+  const tabIdRef = useRef(`tpp-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
   useEffect(() => {
     tokenRef.current = session?.access_token ?? "";
@@ -73,6 +115,26 @@ export function ProductUsageObserver() {
       }).catch(() => {
         // Passive Product Owner telemetry must never interrupt teacher work.
       });
+    };
+
+    const claimActiveLease = (now: number) => {
+      writeLease({ tabId: tabIdRef.current, expiresAt: now + ACTIVE_LEASE_MS });
+    };
+
+    const ownsActiveLease = (now: number): boolean => {
+      const lease = readLease();
+      if (!lease || lease.expiresAt <= now || lease.tabId === tabIdRef.current) {
+        claimActiveLease(now);
+        return true;
+      }
+      return false;
+    };
+
+    const markInteraction = () => {
+      if (document.visibilityState !== "visible") return;
+      const now = Date.now();
+      lastInteractionRef.current = now;
+      claimActiveLease(now);
     };
 
     const pending = (key: PendingAction["key"]): boolean => {
@@ -112,7 +174,10 @@ export function ProductUsageObserver() {
         pendingRef.current = { key: "lesson_pdf", at: Date.now() };
         return;
       }
-      if ((text === "View completed packet" || text === "View packet") && context.includes("Completed Weekly Packet")) {
+      if (
+        (text === "View completed packet" || text === "View packet")
+        && context.includes("Completed Weekly Packet")
+      ) {
         pendingRef.current = { key: "packet_pdf", at: Date.now() };
       }
     };
@@ -155,9 +220,30 @@ export function ProductUsageObserver() {
       return response;
     };
 
+    const activeInterval = window.setInterval(() => {
+      const now = Date.now();
+      if (!tokenRef.current) return;
+      if (now - lastInteractionRef.current > ACTIVE_IDLE_CUTOFF_MS) return;
+      const eventKey = activeHeartbeatEvent();
+      if (!eventKey || !ownsActiveLease(now)) return;
+      record(eventKey);
+      claimActiveLease(now);
+    }, ACTIVE_HEARTBEAT_MS);
+
     document.addEventListener("click", onClick, true);
+    document.addEventListener("pointerdown", markInteraction, true);
+    document.addEventListener("keydown", markInteraction, true);
+    document.addEventListener("input", markInteraction, true);
+    document.addEventListener("change", markInteraction, true);
+    document.addEventListener("scroll", markInteraction, true);
     return () => {
+      window.clearInterval(activeInterval);
       document.removeEventListener("click", onClick, true);
+      document.removeEventListener("pointerdown", markInteraction, true);
+      document.removeEventListener("keydown", markInteraction, true);
+      document.removeEventListener("input", markInteraction, true);
+      document.removeEventListener("change", markInteraction, true);
+      document.removeEventListener("scroll", markInteraction, true);
       window.fetch = originalFetch;
     };
   }, []);
