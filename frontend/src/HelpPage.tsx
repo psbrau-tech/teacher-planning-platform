@@ -296,6 +296,15 @@ export function HelpPage({ roles }: Props) {
               not prove a feature was never used. Passive product telemetry records bounded event
               keys only and does not copy teacher planning/reflection text into the telemetry table.
             </p>
+            <p>
+              <strong>Active TPP interaction time</strong> is a Platform Owner product-effectiveness
+              measure, not an administrator or teacher-performance measure. TPP estimates it with
+              fixed 30-second activity heartbeats only while the TPP tab is visible and has recent
+              interaction; hidden or idle tabs stop counting. The first 14 days of measured use for
+              each teacher are reported as onboarding/familiarization and later use as steady state.
+              Active TPP interaction time is not total teacher planning time and is not exposed to
+              school or district administrators.
+            </p>
           </div>
         </section>
       )}
