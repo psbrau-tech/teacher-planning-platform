@@ -44,13 +44,17 @@ Secrets such as API keys, database credentials, and service-role credentials mus
 
 Runtime secrets are intended to be delivered through protected environment/secret mechanisms. Service-role or elevated database credentials must remain isolated from normal browser execution.
 
-## 6. Logging and monitoring
+## 6. Logging, monitoring, and product telemetry
 
-TPP logs bounded operational information necessary for reliability, security, troubleshooting, and auditability. The controlled pilot AWS application log group is configured for 30-day retention.
+TPP logs bounded operational information necessary for reliability, security, troubleshooting, auditability, and approved product-effectiveness measurement. The controlled pilot AWS application log group is configured for 30-day retention.
 
 Application and AI logging must not intentionally include passwords, access tokens, API keys, service-role credentials, or prohibited student data. AI usage/cost records may contain bounded metadata such as model identifier, token/usage counts, estimated cost, request status, and educator decision state.
 
-A final production inventory of audit logs, authentication logs, database logs, infrastructure logs, AI operational records, and retention periods is a release requirement.
+TPP may record bounded first-party product-usage event keys. The controlled pilot also uses conservative active-interaction telemetry based on fixed 30-second heartbeat events while the TPP tab is visible and recently active. Current active-time categories include Course Setup, Weekly Planning, Teacher Reflection, and Friday Closeout. Hidden or idle tabs stop counting, and a short-lived browser-storage lease is used to reduce double-counting across simultaneously open TPP tabs.
+
+The active-time telemetry does not capture keystroke contents, mouse coordinates, planning/reflection text, or continuous login duration. Duration reporting is restricted to the Platform Owner product-analysis role and is not exposed through ordinary school/district administrator reporting. It is intended to evaluate product workflow efficiency, not teacher performance.
+
+A final production inventory of audit logs, authentication logs, database logs, infrastructure logs, AI operational records, product-usage telemetry, and retention periods is a release requirement.
 
 ## 7. AI data handling
 
@@ -76,7 +80,7 @@ Changes affecting the legal/privacy/security boundary must be checked against `d
 
 TPP should collect and retain only information reasonably necessary for educator planning, account administration, reliability, security, auditability, contractual obligations, and approved product improvement.
 
-The no-student-data design materially reduces the sensitivity and regulatory complexity of the service. It does not eliminate the need to protect educator account information, professional content, credentials, or institutional confidential information.
+Product telemetry should favor bounded event keys and aggregate reporting over capture of user-entered content or high-granularity behavioral data. The no-student-data design materially reduces the sensitivity and regulatory complexity of the service. It does not eliminate the need to protect educator account information, professional content, credentials, or institutional confidential information.
 
 ## 11. Data location and providers
 
@@ -86,7 +90,7 @@ The pilot application runtime is in AWS `us-east-2`. Supabase and OpenAI process
 
 The pilot AWS application-log retention period is 30 days. Other data categories use service-specific retention until the final production retention schedule is approved and implemented.
 
-The final schedule must address at least active account data, planning content, audit history, deleted accounts, AI operational metadata, application logs, database backups, export artifacts retained server-side if any, and incident/legal holds.
+The final schedule must address at least active account data, planning content, audit history, deleted accounts, AI operational metadata, product-usage/active-time telemetry, application logs, database backups, export artifacts retained server-side if any, and incident/legal holds.
 
 ## 13. Vulnerability and incident handling
 
@@ -113,4 +117,4 @@ Customers and users are responsible for:
 
 ## Production-verification gate
 
-Before external publication, verify: production AWS region/services; TLS and certificate state; Supabase project region and backup retention; RLS/authorization posture; authentication providers; OpenAI account/data-sharing configuration; secret path; log inventory and retention; backup/restore behavior; deletion procedures; incident contacts; vulnerability-reporting process; and all material subprocessors.
+Before external publication, verify: production AWS region/services; TLS and certificate state; Supabase project region and backup retention; RLS/authorization posture; authentication providers; OpenAI account/data-sharing configuration; secret path; log/telemetry inventory and retention; browser-storage inventory; backup/restore behavior; deletion procedures; incident contacts; vulnerability-reporting process; and all material subprocessors.
