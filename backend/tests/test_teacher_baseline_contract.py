@@ -12,7 +12,6 @@ PILOT_CSS = ROOT / "frontend" / "src" / "pilot-feedback.css"
 
 def test_baseline_storage_is_governed_and_pre_tpp_only() -> None:
     source = MIGRATION.read_text(encoding="utf-8")
-
     assert "create table public.teacher_baseline_responses" in source
     assert "teacher-baseline-2026-08" in source
     assert "planning_time_before" in source
@@ -31,7 +30,6 @@ def test_baseline_storage_is_governed_and_pre_tpp_only() -> None:
 def test_baseline_api_is_teacher_write_and_owner_read() -> None:
     api = API.read_text(encoding="utf-8")
     main = MAIN_API.read_text(encoding="utf-8")
-
     assert 'router = APIRouter(prefix="/api/v1/baseline"' in api
     assert "Depends(require_teacher)" in api
     assert "Depends(require_platform_admin)" in api
@@ -44,7 +42,6 @@ def test_baseline_api_is_teacher_write_and_owner_read() -> None:
 def test_teacher_baseline_explicitly_anchors_answers_before_tpp() -> None:
     source = SURVEY.read_text(encoding="utf-8")
     main = FRONTEND_MAIN.read_text(encoding="utf-8")
-
     assert "Think about your planning process before TPP" in source
     assert "normal experience before you began using TPP" in source
     assert "Even if you have already used TPP this week" in source
@@ -58,8 +55,9 @@ def test_teacher_baseline_explicitly_anchors_answers_before_tpp() -> None:
 def test_owner_reporting_is_consolidated_away_from_admin_and_floating_launchers() -> None:
     administration = ADMINISTRATION.read_text(encoding="utf-8")
     pilot_css = PILOT_CSS.read_text(encoding="utf-8")
-
-    assert ">\n            Owner\n" in administration
+    assert 'aria-selected={activeTab === "owner"}' in administration
+    assert 'onClick={() => setActiveTab("owner")}' in administration
+    assert ">Owner</button>" in administration
     assert "Product and Pilot intelligence" in administration
     assert "<ProductOwnerDashboardExperience />" in administration
     assert "<PilotFeedbackResultsPanel" in administration
