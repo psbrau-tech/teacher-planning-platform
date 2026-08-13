@@ -13,6 +13,7 @@ type Usage = {
   period_end: string;
   teachers_authorized: number;
   teachers_authenticated: number;
+  teachers_pilot_cohort: number;
   teachers_active: number;
   classes_configured: number;
   shared_curriculum_teachers: number;
@@ -206,19 +207,15 @@ export function ProductOwnerDashboardExperience() {
     if (!usage) return [] as string[];
     const items: string[] = [];
 
-    const authenticationRate = usage.teachers_authorized
-      ? Math.round((usage.teachers_authenticated / usage.teachers_authorized) * 100)
-      : 0;
     items.push(
-      `${authenticationRate}% of authorized teachers have authenticated into TPP at least once.`,
+      `${usage.teachers_pilot_cohort} authenticated teacher${usage.teachers_pilot_cohort === 1 ? " is" : "s are"} in the pre-rollout Pilot cohort; ${usage.teachers_active} teacher${usage.teachers_active === 1 ? " showed" : "s showed"} measurable TPP activity in this selected period.`,
     );
 
-    const activeRate = usage.teachers_authenticated
-      ? Math.round((usage.teachers_active / usage.teachers_authenticated) * 100)
-      : 0;
-    items.push(
-      `${activeRate}% of authenticated teachers showed measurable TPP activity in this period.`,
-    );
+    if (usage.teachers_authorized > usage.teachers_authenticated) {
+      items.push(
+        `${usage.teachers_authenticated} of ${usage.teachers_authorized} currently authorized teacher accounts have authenticated. Authorized access may include staff who have not yet been asked to begin using TPP.`,
+      );
+    }
 
     const pathways = [
       { label: "Excel pacing", teachers: usage.curriculum_excel_teachers },
@@ -338,7 +335,7 @@ export function ProductOwnerDashboardExperience() {
               <strong>Interpretation note.</strong> Plan, AI, and submission counts use existing
               authoritative TPP records. Curriculum-pathway and PDF-view interaction telemetry
               begins when this release is deployed, so earlier zeros do not mean a feature was
-              never used.
+              never used. Authorized access can include staff who are not yet in the active rollout.
             </div>
 
             {error && <p className="error-message" role="alert">{error}</p>}
@@ -351,14 +348,17 @@ export function ProductOwnerDashboardExperience() {
                 <section className="owner-section owner-onboarding">
                   <div className="section-heading compact">
                     <div>
-                      <p className="eyebrow">Onboarding funnel</p>
+                      <p className="eyebrow">Onboarding and Pilot scope</p>
                       <h3>Authorized → authenticated → active</h3>
                     </div>
                   </div>
                   <div className="owner-summary-grid" aria-label="Product adoption summary">
                     <Metric value={usage.teachers_authorized} label="authorized teachers" />
                     <Metric value={usage.teachers_authenticated} label="authenticated teachers" />
+                    <Metric value={usage.teachers_pilot_cohort} label="pre-rollout Pilot cohort" />
                     <Metric value={usage.teachers_active} label="active in selected period" />
+                  </div>
+                  <div className="owner-summary-grid compact-grid">
                     <Metric value={usage.classes_configured} label="active classes configured" />
                   </div>
                 </section>
