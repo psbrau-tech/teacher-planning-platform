@@ -127,7 +127,11 @@ def pilot_feedback_status(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> PilotFeedbackStatusRead:
     try:
-        payload = _client(identity, settings).request("POST", "rpc/pilot_feedback_status", payload={})
+        payload = _client(identity, settings).request(
+            "POST",
+            "rpc/pilot_feedback_status",
+            payload={},
+        )
     except SupabaseRestError as error:
         raise _feedback_error(error) from error
     rows = _records(payload)
