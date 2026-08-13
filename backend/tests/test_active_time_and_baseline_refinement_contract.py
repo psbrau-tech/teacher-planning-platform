@@ -97,7 +97,10 @@ def test_active_time_is_presented_as_product_measurement_not_teacher_evaluation(
 
     assert "Planning vs reflection" in breakout
     assert "Weekly Planning includes the planning workflow and AI-assisted" in breakout
-    assert "Teacher Reflection measures the required 12-prompt reflection step separately" in breakout
+    assert (
+        "Teacher Reflection measures the required 12-prompt reflection step separately"
+        in breakout
+    )
     assert "Other Friday Closeout covers validation, packet review" in breakout
     assert "median Teacher Reflection active minutes" in breakout
     assert "median other Friday Closeout active minutes" in breakout
