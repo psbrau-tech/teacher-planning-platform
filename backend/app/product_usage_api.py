@@ -24,7 +24,8 @@ class ProductUsageRead(BaseModel):
 class ProductOwnerUsageRead(BaseModel):
     period_start: date
     period_end: date
-    teachers_configured: int = 0
+    teachers_authorized: int = 0
+    teachers_authenticated: int = 0
     teachers_active: int = 0
     classes_configured: int = 0
     shared_curriculum_teachers: int = 0
