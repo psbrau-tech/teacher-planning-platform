@@ -28,6 +28,14 @@
   gap: 1rem;
 }
 
+.owner-tab > .section-heading { order: 0; }
+.owner-tab > .error-message { order: 0; }
+.owner-tab > section:nth-of-type(4) { order: 1; }
+.owner-tab > .owner-active-time-breakout { order: 2; }
+.owner-tab > section:nth-of-type(1) { order: 3; }
+.owner-tab > section:nth-of-type(2) { order: 4; }
+.owner-tab > section:nth-of-type(3) { order: 5; }
+
 .owner-tool-grid {
   align-items: stretch;
 }
@@ -57,6 +65,8 @@
 }
 
 .baseline-owner-comments {
+  display: grid;
+  gap: .75rem;
   padding-top: .75rem;
   border-top: 1px solid #e4e8ef;
 }
