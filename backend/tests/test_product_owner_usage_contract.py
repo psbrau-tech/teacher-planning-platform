@@ -22,17 +22,22 @@ def test_product_usage_events_are_bounded_and_content_free() -> None:
     assert "record_product_usage_event" in source
 
 
-def test_product_owner_summary_uses_authoritative_records_and_platform_role() -> None:
+def test_product_owner_summary_uses_authoritative_records_and_onboarding_funnel() -> None:
     source = MIGRATION.read_text(encoding="utf-8")
     api = API.read_text(encoding="utf-8")
     main = MAIN_API.read_text(encoding="utf-8")
 
+    assert "private.pilot_access_allowlist" in source
+    assert "teachers_authorized" in source
+    assert "teachers_authenticated" in source
     assert "weekly_plan_snapshots" in source
     assert "ai_usage_events" in source
     assert "ai_suggestion_decisions" in source
     assert "weekly_plan_submissions" in source
     assert "private.has_role('platform_admin'" in source
     assert "Depends(require_platform_admin)" in api
+    assert "teachers_authorized: int = 0" in api
+    assert "teachers_authenticated: int = 0" in api
     assert '"/api/v1/product-owner/usage"' in api
     assert "app.include_router(product_usage_router)" in main
 
@@ -56,6 +61,10 @@ def test_product_owner_dashboard_focuses_on_adoption_and_value_signals() -> None
     main = FRONTEND_MAIN.read_text(encoding="utf-8")
 
     assert "what teachers are actually using" in source
+    assert "Authorized → authenticated → active" in source
+    assert "authorized teachers" in source
+    assert "authenticated teachers" in source
+    assert "active in selected period" in source
     assert "Pilot to date" in source
     assert "Excel pacing" in source
     assert "Build in TPP" in source
