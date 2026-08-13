@@ -7,6 +7,9 @@ from app.identity_api import PilotFeedbackWrite
 
 ROOT = Path(__file__).resolve().parents[2]
 MIGRATION = ROOT / "supabase" / "migrations" / "20260812214500_pilot_feedback_survey.sql"
+COHORT_MIGRATION = (
+    ROOT / "supabase" / "migrations" / "20260812214600_pilot_feedback_cohort_scope.sql"
+)
 FRONTEND = ROOT / "frontend" / "src" / "PilotFeedbackExperience.tsx"
 MAIN = ROOT / "frontend" / "src" / "main.tsx"
 IDENTITY_API = ROOT / "backend" / "app" / "identity_api.py"
@@ -35,7 +38,7 @@ def test_pilot_feedback_payload_has_bounded_professional_fields() -> None:
 
 
 def test_survey_uses_preferred_cycle_trigger_and_blocked_user_fallback() -> None:
-    source = MIGRATION.read_text(encoding="utf-8")
+    source = COHORT_MIGRATION.read_text(encoding="utf-8")
 
     assert "date '2026-08-21'" in source
     assert "date '2026-08-24'" in source
@@ -45,7 +48,8 @@ def test_survey_uses_preferred_cycle_trigger_and_blocked_user_fallback() -> None
     assert "profile_roles" in source
     assert "role = 'teacher'" in source
     assert "weekly_plan_snapshots" in source
-    assert "hard-coded staff list" in source
+    assert "g.created_at < timestamptz '2026-08-21 05:00:00+00'" in source
+    assert "configured at least one teaching assignment" not in source
     assert "@anniston" not in source.lower()
 
 
