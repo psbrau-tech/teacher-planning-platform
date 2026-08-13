@@ -1,0 +1,37 @@
+.baseline-bar-chart {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-color, #d8e0ea);
+}
+
+.baseline-bar-chart h4 {
+  margin: 0 0 .75rem;
+}
+
+.baseline-bar-chart > div {
+  display: grid;
+  grid-template-columns: minmax(13rem, 1.4fr) minmax(12rem, 3fr) auto;
+  align-items: center;
+  gap: .75rem;
+  margin: .55rem 0;
+}
+
+.baseline-bar-chart meter {
+  width: 100%;
+  min-height: 1rem;
+}
+
+.baseline-bar-chart strong {
+  min-width: 3.5rem;
+  text-align: right;
+}
+
+@media (max-width: 720px) {
+  .baseline-bar-chart > div {
+    grid-template-columns: 1fr auto;
+  }
+
+  .baseline-bar-chart meter {
+    grid-column: 1 / -1;
+  }
+}
