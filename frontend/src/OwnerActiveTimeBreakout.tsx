@@ -23,10 +23,12 @@ type ActiveTime = {
   weekly_planning_total_seconds: number;
   reflection_total_seconds: number;
   friday_closeout_total_seconds: number;
+  other_friday_closeout_total_seconds: number;
   median_course_setup_seconds_per_teacher: number;
   median_weekly_planning_seconds_per_teacher_week: number;
   median_reflection_seconds_per_teacher_week: number;
   median_friday_closeout_seconds_per_teacher_week: number;
+  median_other_friday_closeout_seconds_per_teacher_week: number;
   onboarding_weekly_planning_teacher_weeks: number;
   median_onboarding_weekly_planning_seconds: number;
   steady_state_weekly_planning_teacher_weeks: number;
@@ -183,8 +185,8 @@ export function OwnerActiveTimeBreakout() {
           <p className="supporting">
             Platform Owner only. Weekly Planning includes the planning workflow and AI-assisted
             planning. Teacher Reflection measures the required 12-prompt reflection step separately.
-            Friday Closeout excludes reflection and covers validation, packet review, and other
-            closeout work. These are active TPP interaction estimates, not total teacher planning time.
+            Other Friday Closeout covers validation, packet review, and closeout work outside the
+            reflection step. These are active TPP interaction estimates, not total teacher planning time.
           </p>
         </div>
       </div>
@@ -231,7 +233,7 @@ export function OwnerActiveTimeBreakout() {
               detail="per teacher-week"
             />
             <Metric
-              value={activeMinutes(activeTime.median_friday_closeout_seconds_per_teacher_week)}
+              value={activeMinutes(activeTime.median_other_friday_closeout_seconds_per_teacher_week)}
               label="median other Friday Closeout active minutes"
               detail="per teacher-week · reflection excluded"
             />
@@ -268,7 +270,8 @@ export function OwnerActiveTimeBreakout() {
           <p className="guidance-text">
             Keep planning and reflection separate when interpreting workload. A longer reflection
             period may reflect the required teacher-authored professional thinking rather than
-            friction in TPP's planning workflow. School and district administrators do not receive
+            friction in TPP's planning workflow. The existing total Friday-closeout metric still
+            includes reflection for continuity. School and district administrators do not receive
             these duration metrics.
           </p>
         </>
