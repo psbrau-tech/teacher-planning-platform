@@ -106,10 +106,11 @@ export function AdminSubmissionPanel({ accessToken, roles, disabled = false }: P
     [rows, schoolFilter],
   );
   const filteredRows = useMemo(() => {
+    if (selectedTeacherIds.size === 0) return [];
     const courseSearch = courseFilter.trim().toLowerCase();
     return rows.filter((row) => {
       if (schoolFilter && row.school_id !== schoolFilter) return false;
-      if (selectedTeacherIds.size && !selectedTeacherIds.has(row.teacher_id)) return false;
+      if (!selectedTeacherIds.has(row.teacher_id)) return false;
       if (courseSearch && !(row.course_name ?? "").toLowerCase().includes(courseSearch)) return false;
       return true;
     });
@@ -170,6 +171,8 @@ export function AdminSubmissionPanel({ accessToken, roles, disabled = false }: P
 
   function selectWeek(value: string) {
     setWeekStart(mondayForIso(value));
+    setSelectedTeacherIds(new Set());
+    setSelectedPlanKeys(new Set());
   }
 
   function toggleTeacher(teacherId: string) {
@@ -376,7 +379,7 @@ export function AdminSubmissionPanel({ accessToken, roles, disabled = false }: P
         <div>
           <p className="eyebrow">{scopeLabel}</p>
           <h2>Weekly submissions</h2>
-          <p className="supporting">Each Monday-starting week has two administrative records: the lesson plan submitted before instruction and the completed packet after Friday reflection.</p>
+          <p className="supporting">Choose the week and one or more teachers before TPP builds the submission report. Each Monday-starting week has two administrative records: the lesson plan submitted before instruction and the completed packet after Friday reflection.</p>
         </div>
       </div>
 
@@ -387,28 +390,34 @@ export function AdminSubmissionPanel({ accessToken, roles, disabled = false }: P
           <button type="button" className="secondary" disabled={disabled || loading} onClick={() => selectWeek(addDays(weekStart, 7))}>Next week →</button>
         </div>
         {canFilterSchools && <label>School<select value={schoolFilter} onChange={(event) => { setSchoolFilter(event.target.value); setSelectedTeacherIds(new Set()); }}><option value="">All governed schools</option>{schools.map(([schoolId, schoolName]) => <option value={schoolId} key={schoolId}>{schoolName}</option>)}</select></label>}
-        <details ref={teacherFilterRef} className="teacher-multi-filter"><summary>{selectedTeacherIds.size ? `${selectedTeacherIds.size} teacher${selectedTeacherIds.size === 1 ? "" : "s"} selected` : "All teachers"}</summary><div className="teacher-filter-options"><div className="teacher-filter-actions"><button type="button" className="link-button" onClick={() => setSelectedTeacherIds(new Set(teachers.map(([id]) => id)))}>Select all</button><button type="button" className="link-button" onClick={() => setSelectedTeacherIds(new Set())}>Clear</button></div>{teachers.map(([teacherId, teacherName]) => <label className="check" key={teacherId}><input type="checkbox" checked={selectedTeacherIds.has(teacherId)} onChange={() => toggleTeacher(teacherId)} />{teacherName}</label>)}</div></details>
+        <details ref={teacherFilterRef} className="teacher-multi-filter"><summary>{selectedTeacherIds.size ? `${selectedTeacherIds.size} teacher${selectedTeacherIds.size === 1 ? "" : "s"} selected` : "Select teachers"}</summary><div className="teacher-filter-options"><div className="teacher-filter-actions"><button type="button" className="link-button" onClick={() => setSelectedTeacherIds(new Set(teachers.map(([id]) => id)))}>Select all</button><button type="button" className="link-button" onClick={() => setSelectedTeacherIds(new Set())}>Clear</button></div>{teachers.map(([teacherId, teacherName]) => <label className="check" key={teacherId}><input type="checkbox" checked={selectedTeacherIds.has(teacherId)} onChange={() => toggleTeacher(teacherId)} />{teacherName}</label>)}</div></details>
         <label>Course search<input type="search" value={courseFilter} placeholder="Filter courses" onChange={(event) => setCourseFilter(event.target.value)} /></label>
         <button className="secondary" disabled={disabled || loading} onClick={() => void load()}>Refresh submissions</button>
       </div>
 
       {error && <p className="error-message" role="alert">{error}</p>}
-      <section className="summary" aria-label="Weekly submission summary"><div><strong>{summary.plans}</strong><span>lesson plans submitted</span></div><div><strong>{summary.completed}</strong><span>completed packets</span></div><div><strong>{summary.pendingPlans}</strong><span>lesson plans pending</span></div><div><strong>{summary.pendingCloseout}</strong><span>Friday closeouts pending</span></div></section>
-      <div className="submission-mode-bar"><strong>Bulk review:</strong><div className="button-row"><button className={reviewMode === "lesson_plan" ? "primary" : "secondary"} onClick={() => changeReviewMode("lesson_plan")}>Upcoming lesson plans</button><button className={reviewMode === "completed_packet" ? "primary" : "secondary"} onClick={() => changeReviewMode("completed_packet")}>Completed weekly packets</button></div><span>Select individual rows below or select all filtered records for this review type.</span></div>
-      {selectedRows.length > 0 && <div className="bulk-review-bar" role="region" aria-label="Selected submissions"><strong>{selectedRows.length} {modeLabel(reviewMode)}{selectedRows.length === 1 ? "" : "s"} selected</strong><div className="button-row"><button className="secondary" disabled={disabled || detailLoading} onClick={() => void reviewSelectedPlans()}>{detailLoading ? "Preparing selected PDFs…" : "Review selected PDFs"}</button><button className="secondary" disabled={disabled || detailLoading} onClick={() => void downloadSelectedPlans()}>Download selected PDF</button><button className="link-button" onClick={() => setSelectedPlanKeys(new Set())}>Clear selection</button></div></div>}
-
-      {filteredRows.length === 0 && !loading ? (
-        <div className="empty-state"><p>No governed teacher-course records match the selected week and filters.</p></div>
+      {selectedTeacherIds.size === 0 ? (
+        <div className="guidance-card"><strong>Select one or more teachers to build the weekly submission report.</strong></div>
       ) : (
-        <div className="submission-table" role="region" aria-label="Weekly submission status" tabIndex={0}>
-          <table>
-            <thead><tr><th className="selection-column"><label className="sr-only" htmlFor="select-all-submitted">Select all filtered {modeLabel(reviewMode)}s</label><input id="select-all-submitted" type="checkbox" checked={allFilteredSelected} disabled={!selectableFilteredRows.length} onChange={toggleAllFiltered} /></th><th>School</th><th>Teacher</th><th>Course</th><th>Upcoming lesson plan</th><th>Completed weekly packet</th></tr></thead>
-            <tbody>{filteredRows.map((row) => {
-              const selectable = Boolean(row.assignment_id && revisionFor(row, reviewMode));
-              return <tr key={`${row.school_id}-${row.teacher_id}-${row.assignment_id ?? "none"}`}><td className="selection-column"><input type="checkbox" aria-label={`Select ${row.teacher_name} ${row.course_name ?? "submission"} for ${modeLabel(reviewMode)} review`} checked={selectedPlanKeys.has(rowKey(row))} disabled={!selectable} onChange={() => togglePlan(row)} /></td><td>{row.school_name}</td><td>{row.teacher_name}</td><td>{row.course_name ?? "—"}</td><td>{row.lesson_plan_revision ? <div className="submission-artifact"><span className="status">Submitted · Rev {row.lesson_plan_revision}</span><small>{row.lesson_plan_submitted_at ? new Date(row.lesson_plan_submitted_at).toLocaleString() : ""}</small><button className="link-button" disabled={disabled || detailLoading} onClick={() => void viewSubmittedPlan(row, "lesson_plan")}>View lesson plan</button></div> : <span className="badge">Not submitted</span>}</td><td>{row.completed_packet_revision ? <div className="submission-artifact"><span className="status">Completed · Rev {row.completed_packet_revision}</span><small>{row.completed_packet_submitted_at ? new Date(row.completed_packet_submitted_at).toLocaleString() : ""}</small><button className="link-button" disabled={disabled || detailLoading} onClick={() => void viewSubmittedPlan(row, "completed_packet")}>View completed packet</button></div> : <span className="badge">Awaiting Friday closeout</span>}</td></tr>;
-            })}</tbody>
-          </table>
-        </div>
+        <>
+          <section className="summary" aria-label="Weekly submission summary"><div><strong>{summary.plans}</strong><span>lesson plans submitted</span></div><div><strong>{summary.completed}</strong><span>completed packets</span></div><div><strong>{summary.pendingPlans}</strong><span>lesson plans pending</span></div><div><strong>{summary.pendingCloseout}</strong><span>Friday closeouts pending</span></div></section>
+          <div className="submission-mode-bar"><strong>Bulk review:</strong><div className="button-row"><button className={reviewMode === "lesson_plan" ? "primary" : "secondary"} onClick={() => changeReviewMode("lesson_plan")}>Upcoming lesson plans</button><button className={reviewMode === "completed_packet" ? "primary" : "secondary"} onClick={() => changeReviewMode("completed_packet")}>Completed weekly packets</button></div><span>Select individual rows below or select all filtered records for this review type.</span></div>
+          {selectedRows.length > 0 && <div className="bulk-review-bar" role="region" aria-label="Selected submissions"><strong>{selectedRows.length} {modeLabel(reviewMode)}{selectedRows.length === 1 ? "" : "s"} selected</strong><div className="button-row"><button className="secondary" disabled={disabled || detailLoading} onClick={() => void reviewSelectedPlans()}>{detailLoading ? "Preparing selected PDFs…" : "Review selected PDFs"}</button><button className="secondary" disabled={disabled || detailLoading} onClick={() => void downloadSelectedPlans()}>Download selected PDF</button><button className="link-button" onClick={() => setSelectedPlanKeys(new Set())}>Clear selection</button></div></div>}
+
+          {filteredRows.length === 0 && !loading ? (
+            <div className="empty-state"><p>No governed teacher-course records match the selected week and teachers.</p></div>
+          ) : (
+            <div className="submission-table" role="region" aria-label="Weekly submission status" tabIndex={0}>
+              <table>
+                <thead><tr><th className="selection-column"><label className="sr-only" htmlFor="select-all-submitted">Select all filtered {modeLabel(reviewMode)}s</label><input id="select-all-submitted" type="checkbox" checked={allFilteredSelected} disabled={!selectableFilteredRows.length} onChange={toggleAllFiltered} /></th><th>School</th><th>Teacher</th><th>Course</th><th>Upcoming lesson plan</th><th>Completed weekly packet</th></tr></thead>
+                <tbody>{filteredRows.map((row) => {
+                  const selectable = Boolean(row.assignment_id && revisionFor(row, reviewMode));
+                  return <tr key={`${row.school_id}-${row.teacher_id}-${row.assignment_id ?? "none"}`}><td className="selection-column"><input type="checkbox" aria-label={`Select ${row.teacher_name} ${row.course_name ?? "submission"} for ${modeLabel(reviewMode)} review`} checked={selectedPlanKeys.has(rowKey(row))} disabled={!selectable} onChange={() => togglePlan(row)} /></td><td>{row.school_name}</td><td>{row.teacher_name}</td><td>{row.course_name ?? "—"}</td><td>{row.lesson_plan_revision ? <div className="submission-artifact"><span className="status">Submitted · Rev {row.lesson_plan_revision}</span><small>{row.lesson_plan_submitted_at ? new Date(row.lesson_plan_submitted_at).toLocaleString() : ""}</small><button className="link-button" disabled={disabled || detailLoading} onClick={() => void viewSubmittedPlan(row, "lesson_plan")}>View lesson plan</button></div> : <span className="badge">Not submitted</span>}</td><td>{row.completed_packet_revision ? <div className="submission-artifact"><span className="status">Completed · Rev {row.completed_packet_revision}</span><small>{row.completed_packet_submitted_at ? new Date(row.completed_packet_submitted_at).toLocaleString() : ""}</small><button className="link-button" disabled={disabled || detailLoading} onClick={() => void viewSubmittedPlan(row, "completed_packet")}>View completed packet</button></div> : <span className="badge">Awaiting Friday closeout</span>}</td></tr>;
+                })}</tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
 
       {pdfPreviewUrl && <div className="submission-preview-backdrop" role="dialog" aria-modal="true" aria-label={`${pdfPreviewTitle} preview`}><section className="submission-preview"><div className="submission-preview-heading"><div><p className="eyebrow">Immutable submitted record</p><h2>{pdfPreviewTitle}</h2></div><div className="button-row"><button className="secondary" onClick={downloadPreview}>Download PDF</button><button className="secondary" onClick={printPreview}>Print</button><button className="secondary" onClick={closePreview}>Close</button></div></div><iframe src={pdfPreviewUrl} title={`${pdfPreviewTitle} PDF`} /></section></div>}
