@@ -1,0 +1,80 @@
+.administration-tabs {
+  display: flex;
+  gap: .45rem;
+  margin-bottom: 1rem;
+  padding-bottom: .7rem;
+  border-bottom: 1px solid #d7dfeb;
+}
+
+.administration-tabs button {
+  padding: .55rem .85rem;
+  border: 1px solid #cfd8e6;
+  border-radius: 999px;
+  background: #fff;
+  color: #172033;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.administration-tabs button.active {
+  border-color: #243b64;
+  background: #172033;
+  color: #fff;
+}
+
+.owner-tab {
+  display: grid;
+  gap: 1rem;
+}
+
+.owner-tool-grid {
+  align-items: stretch;
+}
+
+.owner-tool-card {
+  display: grid;
+  align-content: start;
+  gap: .5rem;
+}
+
+.owner-tab .product-owner-launcher {
+  position: static;
+  justify-self: start;
+  margin-top: .25rem;
+  border-radius: 8px;
+}
+
+.baseline-owner-schools,
+.baseline-owner-comments {
+  display: grid;
+  gap: .75rem;
+}
+
+.baseline-owner-school {
+  display: grid;
+  gap: .8rem;
+}
+
+.baseline-owner-comments {
+  padding-top: .75rem;
+  border-top: 1px solid #e4e8ef;
+}
+
+.baseline-owner-comments p {
+  margin: 0;
+  padding: .65rem .75rem;
+  border-left: 3px solid #c9d7ef;
+  background: #f8fafc;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 680px) {
+  .administration-tabs {
+    width: 100%;
+  }
+
+  .administration-tabs button {
+    flex: 1;
+  }
+}

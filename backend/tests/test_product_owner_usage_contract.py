@@ -6,6 +6,7 @@ API = ROOT / "backend" / "app" / "product_usage_api.py"
 MAIN_API = ROOT / "backend" / "app" / "main.py"
 OBSERVER = ROOT / "frontend" / "src" / "ProductUsageObserver.tsx"
 DASHBOARD = ROOT / "frontend" / "src" / "ProductOwnerDashboardExperience.tsx"
+ADMINISTRATION = ROOT / "frontend" / "src" / "AdministrationOverview.tsx"
 FRONTEND_MAIN = ROOT / "frontend" / "src" / "main.tsx"
 
 
@@ -60,6 +61,7 @@ def test_passive_observer_never_blocks_teacher_work() -> None:
 
 def test_product_owner_dashboard_focuses_on_adoption_and_value_signals() -> None:
     source = DASHBOARD.read_text(encoding="utf-8")
+    administration = ADMINISTRATION.read_text(encoding="utf-8")
     main = FRONTEND_MAIN.read_text(encoding="utf-8")
 
     assert "what teachers are actually using" in source
@@ -79,5 +81,7 @@ def test_product_owner_dashboard_focuses_on_adoption_and_value_signals() -> None
     assert "not teacher-performance judgments" in source
     assert "interaction telemetry" in source
     assert "begins when this release is deployed" in source
-    assert "<ProductOwnerDashboardExperience />" in main
+    assert "<ProductOwnerDashboardExperience />" in administration
+    assert 'setActiveTab("owner")' in administration
+    assert "<ProductOwnerDashboardExperience />" not in main
     assert "<ProductUsageObserver />" in main

@@ -12,6 +12,7 @@ from .ai_district_planning_api import router as ai_district_planning_router
 from .ai_planning_api import router as ai_planning_router
 from .ai_planning_resilient_api import router as ai_planning_resilient_router
 from .ai_reflection_api import router as ai_reflection_router
+from .baseline_api import router as baseline_router
 from .curriculum_api import router as curriculum_router
 from .document_sections import HqiDocument
 from .document_service import (
@@ -67,6 +68,7 @@ app.include_router(identity_router)
 app.include_router(readiness_router)
 app.include_router(administration_router)
 app.include_router(product_usage_router)
+app.include_router(baseline_router)
 app.include_router(act_reference_admin_router)
 app.include_router(curriculum_router)
 app.include_router(teaching_assignment_router)
