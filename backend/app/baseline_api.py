@@ -14,7 +14,8 @@ router = APIRouter(prefix="/api/v1/baseline", tags=["baseline"])
 PlanningTimeBefore = Literal[
     "under_30",
     "30_60",
-    "61_120",
+    "61_90",
+    "91_120",
     "121_180",
     "over_180",
     "not_sure",
@@ -49,7 +50,7 @@ class BaselineResultRead(BaseModel):
     survey_key: str
     school_id: str
     school_name: str
-    planning_time_before: PlanningTimeBefore
+    planning_time_before: str
     plan_usefulness_before: int
     submission_burden_before: int
     reflection_review_frequency_before: FrequencyBefore

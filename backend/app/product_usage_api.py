@@ -61,6 +61,22 @@ class ProductOwnerUsageRead(BaseModel):
     pilot_feedback_responses: int = 0
 
 
+class ProductOwnerActiveTimeRead(BaseModel):
+    period_start: date
+    period_end: date
+    active_time_teachers: int = 0
+    course_setup_total_seconds: int = 0
+    weekly_planning_total_seconds: int = 0
+    friday_closeout_total_seconds: int = 0
+    median_course_setup_seconds_per_teacher: int = 0
+    median_weekly_planning_seconds_per_teacher_week: int = 0
+    median_friday_closeout_seconds_per_teacher_week: int = 0
+    onboarding_weekly_planning_teacher_weeks: int = 0
+    median_onboarding_weekly_planning_seconds: int = 0
+    steady_state_weekly_planning_teacher_weeks: int = 0
+    median_steady_state_weekly_planning_seconds: int = 0
+
+
 def _client(identity: AuthenticatedTeacher, settings: Settings) -> SupabaseRestClient:
     if identity.access_token is None:
         raise HTTPException(status_code=503, detail="Authenticated access token is unavailable")
@@ -79,6 +95,14 @@ def _usage_error(error: SupabaseRestError) -> HTTPException:
     if error.status_code in {401, 403}:
         return HTTPException(status_code=403, detail="Product usage access is not authorized")
     return HTTPException(status_code=503, detail="Product usage service is unavailable")
+
+
+def _validate_period(period_start: date, period_end: date) -> None:
+    if period_end < period_start:
+        raise HTTPException(
+            status_code=422,
+            detail="Reporting period end must be on or after start",
+        )
 
 
 @router.post("/api/v1/product-usage", response_model=ProductUsageRead)
@@ -105,11 +129,7 @@ def product_owner_usage(
     period_start: Annotated[date, Query()],
     period_end: Annotated[date, Query()],
 ) -> ProductOwnerUsageRead:
-    if period_end < period_start:
-        raise HTTPException(
-            status_code=422,
-            detail="Reporting period end must be on or after start",
-        )
+    _validate_period(period_start, period_end)
     try:
         payload = _client(identity, settings).request(
             "POST",
@@ -125,3 +145,28 @@ def product_owner_usage(
     if not rows:
         raise HTTPException(status_code=403, detail="Product Owner reporting is not authorized")
     return ProductOwnerUsageRead.model_validate(rows[0])
+
+
+@router.get("/api/v1/product-owner/active-time", response_model=ProductOwnerActiveTimeRead)
+def product_owner_active_time(
+    identity: Annotated[AuthenticatedTeacher, Depends(require_platform_admin)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    period_start: Annotated[date, Query()],
+    period_end: Annotated[date, Query()],
+) -> ProductOwnerActiveTimeRead:
+    _validate_period(period_start, period_end)
+    try:
+        payload = _client(identity, settings).request(
+            "POST",
+            "rpc/platform_product_active_time_summary",
+            payload={
+                "target_start": period_start.isoformat(),
+                "target_end": period_end.isoformat(),
+            },
+        )
+    except SupabaseRestError as error:
+        raise _usage_error(error) from error
+    rows = _records(payload)
+    if not rows:
+        raise HTTPException(status_code=403, detail="Product Owner reporting is not authorized")
+    return ProductOwnerActiveTimeRead.model_validate(rows[0])

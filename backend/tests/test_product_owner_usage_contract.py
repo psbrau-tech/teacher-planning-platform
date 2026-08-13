@@ -80,7 +80,7 @@ def test_product_owner_dashboard_focuses_on_adoption_and_value_signals() -> None
     assert "Product signals" in source
     assert "not teacher-performance judgments" in source
     assert "interaction telemetry" in source
-    assert "begins when this release is deployed" in source
+    assert "telemetry release" in source
     assert "<ProductOwnerDashboardExperience />" in administration
     assert 'setActiveTab("owner")' in administration
     assert "<ProductOwnerDashboardExperience />" not in main

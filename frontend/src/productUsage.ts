@@ -6,7 +6,10 @@ export type ProductUsageEventKey =
   | "curriculum_exported"
   | "weekly_plan_generated"
   | "lesson_plan_pdf_viewed"
-  | "completed_packet_viewed";
+  | "completed_packet_viewed"
+  | "active_course_setup_30s"
+  | "active_weekly_planning_30s"
+  | "active_friday_closeout_30s";
 
 export function recordProductUsage(accessToken: string, eventKey: ProductUsageEventKey): void {
   if (!accessToken) return;
