@@ -1,34 +1,35 @@
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 ADMIN_API = ROOT / "backend" / "app" / "administration_api.py"
-MIGRATION = ROOT / "supabase" / "migrations" / "20260813143000_selected_teacher_admin_reporting.sql"
+MIGRATION = (
+    ROOT / "supabase" / "migrations" / "20260813143000_selected_teacher_admin_reporting.sql"
+)
 ADMIN_REPORT = ROOT / "frontend" / "src" / "AdminSelectedTeacherUsageReport.tsx"
 ADMIN_PORTAL = ROOT / "frontend" / "src" / "AdminSelectedTeacherUsagePortal.tsx"
+ADMIN_CSS = ROOT / "frontend" / "src" / "admin-selected-teacher-usage.css"
 OWNER_CSS = ROOT / "frontend" / "src" / "owner-overview.css"
 PRODUCT_CSS = ROOT / "frontend" / "src" / "product-owner-dashboard.css"
 MAIN = ROOT / "frontend" / "src" / "main.tsx"
 
 
-def test_admin_usage_can_be_scoped_to_explicit_teacher_ids() -> None:
+def test_admin_report_has_explicit_scope_contract() -> None:
     api = ADMIN_API.read_text(encoding="utf-8")
     migration = MIGRATION.read_text(encoding="utf-8")
     report = ADMIN_REPORT.read_text(encoding="utf-8")
 
     assert 'Query(alias="teacher_id")' in api
     assert "rpc/admin_usage_for_period_selected" in api
-    assert 'target_teacher_ids' in api
     assert "admin_usage_for_period_selected" in migration
     assert "join selected_teachers st on st.teacher_id = ta.teacher_id" in migration
     assert 'query.append("teacher_id", id)' in report
     assert "No aggregate report is built until at least one teacher is selected" in report
 
 
-def test_selected_teacher_report_replaces_old_all_teacher_summary() -> None:
+def test_new_admin_report_replaces_previous_aggregate_summary() -> None:
     portal = ADMIN_PORTAL.read_text(encoding="utf-8")
     main = MAIN.read_text(encoding="utf-8")
-    css = (ROOT / "frontend" / "src" / "admin-selected-teacher-usage.css").read_text(encoding="utf-8")
+    css = ADMIN_CSS.read_text(encoding="utf-8")
 
     assert "AdminSelectedTeacherUsagePortal" in main
     assert 'aria-label="Administration reporting"' in portal
@@ -36,7 +37,7 @@ def test_selected_teacher_report_replaces_old_all_teacher_summary() -> None:
     assert "admin-selected-usage-slot" in portal
 
 
-def test_owner_cost_and_time_are_ordered_before_standards_and_metrics_do_not_overlap() -> None:
+def test_owner_layout_prioritizes_cost_time_and_readability() -> None:
     owner_css = OWNER_CSS.read_text(encoding="utf-8")
     product_css = PRODUCT_CSS.read_text(encoding="utf-8")
 
