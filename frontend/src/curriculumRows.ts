@@ -27,10 +27,34 @@ function optionalMinutes(value: string, rowNumber: number): number | null {
   return minutes;
 }
 
+function delimiterCount(value: string): number {
+  return value.split("|").length - 1;
+}
+
+function serializedRows(value: string): string[] {
+  const rows: string[] = [];
+  let pending = "";
+
+  value.split("\n").forEach((physicalLine) => {
+    if (!physicalLine.trim() && !pending) return;
+    pending = pending ? `${pending}\n${physicalLine}` : physicalLine;
+
+    if (delimiterCount(pending) < 4) return;
+
+    const finalDelimiter = pending.lastIndexOf("|");
+    const trailingField = finalDelimiter >= 0 ? pending.slice(finalDelimiter + 1).trim() : "";
+    if (trailingField && !/^\d+$/.test(trailingField)) return;
+
+    rows.push(pending.trim());
+    pending = "";
+  });
+
+  if (pending.trim()) rows.push(pending.trim());
+  return rows;
+}
+
 export function parseCurriculumRows(value: string): CurriculumLessonPayload[] {
-  return value
-    .split("\n")
-    .map((line) => line.trim())
+  return serializedRows(value)
     .filter(Boolean)
     .map((line, index) => {
       const parts = line.split("|").map((item) => item.trim());
