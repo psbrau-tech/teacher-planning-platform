@@ -87,10 +87,12 @@ returns table (
   weekly_planning_total_seconds integer,
   reflection_total_seconds integer,
   friday_closeout_total_seconds integer,
+  other_friday_closeout_total_seconds integer,
   median_course_setup_seconds_per_teacher integer,
   median_weekly_planning_seconds_per_teacher_week integer,
   median_reflection_seconds_per_teacher_week integer,
   median_friday_closeout_seconds_per_teacher_week integer,
+  median_other_friday_closeout_seconds_per_teacher_week integer,
   onboarding_weekly_planning_teacher_weeks integer,
   median_onboarding_weekly_planning_seconds integer,
   steady_state_weekly_planning_teacher_weeks integer,
@@ -161,6 +163,15 @@ with bounds as (
     'active_friday_closeout_30s'
   )
   group by actor_id, date_trunc('week', occurred_at)::date, event_key, onboarding
+), closeout_by_teacher_week as (
+  select
+    actor_id,
+    date_trunc('week', occurred_at)::date as week_start,
+    onboarding,
+    count(*)::integer * 30 as seconds
+  from selected
+  where event_key in ('active_reflection_30s', 'active_friday_closeout_30s')
+  group by actor_id, date_trunc('week', occurred_at)::date, onboarding
 ), totals as (
   select
     count(distinct actor_id)::integer as active_time_teachers,
@@ -170,8 +181,11 @@ with bounds as (
       as weekly_planning_total_seconds,
     count(*) filter (where event_key = 'active_reflection_30s')::integer * 30
       as reflection_total_seconds,
+    count(*) filter (
+      where event_key in ('active_reflection_30s', 'active_friday_closeout_30s')
+    )::integer * 30 as friday_closeout_total_seconds,
     count(*) filter (where event_key = 'active_friday_closeout_30s')::integer * 30
-      as friday_closeout_total_seconds
+      as other_friday_closeout_total_seconds
   from selected
 ), medians as (
   select
@@ -191,9 +205,13 @@ with bounds as (
     ), 0)::integer as median_reflection_seconds_per_teacher_week,
     coalesce((
       select percentile_disc(0.5) within group (order by seconds)
+      from closeout_by_teacher_week
+    ), 0)::integer as median_friday_closeout_seconds_per_teacher_week,
+    coalesce((
+      select percentile_disc(0.5) within group (order by seconds)
       from workflow_by_teacher_week
       where event_key = 'active_friday_closeout_30s'
-    ), 0)::integer as median_friday_closeout_seconds_per_teacher_week,
+    ), 0)::integer as median_other_friday_closeout_seconds_per_teacher_week,
     (select count(*)::integer from workflow_by_teacher_week
       where event_key = 'active_weekly_planning_30s' and onboarding)
       as onboarding_weekly_planning_teacher_weeks,
@@ -235,10 +253,12 @@ select
   coalesce(t.weekly_planning_total_seconds, 0),
   coalesce(t.reflection_total_seconds, 0),
   coalesce(t.friday_closeout_total_seconds, 0),
+  coalesce(t.other_friday_closeout_total_seconds, 0),
   coalesce(m.median_course_setup_seconds_per_teacher, 0),
   coalesce(m.median_weekly_planning_seconds_per_teacher_week, 0),
   coalesce(m.median_reflection_seconds_per_teacher_week, 0),
   coalesce(m.median_friday_closeout_seconds_per_teacher_week, 0),
+  coalesce(m.median_other_friday_closeout_seconds_per_teacher_week, 0),
   coalesce(m.onboarding_weekly_planning_teacher_weeks, 0),
   coalesce(m.median_onboarding_weekly_planning_seconds, 0),
   coalesce(m.steady_state_weekly_planning_teacher_weeks, 0),
@@ -258,6 +278,6 @@ revoke all on function public.platform_product_active_time_summary(date, date)
 grant execute on function public.platform_product_active_time_summary(date, date) to authenticated;
 
 comment on function public.platform_product_active_time_summary(date, date) is
-  'Platform Owner-only aggregate active TPP interaction time, with planning, reflection, and other Friday closeout separated. Not total planning time and not an administrator teacher-performance measure.';
+  'Platform Owner-only aggregate active TPP interaction time. Total Friday closeout includes reflection; separate reflection and other-closeout metrics support product analysis. Not total planning time and not an administrator teacher-performance measure.';
 
 notify pgrst, 'reload schema';
