@@ -20,10 +20,12 @@ def test_weekly_submission_report_waits_for_teacher_selection() -> None:
 
 
 def test_owner_baseline_includes_accessible_bar_chart() -> None:
-    source = (FRONTEND / "AdministrationOverview.tsx").read_text(encoding="utf-8")
-    assert "Baseline at a glance" in source
-    assert 'aria-label="Pre-TPP baseline bar chart"' in source
-    assert "averageUsefulness" in source
-    assert "averageBurden" in source
-    assert "rarelyReviewReflection" in source
-    assert "rarelyUseInPlc" in source
+    overview = (FRONTEND / "AdministrationOverview.tsx").read_text(encoding="utf-8")
+    chart = (FRONTEND / "BaselineBarChart.tsx").read_text(encoding="utf-8")
+    assert "<BaselineBarChart" in overview
+    assert "Baseline at a glance" in chart
+    assert 'aria-label="Pre-TPP baseline bar chart"' in chart
+    assert "averageUsefulness" in overview
+    assert "averageBurden" in overview
+    assert "rarelyReviewReflection" in overview
+    assert "rarelyUseInPlc" in overview
