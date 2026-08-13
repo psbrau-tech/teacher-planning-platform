@@ -43,7 +43,9 @@ def test_active_time_is_bounded_content_free_and_platform_owner_only() -> None:
     assert "active_reflection_30s" in migration
     assert "active_friday_closeout_30s" in migration
     assert "reflection_total_seconds" in migration
+    assert "other_friday_closeout_total_seconds" in migration
     assert "median_reflection_seconds_per_teacher_week" in migration
+    assert "median_other_friday_closeout_seconds_per_teacher_week" in migration
     assert "median_onboarding_reflection_seconds" in migration
     assert "median_steady_state_reflection_seconds" in migration
     assert "platform_product_active_time_summary" in migration
@@ -52,7 +54,9 @@ def test_active_time_is_bounded_content_free_and_platform_owner_only() -> None:
     assert "No planning/reflection content is stored" in migration
     assert '"/api/v1/product-owner/active-time"' in api
     assert "reflection_total_seconds: int = 0" in api
+    assert "other_friday_closeout_total_seconds: int = 0" in api
     assert "median_reflection_seconds_per_teacher_week: int = 0" in api
+    assert "median_other_friday_closeout_seconds_per_teacher_week: int = 0" in api
     assert "Depends(require_platform_admin)" in api
 
 
@@ -94,10 +98,12 @@ def test_active_time_is_presented_as_product_measurement_not_teacher_evaluation(
     assert "Planning vs reflection" in breakout
     assert "Weekly Planning includes the planning workflow and AI-assisted" in breakout
     assert "Teacher Reflection measures the required 12-prompt reflection step separately" in breakout
-    assert "Friday Closeout excludes reflection" in breakout
+    assert "Other Friday Closeout covers validation, packet review" in breakout
     assert "median Teacher Reflection active minutes" in breakout
+    assert "median other Friday Closeout active minutes" in breakout
     assert "onboarding reflection median" in breakout
     assert "steady-state reflection median" in breakout
+    assert "existing total Friday-closeout metric still" in breakout
     assert "School and district administrators do not receive" in breakout
     assert 'document.querySelector(".owner-tab")' in breakout
     assert "<OwnerActiveTimeBreakout />" in main
