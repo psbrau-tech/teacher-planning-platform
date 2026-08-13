@@ -2,7 +2,10 @@ type Props = { roles: string[] };
 
 export function HelpPage({ roles }: Props) {
   const isTeacher = roles.includes("teacher");
-  const isAdmin = roles.some((role) => ["school_admin", "district_admin", "platform_admin"].includes(role));
+  const isAdmin = roles.some(
+    (role) => ["school_admin", "district_admin", "platform_admin"].includes(role),
+  );
+  const isPlatformAdmin = roles.includes("platform_admin");
 
   return (
     <section className="panel help-page">
@@ -175,6 +178,14 @@ export function HelpPage({ roles }: Props) {
               submitted Completed Weekly Packet and return you to packet review rather than asking
               you to submit the reflection again.
             </p>
+            <p>
+              <strong>One-time Pilot feedback.</strong> Pilot teachers may receive a short feedback
+              request after the Pilot cycle is complete. It asks what was useful, what created
+              friction, and what should improve before broader rollout. Choose
+              <strong> Remind me later</strong> if you need to keep working; the survey never blocks
+              planning or Friday closeout. Keep the same no-student-information boundary in written
+              feedback.
+            </p>
           </div>
 
           <div className="help-notes">
@@ -233,6 +244,27 @@ export function HelpPage({ roles }: Props) {
               teacher-authored reflection to that same week's plan. The following week's lesson
               plan appears under its own Monday-starting week and receives a completed packet only
               after that week's Friday closeout.
+            </p>
+          </div>
+        </section>
+      )}
+
+      {isPlatformAdmin && (
+        <section className="help-section">
+          <h3>Product Owner usage</h3>
+          <div className="help-notes">
+            <p>
+              <strong>Product Owner</strong> is a separate Platform Owner-only view for product
+              adoption, not teacher evaluation. It shows the authorized → authenticated → active
+              onboarding funnel, measured curriculum setup pathways, weekly planning and AI usage,
+              PDF review activity, submissions, closeouts, and Pilot survey response counts.
+            </p>
+            <p>
+              TPP uses existing authoritative records where they already exist. Interaction metrics
+              that could not previously be inferred — such as Excel versus Build in TPP or PDF
+              viewing — begin when the telemetry release is deployed. A zero before that point does
+              not prove a feature was never used. Passive product telemetry records bounded event
+              keys only and does not copy teacher planning/reflection text into the telemetry table.
             </p>
           </div>
         </section>
