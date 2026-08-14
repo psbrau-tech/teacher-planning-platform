@@ -147,7 +147,10 @@ This Agreement may be executed electronically and in counterparts. Amendments mu
 ## 21. Notices and contacts
 
 **Brau Consulting LLC**  
-[PUBLIC BUSINESS MAILING ADDRESS TO BE APPROVED]  
-[LEGAL/CONTRACT EMAIL TO BE APPROVED]
+9570 County Road 19  
+Centre, AL 35960  
+United States  
+peter@brauconsulting.com  
+423-557-1958
 
 **Customer:** As stated in the order form.
