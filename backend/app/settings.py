@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     google_oauth_client_id: str | None = Field(default=None, repr=False)
     google_oauth_client_secret: str | None = Field(default=None, repr=False)
 
+    # Email notifications are opt-in runtime infrastructure. A blank sender keeps delivery
+    # fail-closed until the verified SES identity and deployment configuration are approved.
+    ses_from_email: str = ""
+    ses_region: str = "us-east-2"
+
     allowed_email_domains: str = ""
     allowed_pilot_emails: str = ""
 

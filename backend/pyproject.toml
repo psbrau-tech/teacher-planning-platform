@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Teacher Planning Platform Version 1 API"
 requires-python = ">=3.12"
 dependencies = [
+  "boto3>=1.34,<2",
   "fastapi>=0.116,<1",
   "httpx>=0.28,<1",
   "pyjwt[crypto]>=2.10,<3",
