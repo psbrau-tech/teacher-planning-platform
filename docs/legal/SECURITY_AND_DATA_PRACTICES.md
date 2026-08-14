@@ -2,119 +2,199 @@
 
 **Provider:** Brau Consulting LLC  
 **Status:** Pre-Release Draft — Procurement / Security Review Overview  
-**Baseline:** 2026-08-08
+**Original baseline:** 2026-08-08  
+**Post-pilot reconciliation:** 2026-08-13
 
-This document summarizes the intended security and data-handling posture of Teacher Planning Platform (TPP). It is not a certification, warranty, penetration-test report, or substitute for a signed customer security addendum.
+This document summarizes the current controlled-pilot security and data-handling posture of Teacher Planning Platform (TPP). It is not a certification, warranty, penetration-test report, SOC report, or substitute for a signed customer security addendum.
 
 ## 1. Data boundary
 
-TPP is designed for adult educator and administrator use and for teacher/account, curriculum, standards, scheduling, lesson-planning, validation, export, and related professional data. TPP is not designed to collect, store, or process student personally identifiable information or student education records.
+TPP is designed for adult educator and administrator use and for educator/account, curriculum, standards, scheduling, lesson-planning, validation, reflection, reporting, export, product-usage, and related professional operational data. TPP is not designed to collect, store, or process student personally identifiable information or student education records.
 
-This boundary is enforced as a product, legal, and operational requirement. User-facing notices, AI request boundaries, testing, and development governance should reinforce the same rule.
+This boundary is enforced as a product, legal, operational, AI-request, testing, and development-governance requirement. No administrator/reporting capability changes that boundary.
 
-## 2. Current pilot architecture
+## 2. Deployed controlled-pilot architecture
 
-The controlled pilot architecture includes:
-- web/application workloads hosted on Amazon Web Services (AWS) in `us-east-2`;
+The current controlled-pilot architecture includes:
+
+- application workloads hosted on Amazon Web Services (AWS) in `us-east-2`;
 - Amazon ECS/Fargate application execution behind an Application Load Balancer;
-- HTTPS/TLS on the public application endpoint when the controlled TLS configuration is enabled;
+- HTTPS/TLS support on the public application endpoint;
 - Amazon ECR immutable container images with image scanning enabled;
 - Amazon CloudWatch application logging;
+- AWS Secrets Manager/protected deployment configuration for runtime secrets, including the OpenAI API credential;
 - Supabase for database/authentication-related platform services;
-- OpenAI API/business services for teacher-invoked generative AI assistance;
-- AWS Secrets Manager / protected deployment configuration for runtime secrets as implemented by the deployment architecture.
+- OpenAI API/business services for teacher-invoked generative-AI assistance;
+- a read-only application container root filesystem with a dedicated temporary mount;
+- explicit infrastructure/runtime tagging/configuration preserving the `teacher-and-curriculum-only` boundary.
 
-Production architecture must be reverified before this document is published externally.
+The infrastructure definition is evidence of the controlled-pilot configuration. Final publication must still confirm the actual deployed state and any provider configuration not represented in source control.
 
 ## 3. Authentication and authorization
 
-TPP uses authenticated user accounts and role-based authorization. Pilot access is constrained by approved accounts/domain configuration and governed roles. Individual accounts must not be shared.
+TPP uses authenticated user accounts and server-enforced role-based authorization. Current product roles include teacher, school-administrator, district-administrator, and Platform Owner capabilities as implemented and approved.
 
-The application is designed to enforce authorization server-side rather than relying solely on client-side visibility controls. Database access controls and role/ownership checks are part of the defense-in-depth model.
+Authorization requirements include:
+
+- approved-account/domain controls for the applicable environment;
+- server-side permission checks rather than client-side hiding alone;
+- role and ownership boundaries preventing unauthorized cross-user/cross-organization access;
+- isolation of elevated/service-role credentials from normal browser execution;
+- regression testing of denied as well as allowed authorization paths.
+
+Institutional reporting is limited to permitted educator/professional operational information and does not authorize student data.
 
 ## 4. Encryption and transport
 
-The deployed pilot uses HTTPS/TLS for the public application endpoint once TLS is attached, with an AWS load-balancer security policy supporting modern TLS. AWS and other material providers offer encryption for customer data in transit and at rest according to their service configurations and agreements.
+The controlled pilot is designed to use HTTPS/TLS on the public endpoint through the AWS load balancer. Runtime secrets are delivered through protected secret mechanisms rather than source code or browser-side configuration.
 
-Before production publication, Brau Consulting will verify database encryption, backup encryption, secret encryption, and any provider-specific encryption configuration actually used by TPP.
+Provider-specific encryption-at-rest, database encryption, backup encryption, secret encryption, and related settings must be verified in the actual production/provider configuration before external publication of detailed claims.
 
 ## 5. Secrets and credentials
 
-Secrets such as API keys, database credentials, and service-role credentials must not be committed to source code, exposed to browser clients, or intentionally written to application logs.
+Passwords, API keys, private keys, OAuth client secrets, access/refresh tokens, database service-role credentials, and equivalent secrets must not be committed to source, returned to browser code, or intentionally logged.
 
-Runtime secrets are intended to be delivered through protected environment/secret mechanisms. Service-role or elevated database credentials must remain isolated from normal browser execution.
+The current pilot infrastructure supports protected AWS secret injection for Supabase configuration and the OpenAI API key. Exposure of a credential is treated as a security incident and triggers containment/rotation review.
 
 ## 6. Logging, monitoring, and product telemetry
 
-TPP logs bounded operational information necessary for reliability, security, troubleshooting, auditability, and approved product-effectiveness measurement. The controlled pilot AWS application log group is configured for 30-day retention.
+TPP uses bounded operational records for reliability, security, troubleshooting, auditability, AI governance/cost control, and approved product-effectiveness measurement.
 
-Application and AI logging must not intentionally include passwords, access tokens, API keys, service-role credentials, or prohibited student data. AI usage/cost records may contain bounded metadata such as model identifier, token/usage counts, estimated cost, request status, and educator decision state.
+The controlled-pilot AWS application log group is configured for **30-day retention**.
 
-TPP may record bounded first-party product-usage event keys. The controlled pilot also uses conservative active-interaction telemetry based on fixed 30-second heartbeat events while the TPP tab is visible and recently active. Current active-time categories include Course Setup, Weekly Planning, Teacher Reflection, and Friday Closeout. Hidden or idle tabs stop counting, and a short-lived browser-storage lease is used to reduce double-counting across simultaneously open TPP tabs.
+Application and AI logging must not intentionally include passwords, access tokens, API keys, service-role credentials, prohibited student data, or full sensitive request/response bodies where bounded metadata is sufficient.
 
-The active-time telemetry does not capture keystroke contents, mouse coordinates, planning/reflection text, or continuous login duration. Duration reporting is restricted to the Platform Owner product-analysis role and is not exposed through ordinary school/district administrator reporting. It is intended to evaluate product workflow efficiency, not teacher performance.
+AI operational records may include model identifier, token/usage counts, estimated cost, request status, failure class, and educator accept/edit/reject decision state.
 
-A final production inventory of audit logs, authentication logs, database logs, infrastructure logs, AI operational records, product-usage telemetry, and retention periods is a release requirement.
+### First-party active-interaction telemetry
+
+On 2026-08-13 Brau Consulting approved bounded first-party active-interaction telemetry for product workflow-efficiency analysis. The current design uses fixed 30-second heartbeat event keys for approved workflow categories such as Course Setup, Weekly Planning, Teacher Reflection, and Friday Closeout.
+
+A heartbeat is eligible only when the TPP tab is visible, the authenticated user has interacted recently, the workflow area can be classified into an approved category, and the tab owns the short-lived local activity lease used to reduce double-counting across multiple open TPP tabs.
+
+The telemetry does **not** record:
+
+- keystroke contents;
+- mouse coordinates;
+- teacher-entered planning/reflection text;
+- student data;
+- continuous login duration;
+- third-party advertising or session-replay identifiers.
+
+Duration reporting is restricted to the Platform Owner for product-effectiveness analysis. It is not part of ordinary school/district administrator reporting and must not be represented as a teacher-quality, effort, productivity, or performance score.
+
+Any expansion of data captured, purpose, reporting audience, or use of a third-party analytics/session-replay provider requires new privacy/governance review before release.
 
 ## 7. AI data handling
 
-AI assistance is teacher-invoked and must be limited to permitted professional context. TPP is designed so AI suggestions remain reviewable drafts and require educator control before becoming governed planning content or exports.
+AI assistance is teacher-invoked and limited by governance to permitted professional context. Student information, secrets, authentication credentials, and unrelated customer data are prohibited from AI requests.
 
-OpenAI's current business/API terms state that customer API input and output are not used to develop or improve OpenAI services unless the customer explicitly agrees. Brau Consulting's governance policy is not to opt TPP customer content into model training without prior review, updated disclosures, and any required contractual authorization.
+Material AI suggestions remain reviewable drafts and require educator control before becoming governed planning content or official exports. AI failure should be bounded so existing saved work is not corrupted and manual planning remains usable where intended.
 
-The production OpenAI account setting and applicable provider terms must be reverified before external publication.
+OpenAI is the implemented pilot AI provider. Brau Consulting's governance policy is not to opt TPP customer content into third-party model training without explicit approval, current provider review, updated disclosures, and any required customer authorization. The production OpenAI account/project configuration, applicable agreement/DPA, and customer-content data-use setting must be reverified immediately before publication.
 
 ## 8. Standards integrity
 
-Authoritative standards ingestion is governed separately from generative AI. Official source text should be fetched and parsed deterministically, stored with source/version provenance, and protected from silent AI rewriting.
+Authoritative standards and related governed reference content are processed separately from generative AI. Official source text is intended to be acquired and parsed deterministically with source/version/effective-period provenance and governed snapshots.
 
-Changed authoritative sources are intended to enter a review/reconciliation process rather than silently replacing approved standards used for historical plans. Historical plan integrity should preserve the standards/source context applicable at the time of the saved plan.
+AI-generated explanations, decompositions, alignments, or planning suggestions must remain distinguishable from authoritative standard text. Source changes enter governed reconciliation/approval rather than silently rewriting approved or historical plan content.
 
 ## 9. Secure development and release controls
 
-Current repository/release controls include code review through pull requests, automated CI tests, immutable container images, controlled deployment workflows, protected environment configuration, explicit deployment roles, and exact-image verification practices.
+Current repository/release controls include:
 
-Changes affecting the legal/privacy/security boundary must be checked against `docs/governance/LEGAL_COMPLIANCE_REQUIREMENTS.md` before release.
+- pull-request-based review;
+- automated CI and regression testing;
+- immutable container-image practices;
+- image scanning;
+- controlled deployment workflows;
+- protected runtime/deployment secrets;
+- dedicated/least-privilege deployment and runtime roles as implemented;
+- exact-image/release provenance and verification practices;
+- database authorization/RLS and application-level permission tests;
+- controlled rollback practices.
+
+Legal/privacy/security-impacting changes are governed by `docs/governance/LEGAL_COMPLIANCE_REQUIREMENTS.md` and the release checklist.
 
 ## 10. Data minimization
 
-TPP should collect and retain only information reasonably necessary for educator planning, account administration, reliability, security, auditability, contractual obligations, and approved product improvement.
+TPP should collect and retain only information reasonably necessary for educator planning, account/institution administration, reliability, security, auditability, contractual obligations, standards governance, approved product-effectiveness analysis, and lawful service improvement.
 
-Product telemetry should favor bounded event keys and aggregate reporting over capture of user-entered content or high-granularity behavioral data. The no-student-data design materially reduces the sensitivity and regulatory complexity of the service. It does not eliminate the need to protect educator account information, professional content, credentials, or institutional confidential information.
+Product analytics should favor bounded event keys and aggregate reporting over capture of teacher-entered content or high-granularity behavioral data.
+
+The no-student-data design materially reduces the service's sensitivity and regulatory complexity but does not eliminate obligations to protect educator identity/account data, professional content, institutional confidential information, credentials, security records, or operational metadata.
 
 ## 11. Data location and providers
 
-The pilot application runtime is in AWS `us-east-2`. Supabase and OpenAI processing locations and retention behavior depend on their contracted service, project configuration, and applicable provider terms. Those details must be verified and recorded in the final Subprocessor List and production data-flow inventory before general release.
+The controlled-pilot application runtime is configured for AWS `us-east-2`.
+
+Supabase and OpenAI processing locations, retention, backup behavior, and contractual data-processing terms depend on the applicable project/account configuration and provider agreements. These must be verified in the final Subprocessor List/data-flow inventory before publication.
 
 ## 12. Retention and deletion
 
-The pilot AWS application-log retention period is 30 days. Other data categories use service-specific retention until the final production retention schedule is approved and implemented.
+The only currently approved numerical retention period in this overview is the verified **30-day AWS application-log retention**.
 
-The final schedule must address at least active account data, planning content, audit history, deleted accounts, AI operational metadata, product-usage/active-time telemetry, application logs, database backups, export artifacts retained server-side if any, and incident/legal holds.
+A final retention schedule remains required for:
+
+- active educator/admin accounts;
+- curriculum and planning content;
+- standards selections/snapshots and historical provenance;
+- validation/reflection/submission and audit/version history;
+- AI operational metadata;
+- first-party product-usage/active-time telemetry;
+- authentication/security records;
+- database backups;
+- server-retained exports, if any;
+- support/incident/legal-hold records;
+- account/institution termination.
+
+No public numerical deletion SLA should be made until implementation is verified end-to-end, including backups and restore behavior.
 
 ## 13. Vulnerability and incident handling
 
-Suspected vulnerabilities and security events are handled under the TPP Incident Response Policy. Brau Consulting will investigate credible incidents, contain risk, preserve necessary evidence, coordinate with material providers, and provide notifications required by applicable law and contract.
+Suspected vulnerabilities, unauthorized access, credential exposure, accidental prohibited student-data submission, provider incidents, and other security/privacy events are handled under the TPP Incident Response Policy.
+
+Brau Consulting will investigate credible incidents, contain risk, preserve the minimum necessary evidence, coordinate with affected providers/customers, and provide notifications required by applicable law and contract.
 
 ## 14. Business continuity and recovery
 
-TPP uses managed cloud infrastructure, but final production backup, restore, recovery-point, and recovery-time objectives are not represented as contractual commitments until tested and approved. Any customer-facing SLA or disaster-recovery commitment must match tested production capability.
+TPP uses managed cloud infrastructure. Backup, restore, recovery-point, recovery-time, uptime, and disaster-recovery representations are not contractual commitments unless specifically tested, approved, and included in an applicable customer agreement.
 
-## 15. Customer responsibilities
+## 15. Accessibility and electronic documents
 
-Customers and users are responsible for:
-- keeping credentials and endpoints secure;
-- limiting access to authorized personnel;
-- promptly removing access when personnel no longer require it;
-- staying within the no-student-data boundary;
-- reviewing AI-generated content before use;
-- using lawful source materials and respecting intellectual-property rights;
-- reporting suspected security incidents promptly.
+Accessibility is treated as a product/procurement requirement for public-school use. The governance baseline requires explicit evaluation against WCAG 2.1 Level AA where the DOJ Title II rule applies. WCAG 2.2 AA may be used as an additional engineering target.
 
-## 16. Security review contact
+No claim of certified or complete WCAG conformance is made by this document. Generated PDFs and other electronic planning documents must be included in accessibility review when applicable to covered public-entity services/programs/activities.
+
+## 16. Customer responsibilities
+
+Customers and users are expected to:
+
+- keep credentials secure;
+- limit access to authorized personnel;
+- promptly remove access when no longer required;
+- stay within the no-student-data boundary;
+- review AI-generated content before use;
+- use lawful source materials and respect intellectual-property rights;
+- report suspected unauthorized access or security/privacy incidents promptly.
+
+## 17. Security review contact
 
 [SECURITY CONTACT EMAIL TO BE APPROVED]
 
-## Production-verification gate
+## Final pre-publication verification gate
 
-Before external publication, verify: production AWS region/services; TLS and certificate state; Supabase project region and backup retention; RLS/authorization posture; authentication providers; OpenAI account/data-sharing configuration; secret path; log/telemetry inventory and retention; browser-storage inventory; backup/restore behavior; deletion procedures; incident contacts; vulnerability-reporting process; and all material subprocessors.
+Before external publication, verify and record:
+
+- actual deployed AWS Region/services, TLS and certificate state;
+- Supabase project region, encryption/backup/restore retention, enabled services and DPA posture;
+- database RLS/authorization posture;
+- authentication providers/account controls;
+- OpenAI production account/project data-use configuration and current contractual terms/DPA;
+- runtime secret path;
+- complete log/telemetry/browser-storage inventory and retention;
+- export storage behavior;
+- backup/restore and deletion procedures;
+- incident and vulnerability-reporting contacts;
+- accessibility evidence;
+- all material subprocessors and customer-notice requirements.
