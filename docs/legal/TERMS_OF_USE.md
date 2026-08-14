@@ -137,8 +137,11 @@ Brau Consulting may update these Terms. Material changes will be identified by a
 ## 19. Contact
 
 Brau Consulting LLC  
-[PUBLIC BUSINESS MAILING ADDRESS TO BE APPROVED]  
-[LEGAL/SUPPORT EMAIL TO BE APPROVED]
+9570 County Road 19  
+Centre, AL 35960  
+United States  
+peter@brauconsulting.com  
+423-557-1958
 
 ## 20. Entire agreement and order of precedence
 
