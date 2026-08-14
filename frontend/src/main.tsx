@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { AdminWeeklyDigestAction } from "./AdminWeeklyDigestAction";
 import { BaselineSurveyExperience } from "./BaselineSurveyExperience";
 import { OwnerActiveTimeBreakout } from "./OwnerActiveTimeBreakout";
+import { OwnerReflectionIntelligenceAnalytics } from "./OwnerReflectionIntelligenceAnalytics";
 import { PilotFeedbackExperience } from "./PilotFeedbackExperience";
 import { ProductUsageObserver } from "./ProductUsageObserver";
 import { ReflectionIntelligenceExperience } from "./ReflectionIntelligenceExperience";
@@ -16,6 +17,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <PilotFeedbackExperience />
     <ProductUsageObserver />
     <OwnerActiveTimeBreakout />
+    <OwnerReflectionIntelligenceAnalytics />
     <ReflectionIntelligenceExperience />
     <AdminWeeklyDigestAction />
   </React.StrictMode>,
