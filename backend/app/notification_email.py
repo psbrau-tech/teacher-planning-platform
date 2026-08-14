@@ -36,13 +36,18 @@ def weekly_admin_digest_text(metrics: WeeklyAdminDigestMetrics, *, public_base_u
     instructional insight remain behind authenticated TPP access.
     """
     plc_line = (
-        "A school PLC reflection brief can be generated in TPP from aggregate submitted reflections."
+        "A school PLC reflection brief can be generated in TPP from aggregate "
+        "submitted reflections."
         if metrics.plc_brief_available
         else "A school PLC reflection brief is not yet available from at least two teacher sources."
     )
+    digest_title = (
+        "Teacher Planning Platform weekly admin digest — "
+        f"week of {metrics.week_start.isoformat()}"
+    )
     return "\n".join(
         (
-            f"Teacher Planning Platform weekly admin digest — week of {metrics.week_start.isoformat()}",
+            digest_title,
             "",
             f"Configured course assignments: {metrics.configured_assignments}",
             f"Lesson plans submitted: {metrics.lesson_plans_submitted}",
@@ -55,7 +60,8 @@ def weekly_admin_digest_text(metrics: WeeklyAdminDigestMetrics, *, public_base_u
             "Open authenticated TPP for teacher-level operational follow-up and PLC insight:",
             public_base_url.rstrip("/"),
             "",
-            "This email contains school-scoped operational counts only. It contains no student data,",
+            "This email contains school-scoped operational counts only. It contains no "
+            "student data,",
             "teacher reflection text, generated instructional insight, or teacher-quality score.",
         )
     )
