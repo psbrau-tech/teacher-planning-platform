@@ -46,7 +46,11 @@ def test_owner_analytics_explicitly_rejects_performance_interpretation() -> None
 def test_owner_analytics_supports_bounded_reporting_periods() -> None:
     source = EXPERIENCE.read_text(encoding="utf-8")
 
-    assert 'type PeriodKind = "current_week" | "last_4_weeks" | "release_to_date" | "custom"' in source
+    expected_period_kind = (
+        'type PeriodKind = "current_week" | "last_4_weeks" | '
+        '"release_to_date" | "custom"'
+    )
+    assert expected_period_kind in source
     assert 'start: "2026-08-14"' in source
     assert "period_start" in source
     assert "period_end" in source
