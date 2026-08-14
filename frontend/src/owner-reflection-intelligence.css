@@ -1,0 +1,41 @@
+.owner-reflection-intelligence {
+  margin-top: 1rem;
+}
+
+.ri-owner-grid {
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+}
+
+.ri-owner-signals {
+  margin-top: 1rem;
+  border: 1px solid #d7dde8;
+  border-radius: 0.6rem;
+  padding: 0.9rem 1rem;
+  background: #fbfcfe;
+}
+
+.ri-owner-signals h4 {
+  margin: 0 0 0.5rem;
+  color: #4f1020;
+}
+
+.ri-owner-signals ul {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.ri-owner-signals li + li {
+  margin-top: 0.35rem;
+}
+
+.ri-owner-signals p {
+  margin: 0;
+  color: #475467;
+  line-height: 1.45;
+}
+
+.owner-reflection-intelligence select:focus-visible,
+.owner-reflection-intelligence input:focus-visible {
+  outline: 3px solid #1468a0;
+  outline-offset: 3px;
+}
