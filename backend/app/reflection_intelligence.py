@@ -32,7 +32,7 @@ _HIGH_RISK_PATTERNS = (
     re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE),
     re.compile(r"\b(?:student\s+id|student\s*#|ssn|social\s+security)\b", re.IGNORECASE),
     re.compile(r"\b(?:iep|section\s+504|504\s+plan)\b", re.IGNORECASE),
-    re.compile(r"\b(?:student|pupil)\s+(?:named\s+)?[A-Z][a-z]{1,}\b"),
+    re.compile(r"\b(?:[Ss]tudent|[Pp]upil)\s+(?:named\s+)?[A-Z][a-z]{1,}\b"),
     re.compile(r"\b\d{3}[-.)\s]\d{3}[-.\s]\d{4}\b"),
 )
 
