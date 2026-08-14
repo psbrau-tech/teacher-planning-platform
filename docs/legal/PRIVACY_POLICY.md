@@ -120,7 +120,7 @@ Brau Consulting maintains an incident-response process for suspected security ev
 
 ## 11. Individual and institutional requests
 
-Subject to applicable law, contract, and organizational administration, users may request access to, correction of, or deletion of account information by contacting the published privacy/support contact. For institution-managed accounts, Brau Consulting may route the request through the authorized customer administrator where appropriate.
+Subject to applicable law, contract, and organizational administration, users may request access to, correction of, or deletion of account information by contacting the privacy/support contact below. For institution-managed accounts, Brau Consulting may route the request through the authorized customer administrator where appropriate.
 
 Deletion requests do not override records that Brau Consulting is required or permitted to retain for security, legal, contractual, backup, or dispute-resolution purposes.
 
@@ -141,8 +141,11 @@ We may update this Privacy Policy when TPP, law, vendors, or our practices chang
 ## 15. Contact
 
 Brau Consulting LLC  
-[PUBLIC BUSINESS MAILING ADDRESS TO BE APPROVED]  
-[PRIVACY EMAIL TO BE APPROVED]
+9570 County Road 19  
+Centre, AL 35960  
+United States  
+peter@brauconsulting.com  
+423-557-1958
 
 ## Verification notes before publication
 
