@@ -89,8 +89,12 @@ def _submission_rows(
 
 def _digest_metrics(rows: list[dict[str, Any]], *, week_start: date) -> WeeklyAdminDigestMetrics:
     assignments = [row for row in rows if isinstance(row.get("assignment_id"), str)]
-    lesson_submitted = [row for row in assignments if row.get("lesson_plan_revision") is not None]
-    packet_submitted = [row for row in assignments if row.get("completed_packet_revision") is not None]
+    lesson_submitted = [
+        row for row in assignments if row.get("lesson_plan_revision") is not None
+    ]
+    packet_submitted = [
+        row for row in assignments if row.get("completed_packet_revision") is not None
+    ]
     teacher_ids = {
         teacher_id
         for row in packet_submitted
@@ -172,15 +176,24 @@ def notification_usage(
     period_end: Annotated[date, Query()],
 ) -> NotificationUsageRead:
     if period_end < period_start:
-        raise HTTPException(status_code=422, detail="Reporting period end must be on or after start")
+        raise HTTPException(
+            status_code=422,
+            detail="Reporting period end must be on or after start",
+        )
     if period_end - period_start > timedelta(days=366):
-        raise HTTPException(status_code=422, detail="Notification reporting is limited to 367 days")
+        raise HTTPException(
+            status_code=422,
+            detail="Notification reporting is limited to 367 days",
+        )
 
     try:
         payload = _client(identity, settings).request(
             "POST",
             "rpc/platform_notification_usage",
-            payload={"target_start": period_start.isoformat(), "target_end": period_end.isoformat()},
+            payload={
+                "target_start": period_start.isoformat(),
+                "target_end": period_end.isoformat(),
+            },
         )
     except SupabaseRestError as error:
         raise _source_error(error) from error
@@ -191,4 +204,7 @@ def notification_usage(
     try:
         return NotificationUsageRead.model_validate(rows[0])
     except ValidationError as error:
-        raise HTTPException(status_code=503, detail="Notification usage reporting is invalid") from error
+        raise HTTPException(
+            status_code=503,
+            detail="Notification usage reporting is invalid",
+        ) from error
