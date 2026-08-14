@@ -44,19 +44,27 @@ def record_ai_usage(
     client: SupabaseRestClient,
     *,
     identity: AuthenticatedTeacher,
-    assignment_id: UUID,
+    assignment_id: UUID | None,
     feature: str,
     model: str,
     succeeded: bool,
     usage: AiUsage | None,
 ) -> UUID:
-    if identity.school_id is None:
-        raise HTTPException(status_code=503, detail="Teacher school context is unavailable")
+    """Record bounded AI operational metadata for any governed professional user.
 
+    Existing teacher planning calls continue to populate teacher_id and assignment context.
+    Administrator-only synthesis calls populate actor_id while leaving teacher_id and assignment
+    null so reporting never misrepresents an administrator as a teacher.
+    """
+    if identity.school_id is None:
+        raise HTTPException(status_code=503, detail="Governed school context is unavailable")
+
+    is_teacher = "teacher" in identity.roles
     payload: JsonRecord = {
         "school_id": identity.school_id,
-        "teacher_id": identity.subject,
-        "teaching_assignment_id": str(assignment_id),
+        "actor_id": identity.subject,
+        "teacher_id": identity.subject if is_teacher else None,
+        "teaching_assignment_id": str(assignment_id) if assignment_id is not None else None,
         "feature": feature,
         "model": model,
         "input_tokens": usage.input_tokens if usage is not None else 0,
