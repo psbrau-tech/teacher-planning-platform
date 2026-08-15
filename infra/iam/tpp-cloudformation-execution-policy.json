@@ -132,7 +132,7 @@
       }
     },
     {
-      "Sid": "PilotLogGroup",
+      "Sid": "PilotLogGroups",
       "Effect": "Allow",
       "Action": [
         "logs:CreateLogGroup",
@@ -145,7 +145,9 @@
       ],
       "Resource": [
         "arn:aws:logs:us-east-2:697091778129:log-group:/aws/ecs/teacher-planning-platform-pilot",
-        "arn:aws:logs:us-east-2:697091778129:log-group:/aws/ecs/teacher-planning-platform-pilot:*"
+        "arn:aws:logs:us-east-2:697091778129:log-group:/aws/ecs/teacher-planning-platform-pilot:*",
+        "arn:aws:logs:us-east-2:697091778129:log-group:/aws/ecs/teacher-planning-platform-pilot-scheduled-digest",
+        "arn:aws:logs:us-east-2:697091778129:log-group:/aws/ecs/teacher-planning-platform-pilot-scheduled-digest:*"
       ]
     },
     {
@@ -170,7 +172,10 @@
       ],
       "Resource": [
         "arn:aws:iam::697091778129:role/tpp-pilot-task",
-        "arn:aws:iam::697091778129:role/tpp-pilot-task-execution"
+        "arn:aws:iam::697091778129:role/tpp-pilot-task-execution",
+        "arn:aws:iam::697091778129:role/tpp-pilot-scheduled-digest-task",
+        "arn:aws:iam::697091778129:role/tpp-pilot-scheduled-digest-task-execution",
+        "arn:aws:iam::697091778129:role/tpp-pilot-scheduled-digest-scheduler"
       ]
     },
     {
@@ -179,13 +184,40 @@
       "Action": "iam:PassRole",
       "Resource": [
         "arn:aws:iam::697091778129:role/tpp-pilot-task",
-        "arn:aws:iam::697091778129:role/tpp-pilot-task-execution"
+        "arn:aws:iam::697091778129:role/tpp-pilot-task-execution",
+        "arn:aws:iam::697091778129:role/tpp-pilot-scheduled-digest-task",
+        "arn:aws:iam::697091778129:role/tpp-pilot-scheduled-digest-task-execution"
       ],
       "Condition": {
         "StringEquals": {
           "iam:PassedToService": "ecs-tasks.amazonaws.com"
         }
       }
+    },
+    {
+      "Sid": "PassExactScheduledDigestRoleToScheduler",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::697091778129:role/tpp-pilot-scheduled-digest-scheduler",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "scheduler.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "ManageExactScheduledDigestSchedule",
+      "Effect": "Allow",
+      "Action": [
+        "scheduler:CreateSchedule",
+        "scheduler:UpdateSchedule",
+        "scheduler:DeleteSchedule",
+        "scheduler:GetSchedule",
+        "scheduler:TagResource",
+        "scheduler:UntagResource",
+        "scheduler:ListTagsForResource"
+      ],
+      "Resource": "arn:aws:scheduler:us-east-2:697091778129:schedule/default/tpp-pilot-admin-weekly-digest"
     },
     {
       "Sid": "CreateRequiredServiceLinkedRoles",
@@ -216,7 +248,8 @@
       "Action": "secretsmanager:DescribeSecret",
       "Resource": [
         "arn:aws:secretsmanager:us-east-2:697091778129:secret:tpp/pilot/supabase-url-*",
-        "arn:aws:secretsmanager:us-east-2:697091778129:secret:tpp/pilot/supabase-anon-key-*"
+        "arn:aws:secretsmanager:us-east-2:697091778129:secret:tpp/pilot/supabase-anon-key-*",
+        "arn:aws:secretsmanager:us-east-2:697091778129:secret:tpp/pilot/supabase-service-role-key-*"
       ]
     },
     {
