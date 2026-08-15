@@ -125,7 +125,8 @@ def test_frontend_frames_assessment_mix_as_planning_not_performance() -> None:
     assert "planned daily formative-assessment mix" in source
     assert "exit tickets" in source
     assert "not a teacher-performance measure" in source
-    assert "not evidence that an assessment was actually administered" in source
+    assert "assessment was actually administered" in source
+    assert "students mastered the content" in source
     assert "no lesson-plan text is sent to ai" in source
     assert "other / not yet classified" in source
 
