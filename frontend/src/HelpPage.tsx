@@ -191,10 +191,10 @@ export function HelpPage({ roles }: Props) {
             <p>
               <strong>4. Review Reflection Insights if useful.</strong> After the reflection is
               submitted and the completed packet is reviewed, the Friday validation page offers an
-              optional private recap based only on your own already-submitted professional
-              reflections. The recap is an AI-generated analytical aid; it does not alter your
-              submitted reflection and is not an official response or teacher-performance score.
-              Reflection Insights are optional and do not block the Friday workflow.
+              optional private recap inline inside Step 4, based only on your own already-submitted
+              professional reflections. The recap is an AI-generated analytical aid; it does not
+              alter your submitted reflection and is not an official response or teacher-performance
+              score. Reflection Insights are optional and do not block the Friday workflow.
             </p>
             <p>
               <strong>5. Continue to the following week.</strong> TPP moves to the next Monday and
@@ -275,11 +275,11 @@ export function HelpPage({ roles }: Props) {
           <h3>Administrator workflow</h3>
           <ol className="help-steps">
             <li><strong>Open Administration:</strong> Choose the reporting period needed for the operational summary.</li>
-            <li><strong>Review Friday submission status:</strong> Use the current-week closeout / following-week planning report for teacher- and class-level operational follow-up.</li>
-            <li><strong>Review weekly submissions:</strong> Select the Monday-starting week and optionally narrow the list by school, multiple teachers, or course.</li>
+            <li><strong>Review weekly submission status:</strong> Select the Monday-starting week and optionally narrow the report by school, multiple teachers, or course. Green status indicates a submitted immutable record; yellow indicates an item needing operational follow-up.</li>
             <li><strong>See both records:</strong> Each teacher/course row shows the pre-instruction <strong>Upcoming lesson plan</strong> and the end-of-week <strong>Completed weekly packet</strong> separately.</li>
             <li><strong>Review one record:</strong> Open the lesson-plan submission to see the Instructional Planning Framework + Week at a Glance, or open the completed packet to see those documents plus the teacher reflection.</li>
             <li><strong>Review many records:</strong> Choose Upcoming lesson plans or Completed weekly packets for bulk review, select individual rows or all filtered records, then review/download/print the selected immutable PDFs as one administrator packet.</li>
+            <li><strong>Move from planning signals to PLC:</strong> Review the planned formative-assessment mix and week-over-week trend, then generate the School Reflection Summary and use the PLC Meeting Guide that follows it.</li>
           </ol>
           <div className="help-notes">
             <h3>What administration is reviewing</h3>
@@ -291,11 +291,14 @@ export function HelpPage({ roles }: Props) {
               after that week&apos;s Friday closeout.
             </p>
             <p>
-              <strong>Friday submission status is operational.</strong> The live report shows the
-              current week&apos;s required completed packet/reflection and the following week&apos;s required
-              lesson plan by teacher and class, using immutable submissions rather than draft
-              presence. It is for workflow follow-up, not teacher ranking, instructional-quality
-              inference, effort/productivity scoring, or personnel evaluation.
+              <strong>Weekly submission status is the administrator follow-up view.</strong> TPP
+              combines teacher/course submission follow-up into the same week- and teacher-selected
+              report instead of displaying a second administrator Friday-status report. The report
+              uses immutable submissions rather than draft presence and is for workflow follow-up,
+              not teacher ranking, instructional-quality inference, effort/productivity scoring, or
+              personnel evaluation. The teacher Dashboard retains its own Friday status for teacher
+              self-service, and separately activated notifications may use the same governed status
+              signals without adding a second administrator report.
             </p>
           </div>
 
@@ -303,21 +306,25 @@ export function HelpPage({ roles }: Props) {
             <h3>School Reflection Summary and PLC Meeting Guide</h3>
             <p>
               <strong>The School Reflection Summary uses submitted professional reflections.</strong>
-              TPP may generate an anonymous aggregate school summary only through the governed
-              reporting role and source-threshold rules. Common themes require support from at
-              least two distinct anonymous teacher sources. The summary identifies common
-              successes, common challenges, emerging themes, discussion questions, possible
-              actions, and support needs. It is for professional learning and discussion, not
-              teacher ranking, quality scoring, personnel evaluation, or student outcome inference.
+              It appears in Administration after the planned formative-assessment trend when an
+              authorized administrator generates it. TPP may generate the anonymous aggregate school
+              summary only through the governed reporting role and source-threshold rules. Common
+              themes require support from at least two distinct anonymous teacher sources. The
+              summary identifies common successes, common challenges, emerging themes, discussion
+              questions, possible actions, and support needs. It is for professional learning and
+              discussion, not teacher ranking, quality scoring, personnel evaluation, or student
+              outcome inference.
             </p>
             <p>
-              <strong>The PLC Meeting Guide embeds that School Reflection Summary.</strong> The
-              meeting guide is therefore grounded in what teachers collectively reported rather
-              than being a generic agenda. It adds a suggested meeting focus, the governed aggregate
-              formative-assessment planning snapshot when available, a fixed 40-minute facilitation
-              protocol, and a non-persistent team action workspace. Formatting the guide does not
-              make a second AI request. The action workspace is not stored by TPP in the current
-              design; do not add student-specific information to PLC notes.
+              <strong>The PLC Meeting Guide follows and carries that School Reflection Summary.</strong>
+              The on-screen flow is School Reflection Summary → PLC Meeting Guide, and the same
+              summary is included in the printable guide so the meeting remains grounded in what
+              teachers collectively reported rather than becoming a generic agenda. The guide adds a
+              suggested meeting focus, the governed aggregate formative-assessment planning snapshot
+              when available, a fixed 40-minute facilitation protocol, and a non-persistent team
+              action workspace. Formatting the guide does not make a second AI request. The action
+              workspace is not stored by TPP in the current design; do not add student-specific
+              information to PLC notes.
             </p>
           </div>
 
