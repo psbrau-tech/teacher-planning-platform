@@ -34,15 +34,14 @@ The source-controlled notification sequence is intentionally staged:
    - at-most-once claims;
    - remains deferred until SES and scheduler activation are being prepared.
 2. `20260815215500_multi_school_notification_controls.sql`
-   - changes pilot access from one-email/one-school to governed email + school membership;
-   - preserves one explicit home school per active professional account while permitting school-scoped roles in more than one school;
    - adds required school-local notification settings that default to disabled;
-   - makes notification delivery uniqueness school-scoped;
-   - replaces global candidate RPCs with explicit `school_id` scoped claims;
-   - adds the service-role-only school-local dispatch-window selector.
+   - makes notification delivery uniqueness explicitly school-scoped;
+   - replaces global candidate RPCs with explicit `school_id`-scoped claims;
+   - adds the service-role-only school-local dispatch-window selector; and
+   - preserves the existing one-email/one-explicit-school professional-account model.
 3. `20260815220500_harden_school_local_notification_windows.sql`
    - limits configured local notification times to quarter-hour boundaries;
-   - hardens the school-local Friday dispatch calculation;
+   - hardens the school-local Friday dispatch calculation; and
    - uses the IANA timezone stored on each school so daylight-saving changes are handled by the timezone database rather than hand-maintained UTC offsets.
 
 Repository source state and live database state are separate evidence. Use the target-scoped database workflow to stage only migrations through the specifically approved target. The three notification migrations above must remain unapplied until the notification preparation gate is intentionally opened.
@@ -55,12 +54,11 @@ The governed configuration identifies:
 
 - school name;
 - required IANA timezone, for example `America/Chicago`;
+- teacher-reminder enablement and local send time;
+- administrator-digest enablement and local send time;
 - professional account email and display name;
-- school membership;
-- school-scoped role or roles;
-- one explicit home school for an account that belongs to more than one school;
-- teacher-reminder enablement and local send time; and
-- administrator-digest enablement and local send time.
+- one explicit school assignment for each professional account; and
+- the approved role or concurrent roles for that account.
 
 New schools default to:
 
@@ -69,9 +67,11 @@ New schools default to:
 - teacher reminder local time **2:00 PM**; and
 - administrator digest local time **3:30 PM**.
 
-The provisioning script validates IANA timezone identifiers before database mutation. A legacy Anniston High School access-list shape remains temporarily readable for backward compatibility, but that legacy path provisions notification settings disabled. Automatic email therefore cannot become active merely because the old access secret still exists.
+The provisioning script validates IANA timezone identifiers and quarter-hour local send times before database mutation. A legacy Anniston High School access-list shape remains temporarily readable for backward compatibility, but that legacy path provisions notification settings disabled. Automatic email therefore cannot become active merely because the old access secret still exists.
 
-A professional account may hold roles in multiple schools through `profile_roles`. The account retains one governed home school for existing profile/district context. School administrators receive only the school roles explicitly provisioned to them. District/platform roles do not silently create school-admin membership.
+Each professional email has one explicit school assignment. A `school_admin` is authorized only for that assigned school. Existing `district_admin` and `platform_admin` roles provide intentionally broader district/platform scope through the established authorization model; TPP does not simulate broader access by assigning one school administrator to multiple schools in a single session.
+
+Moving a professional account to a different school is an explicit governed provisioning change. It is not an additional membership and must be reviewed as an authorization change.
 
 ## Phase A — Friday status dashboard release
 
@@ -127,7 +127,7 @@ For the current Anniston pilot, the approved local delivery times remain:
 
 `America/Chicago` is the initial timezone for Anniston High School and Anniston Middle School, but it is stored independently on each school rather than treated as a platform-wide constant. Future schools must carry their own validated IANA timezone.
 
-The 90-minute courtesy window is intentional. Teachers with every required submission complete receive no reminder. Teachers with an outstanding item receive one combined email for that school that names the exact professional class/course and whether the missing item is the current-week reflection/completed packet, the following-week lesson plan, or both.
+The 90-minute courtesy window is intentional. Teachers with every required submission complete receive no reminder. Teachers with an outstanding item receive one combined email for their assigned school that names the exact professional class/course and whether the missing item is the current-week reflection/completed packet, the following-week lesson plan, or both.
 
 The administrator email contains aggregate counts and the authenticated TPP link only. Teacher/class exceptions remain behind authenticated reporting.
 
@@ -155,7 +155,7 @@ This design provides:
 
 The quarter-hour dispatcher does not mean an email is sent every 15 minutes. Outside a configured school-local delivery window, the selector returns no school and the worker sends nothing.
 
-## Phase D — Activate isolated dispatchers
+## Phase D — activate isolated dispatchers
 
 Run **Enable TPP Friday Notifications** only after every workflow confirmation is true:
 
@@ -188,8 +188,8 @@ At the first approved Friday windows for an enabled school:
 - verify only teachers with outstanding required submissions are claimed for that school;
 - verify a multi-class teacher receives one email for that school, with the exact missing class(es) and item(s);
 - verify a fully complete teacher receives no reminder;
-- verify the administrator worker dispatches at the school's configured 3:30 PM local window and sends the aggregate current-closeout/following-plan summary to eligible active `school_admin` recipients for that school;
-- verify an account with school-admin membership in more than one school receives only the independently authorized school digests;
+- verify the administrator worker dispatches at the school's configured 3:30 PM local window and sends the aggregate current-closeout/following-plan summary only to eligible active `school_admin` recipients assigned to that school;
+- verify a `district_admin` or `platform_admin` does not silently become a school-admin email recipient without an explicitly approved notification-recipient policy change;
 - verify a newly provisioned school with notification flags disabled receives no automatic email;
 - verify at-most-once claims prevent duplicate automatic sends on retries;
 - verify worker logs do not print recipient addresses, teacher names, course names, message bodies, school identifiers, credentials, or SES MessageIds;
@@ -222,6 +222,7 @@ Stop for human action/approval at:
 
 - applying live database migrations;
 - changing the governed multi-school access/notification secret for real professional accounts;
+- moving an existing professional account to another school;
 - enabling notifications for a school for the first time;
 - deploying an application image when the controlled release gate requires manual workflow dispatch;
 - SES identity/DNS verification;
