@@ -33,7 +33,8 @@ def test_counsel_brief_distinguishes_deployed_state_from_unactivated_email_work(
     assert "weekly reflection / plc discussion remains teacher-authored" in source
     assert "does not use generative ai to suggest, generate, complete, or rewrite" in source
     assert "source-controlled notification infrastructure not yet activated" in source
-    assert "have not" in source and "sent production/pilot email" in source
+    assert "send pilot/production email" in source
+    assert "activation still requires separate human-controlled" in source
     assert "notifications@planner.guidedscholar.ai" in source
     assert "planned formative-assessment analytics" in source
     assert "personnel/evaluation boundary" in source
@@ -75,6 +76,7 @@ def test_help_explains_new_admin_features_without_expanding_data_boundary() -> N
     assert "planned formative-assessment signals" in source
     assert "professional operational email" in source
     assert "notifications@planner.guidedscholar.ai" in source
-    assert "does not include teacher names or teacher-level exception lists" in source
+    assert "does not include teacher names, class-level exception lists" in source
+    assert "teacher/class exceptions remain inside the authenticated application" in source
     assert "no-student-information boundary" in source
     assert "not teacher-performance measures" in source
