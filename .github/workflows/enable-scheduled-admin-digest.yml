@@ -11,8 +11,8 @@ on:
         description: Secrets Manager ARN for tpp/pilot/supabase-service-role-key
         required: true
         type: string
-      friday_notification_migration_applied_confirmed:
-        description: I confirmed the scheduled Friday notification migration is applied
+      friday_notification_migrations_applied_confirmed:
+        description: I confirmed scheduled-delivery and multi-school notification-control migrations are applied
         required: true
         default: false
         type: boolean
@@ -21,8 +21,8 @@ on:
         required: true
         default: false
         type: boolean
-      schedule_times_approved:
-        description: I approved Friday 2:00 PM teacher and 3:30 PM administrator schedules in America/Chicago
+      school_local_controls_confirmed:
+        description: I confirmed enabled schools have approved IANA timezone and local notification settings; new schools remain disabled by default
         required: true
         default: false
         type: boolean
@@ -47,7 +47,7 @@ concurrency:
 
 jobs:
   enable-friday-notifications:
-    name: Enable isolated Friday teacher and administrator notifications
+    name: Enable isolated school-local Friday notification dispatchers
     runs-on: ubuntu-latest
     environment: tpp-pilot
     env:
@@ -59,9 +59,9 @@ jobs:
       ECS_CLUSTER: ${{ vars.TPP_ECS_CLUSTER || 'teacher-planning-platform-pilot' }}
       ECS_SERVICE: ${{ vars.TPP_ECS_SERVICE || 'teacher-planning-platform-pilot' }}
       SES_FROM_EMAIL: notifications@planner.guidedscholar.ai
-      TEACHER_SCHEDULE_EXPRESSION: cron(0 14 ? * FRI *)
-      ADMIN_SCHEDULE_EXPRESSION: cron(30 15 ? * FRI *)
-      SCHEDULE_TIMEZONE: America/Chicago
+      TEACHER_SCHEDULE_EXPRESSION: cron(0/15 * ? * * *)
+      ADMIN_SCHEDULE_EXPRESSION: cron(0/15 * ? * * *)
+      SCHEDULE_TIMEZONE: UTC
       SUPABASE_SERVICE_ROLE_SECRET_ARN: ${{ inputs.supabase_service_role_secret_arn }}
 
     steps:
@@ -70,9 +70,9 @@ jobs:
         run: |
           set -euo pipefail
           declare -A gates=(
-            [friday_notification_migration_applied_confirmed]="${{ inputs.friday_notification_migration_applied_confirmed }}"
+            [friday_notification_migrations_applied_confirmed]="${{ inputs.friday_notification_migrations_applied_confirmed }}"
             [ses_notifications_active_confirmed]="${{ inputs.ses_notifications_active_confirmed }}"
-            [schedule_times_approved]="${{ inputs.schedule_times_approved }}"
+            [school_local_controls_confirmed]="${{ inputs.school_local_controls_confirmed }}"
             [privacy_help_review_confirmed]="${{ inputs.privacy_help_review_confirmed }}"
             [deployment_role_policies_updated_confirmed]="${{ inputs.deployment_role_policies_updated_confirmed }}"
           )
@@ -95,9 +95,9 @@ jobs:
             fi
           done
           [[ "$AWS_REGION" == "us-east-2" ]] || { echo "Friday notification infrastructure is locked to us-east-2." >&2; exit 1; }
-          [[ "$SCHEDULE_TIMEZONE" == "America/Chicago" ]] || { echo "Unexpected Friday notification timezone." >&2; exit 1; }
-          [[ "$TEACHER_SCHEDULE_EXPRESSION" == 'cron(0 14 ? * FRI *)' ]] || exit 1
-          [[ "$ADMIN_SCHEDULE_EXPRESSION" == 'cron(30 15 ? * FRI *)' ]] || exit 1
+          [[ "$SCHEDULE_TIMEZONE" == "UTC" ]] || { echo "Unexpected dispatcher timezone." >&2; exit 1; }
+          [[ "$TEACHER_SCHEDULE_EXPRESSION" == 'cron(0/15 * ? * * *)' ]] || exit 1
+          [[ "$ADMIN_SCHEDULE_EXPRESSION" == 'cron(0/15 * ? * * *)' ]] || exit 1
           expected_cloudformation_role="arn:aws:iam::697091778129:role/TeacherPlanningPlatformPilotCloudFormationExecution"
           [[ "$CLOUDFORMATION_ROLE_ARN" == "$expected_cloudformation_role" ]] || { echo "Unexpected TPP CloudFormation execution-role ARN." >&2; exit 1; }
           expected_secret_prefix="arn:aws:secretsmanager:us-east-2:697091778129:secret:tpp/pilot/supabase-service-role-key-"
@@ -159,7 +159,7 @@ jobs:
             echo "public_base_url=$public_base_url"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Stage both Friday schedules disabled
+      - name: Stage both dispatchers disabled
         shell: bash
         run: |
           set -euo pipefail
@@ -185,7 +185,7 @@ jobs:
               ScheduleTimezone="$SCHEDULE_TIMEZONE" \
               ScheduleState=DISABLED
 
-      - name: Verify staged workers and schedules without sending email
+      - name: Verify staged workers and dispatchers without sending email
         shell: bash
         run: |
           set -euo pipefail
@@ -219,7 +219,7 @@ jobs:
             [[ "$(jq -r '.ScheduleExpressionTimezone' <<<"$schedule_json")" == "$SCHEDULE_TIMEZONE" ]] || exit 1
           done
 
-      - name: Enable verified Friday schedules
+      - name: Enable verified dispatchers
         shell: bash
         run: |
           set -euo pipefail
@@ -245,7 +245,7 @@ jobs:
               ScheduleTimezone="$SCHEDULE_TIMEZONE" \
               ScheduleState=ENABLED
 
-      - name: Verify enabled schedules without sending email
+      - name: Verify enabled dispatchers without sending email
         shell: bash
         run: |
           set -euo pipefail
@@ -259,8 +259,11 @@ jobs:
           done
           {
             echo "## TPP Friday notification activation"
-            echo "- Teacher reminder: Friday 2:00 PM America/Chicago"
-            echo "- Administrator digest: Friday 3:30 PM America/Chicago"
+            echo "- Dispatcher cadence: every 15 minutes in UTC"
+            echo "- Actual teacher/admin delivery: only enabled schools inside their configured local Friday window"
+            echo "- Default local times: teacher 2:00 PM; administrator 3:30 PM"
+            echo "- School timezone source: governed IANA timezone stored on each school"
+            echo "- New-school notification default: disabled"
             echo "- Sender: $SES_FROM_EMAIL"
             echo "- Immediate/test email sent by this workflow: no"
             echo "- Data boundary: teacher and curriculum professional data only; no student data"

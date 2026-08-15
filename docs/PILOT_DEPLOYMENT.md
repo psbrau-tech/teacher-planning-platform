@@ -7,55 +7,56 @@
 - AWS region: `us-east-2`
 - Isolation: separate TPP pilot VPC, ALB, ECR repository, ECS cluster/service, task roles, and log group
 - Supabase: dedicated Teacher Planning Platform project
-- Authentication: Google SSO through Supabase Auth using approved `anniston.k12.al.us` accounts
+- Authentication: Google SSO through Supabase Auth using approved `anniston.k12.al.us` professional accounts
 - OpenAI: separate TPP project and key
-- Data boundary: teacher and curriculum data only; no student data
+- Data boundary: teacher and curriculum professional data only; no student data
 - Platform Owner: one governed account must hold concurrent `platform_admin` and `teacher` roles
+- Tenant model: explicit districts containing explicit schools, with one explicit district/school assignment per professional account
+- Authorization model: `school_admin` is school-scoped; `district_admin` scope is derived from the assigned school's district; `platform_admin` remains intentionally platform-scoped
+- Timezone model: every school stores a required IANA timezone; notification delivery uses school-local time and must not rely on a platform-wide UTC offset
+- Notification default: newly provisioned schools have teacher reminders and administrator digests disabled until explicitly approved
 - DNS: Cloudflare remains authoritative for the pilot; a later Route 53 migration moves the complete `guidedscholar.ai` zone, including `planner.guidedscholar.ai`, as one coordinated action
+
+## Current accepted live baseline
+
+The accepted interactive pilot is deployed from the release that includes Friday status and Reflection Intelligence UX through database migration `20260815011000_friday_submission_status.sql`.
+
+Earlier professional-learning/application functionality was already present through `20260815001500`. The source-controlled automatic-notification chain is intentionally later and remains **deferred** until its separately governed activation:
+
+1. `20260815013000_scheduled_friday_notifications.sql`
+2. `20260815215500_multi_school_notification_controls.sql`
+3. `20260815220500_harden_school_local_notification_windows.sql`
+
+Repository source state and live database state are separate evidence. A merge or successful CI run does not prove that a migration is live. A later intentionally deferred source migration is expected when the controlled release target stops earlier.
 
 ## Repository release controls
 
 ### Mutating workflows
 
-- `.github/workflows/apply-pilot-database.yml` — target-scoped Supabase migration preview/application with exact `main` SHA, exact migration head, pinned CLI version, explicit apply confirmation, later-migration deferral, and post-apply target dry-run verification
-- `.github/workflows/provision-pilot-access.yml` — transaction-safe school, academic-year, and staff-access provisioning
-- `.github/workflows/bootstrap-pilot.yml` — isolated AWS foundation, first exact-image deployment, health verification, and ACM request; safe to retry only for the same accepted commit
-- `.github/workflows/enable-pilot-tls.yml` — issued-certificate attachment with listener, redirect, target-health, and image-preservation verification
-- `.github/workflows/deploy-pilot.yml` — subsequent exact-digest ECS deployments requiring the exact accepted `main` SHA, the confirmed applied migration head, Help review, prior-task-definition rollback evidence, and no-op verification when the exact image is already active
-- `.github/workflows/enable-ses-notifications.yml` — separate manual activation of the approved SES sender after identity/sending/privacy gates; does not send a test email
-- `.github/workflows/enable-scheduled-admin-digest.yml` — **Enable TPP Friday Notifications**; separate isolated activation of the approved Friday 2:00 PM teacher courtesy reminder and 3:30 PM administrator digest after database, SES, IAM, privacy/Help, service-role-secret, and exact-schedule gates; not part of a normal application deployment
+- `.github/workflows/apply-pilot-database.yml` — target-scoped Supabase migration preview/application with exact `main` SHA, exact migration head, pinned CLI version, explicit apply confirmation, later-migration deferral, and post-apply target dry-run verification.
+- `.github/workflows/provision-pilot-access.yml` — transaction-safe district, school, academic-year, school-timezone, notification-setting, and professional-access provisioning from a protected configuration secret.
+- `.github/workflows/bootstrap-pilot.yml` — isolated AWS foundation, first exact-image deployment, health verification, and ACM request.
+- `.github/workflows/enable-pilot-tls.yml` — issued-certificate attachment with listener, redirect, target-health, and image-preservation verification.
+- `.github/workflows/deploy-pilot.yml` — subsequent exact-digest ECS deployments requiring exact accepted `main` SHA, confirmed migration head, Help review, rollback evidence, and immutable-image verification.
+- `.github/workflows/enable-ses-notifications.yml` — separate manual activation of the approved SES sender after identity/sending/privacy gates; sends no test email.
+- `.github/workflows/enable-scheduled-admin-digest.yml` — **Enable TPP Friday Notifications**; separate isolated activation of the two quarter-hour dispatcher schedules after database, SES, IAM, privacy/Help, school-local settings, and service-role-secret gates.
 
 ### Read-only workflows
 
-- `.github/workflows/preflight-pilot.yml` — validates protected GitHub configuration, staff-access JSON, academic-year dates, AWS OIDC, required secret metadata, CloudFormation, and migration inventory before mutation
-- `.github/workflows/verify-pilot-deployment.yml` — verifies stack stability, ECS counts, immutable image provenance, target health, log retention, secret mappings, certificate metadata, and optional public HTTPS without changing AWS
+- `.github/workflows/preflight-pilot.yml` — validates protected GitHub configuration, district/school graph, professional account assignments, academic-year dates, AWS OIDC, required secret metadata, CloudFormation, and migration inventory before mutation.
+- `.github/workflows/verify-pilot-deployment.yml` — verifies stack stability, ECS counts, immutable image provenance, target health, log retention, secret mappings, certificate metadata, and optional public HTTPS without changing AWS.
 
 ### Application and infrastructure
 
-- `Dockerfile` — combined React/FastAPI production image with non-root runtime and application health check
-- `infra/pilot-stack.yml` — isolated TPP pilot CloudFormation stack, including fail-closed SES parameters
-- `infra/scheduled-admin-digest-stack.yml` — separate optional Friday notification-worker stack containing isolated teacher-reminder and administrator-digest tasks/schedules; it is not created by normal application deployment
-- `backend/scripts/preflight_pilot.py` — local and workflow validation of staff access and academic-year inputs without connecting to Supabase
-- `scripts/build_or_reuse_pilot_image.sh` — shared immutable-ECR helper that reuses a commit-tagged digest after a partial workflow failure rather than attempting to overwrite an immutable tag
-- `scripts/verify_exact_release_candidate.sh` — requires a release workflow to run from `main`, at the exact accepted SHA, against an exact repository migration version
-- `scripts/stage_migrations_through.sh` — makes only migrations through the approved target visible to the Supabase CLI in the ephemeral Actions checkout, leaving later source migrations intentionally deferred
+- `Dockerfile` — combined React/FastAPI production image with non-root runtime and application health check.
+- `infra/pilot-stack.yml` — isolated TPP pilot CloudFormation stack, including fail-closed SES parameters.
+- `infra/scheduled-admin-digest-stack.yml` — separate optional professional-notification worker stack containing isolated teacher-reminder and administrator-digest tasks plus two exact EventBridge Scheduler resources. These are dispatcher schedules, not fixed school-time schedules.
+- `backend/scripts/provision_pilot.py` — governed district/school configuration parser/provisioner with IANA timezone validation, explicit district-to-school assignment, one explicit district/school pair per professional account, school notification settings, and backward-compatible fail-closed handling of the legacy AHS access-list shape.
+- `backend/scripts/preflight_pilot.py` — read-only validation of the same district/school graph, account assignment, role, timezone, and notification-setting structure before mutation.
+- `scripts/verify_exact_release_candidate.sh` — requires a release workflow to run from `main`, at the exact accepted SHA, against an exact repository migration version.
+- `scripts/stage_migrations_through.sh` — makes only migrations through the approved target visible to the Supabase CLI in the ephemeral Actions checkout, leaving later source migrations intentionally deferred.
 
-### Operational documentation
-
-- `docs/PILOT_PREFLIGHT.md` — preflight use, target-scoped migration rules, retry boundaries, and failure-specific remediation
-- `docs/PILOT_BROWSER_ACCEPTANCE.md` — owner, administrator, volunteer-teacher, negative-authorization, export, and Friday-validation evidence package
-- `docs/VOLUNTEER_TEACHER_PILOT_GUIDE.md` — controlled teacher exercise and feedback guide
-- `docs/PILOT_ROLLBACK.md` — detailed layered recovery runbook
-- `docs/RELEASE_ROLLBACK_CHECKLIST.md` — concise release and rollback checklist
-- `docs/governance/INTELLIGENCE_NOTIFICATION_CONTROLLED_RELEASE_RUNBOOK_2026-08-14.md` — phased release/activation boundary for Reflection Intelligence, assessment analytics, PLC artifacts, Friday status, and notifications
-- `docs/governance/FRIDAY_STATUS_NOTIFICATION_DECISION_2026-08-15.md` — approved teacher/admin Friday status and notification product contract
-- `docs/ROUTE53_MIGRATION_PREP.md` — coordinated migration preparation while Cloudflare remains authoritative
-- `docs/DNS_RECORD_INVENTORY_TEMPLATE.md` — human-readable DNS inventory worksheet
-- `docs/ROUTE53_RECORD_INVENTORY.csv` — row-level Cloudflare-to-Route 53 comparison template
-
-All mutating workflows use the protected `tpp-pilot` GitHub environment. The read-only workflows use the same environment so they validate the actual protected values. A code push or pull request does not mutate the application, database, AWS resources, DNS, certificate, or identity-provider configuration.
-
-## Controlled release sequence
+## Controlled application release sequence
 
 For an already-running pilot application release:
 
@@ -64,26 +65,53 @@ For an already-running pilot application release:
 3. Record the exact resulting `main` SHA and choose the exact migration target required for that release.
 4. Run **Apply TPP Pilot Database Migrations** from `main` with that `expected_main_sha`, that `target_migration_head`, `dry_run_only=true`, and `apply_target_confirmed=false`.
 5. Review the exact target-scoped pending list. Later repository migrations may remain deliberately deferred when the release runbook permits it.
-6. If approved, rerun the migration workflow with the same SHA/head, `dry_run_only=false`, and `apply_target_confirmed=true`. The final dry run must show nothing pending **through the approved target**.
-7. Run **Preflight TPP Pilot Release** if protected configuration changed or a fresh preflight is required for the release record.
-8. Run **Deploy TPP Pilot** from `main` with the exact accepted SHA, the exact migration head confirmed applied, `migration_head_applied_confirmed=true`, and the required Help review confirmation.
+6. If approved, rerun with the same SHA/head, `dry_run_only=false`, and `apply_target_confirmed=true`. The final dry run must show nothing pending **through the approved target**.
+7. Run **Preflight TPP Pilot Release** if protected configuration changed or a fresh preflight is required for the release record. The preflight must validate each school against a configured district and each professional account against a configured district/school pair.
+8. Run **Deploy TPP Pilot** from `main` with the exact accepted SHA, exact migration head confirmed applied, `migration_head_applied_confirmed=true`, and the required Help review confirmation.
 9. Verify ECS stability, target health, exact immutable image provenance, and the interactive runtime secret boundary.
-10. Run **Verify TPP Pilot Deployment** for the exact accepted commit and perform the release-specific browser/API acceptance.
+10. Run **Verify TPP Pilot Deployment** for the exact accepted commit and perform release-specific browser/API acceptance.
 11. Retain the exact image digest, task-definition revision, workflow runs, migration evidence, and acceptance evidence.
 
-The accepted professional-learning/application release is live through `20260815001500`. The next Friday-status dashboard/application release uses `20260815011000_friday_submission_status.sql` as its intended migration target. That target adds authenticated professional submission-status sources but does not enable email delivery. `20260815013000_scheduled_friday_notifications.sql` is intentionally later and must remain deferred during the dashboard release. The automatic SES/service-role/Scheduler path is a separate activation sequence.
+Do not select a later migration merely because it exists in source. The approved target is a release decision.
 
-For a brand-new pilot stack, the original bootstrap/TLS/DNS/OAuth sequence still applies: provision governed access, run preflight, bootstrap the stack, verify the non-public deployment, complete ACM validation, enable TLS, set the accepted certificate ARN, add the application DNS record, complete Supabase/Google redirect configuration, and then run public verification/browser acceptance.
+## District and school provisioning boundary
 
-Do not bypass failed validation by weakening checks, broadening access, moving protected values into repository files, or selecting a later migration merely to make a workflow pass.
+TPP no longer treats Anniston High School as an implicit singleton tenant. The protected `TPP_PILOT_ACCESS_JSON` configuration defines the governed district/school graph and staff accounts.
 
-## Deterministic migration boundary
+Each configured district requires:
 
-The migration workflow uses an exact Supabase CLI version rather than `latest`. Every run is bound to the exact accepted `main` SHA and one explicit target migration head. In the ephemeral runner checkout, repository migrations later than that target are moved out of the Supabase CLI migration directory before preview/application. This allows a governed later feature migration to remain source-controlled but intentionally deferred.
+- an explicit district name.
 
-An apply run previews the target-scoped migration set, applies only reviewed pending files through the target in timestamp order, lists migration history, and performs a final target-scoped dry run. Applied migration files are immutable history; any correction must be a new forward migration.
+Each configured school requires:
 
-Repository source state and live database state are separate evidence. The release record must retain the actual pilot migration history/head; a Git merge or successful CI run does not prove a migration is applied.
+- an explicit school name;
+- exactly one configured district;
+- a valid IANA timezone such as `America/Chicago`;
+- teacher-reminder enablement state and local send time; and
+- administrator-digest enablement state and local send time.
+
+Each professional account requires:
+
+- professional school email;
+- display name;
+- one explicit configured district;
+- one explicit school in that district;
+- one or more approved roles; and
+- active/inactive state.
+
+The current session model intentionally remains one-school-per-account. A `school_admin` is authorized only for the account's assigned school. A `district_admin` is assigned one school within the governed district; the established database authorization resolves that school's `district_id` through `private.current_district_id()` and permits reporting only on schools whose `district_id` matches. `platform_admin` remains intentionally platform-scoped.
+
+This makes the district boundary explicit without inventing a second active-school selector or duplicating a district administrator across every school in the district.
+
+For the current pilot, the graph is intended to include:
+
+- **Anniston City Schools**
+  - Anniston High School
+  - Anniston Middle School
+
+Moving an existing account to another school or district is an explicit governed provisioning change because school/district context is authorization state. Duplicate email rows are rejected by the protected configuration parser.
+
+New school records default automatic notification flags to disabled. Merely adding Anniston Middle School, its teachers, or its administrators must not cause email to start.
 
 ## Interactive runtime credential boundary
 
@@ -93,37 +121,107 @@ The current AI-enabled interactive application task uses exactly these secret ma
 - `TPP_SUPABASE_ANON_KEY`; and
 - `TPP_OPENAI_API_KEY`.
 
-The interactive task must not contain `TPP_SUPABASE_SERVICE_ROLE_KEY`, the PostgreSQL database URL, or Google OAuth client credentials. SES delivery, when separately activated, uses least-privilege AWS task-role permission plus non-secret SES sender/region configuration. The optional Friday notification worker is isolated in separate one-shot ECS tasks and is the only runtime permitted to receive the Supabase service-role key after its additional activation gates are satisfied.
+The interactive task must not contain `TPP_SUPABASE_SERVICE_ROLE_KEY`, the PostgreSQL database URL, or Google OAuth client credentials. SES delivery, when separately activated, uses least-privilege AWS task-role permission plus non-secret SES sender/region configuration.
 
-## Friday notification activation boundary
+The optional Friday notification worker is isolated in separate one-shot ECS tasks and is the only runtime permitted to receive the Supabase service-role key after its additional activation gates are satisfied. Those workers receive only `TPP_SUPABASE_URL` and `TPP_SUPABASE_SERVICE_ROLE_KEY` as database secrets; they do not receive the OpenAI key, Supabase anon key, database URL, or OAuth secrets.
 
-The Anniston Pilot schedule is approved in `America/Chicago`:
+## School-local Friday notification behavior
 
-- teacher courtesy reminder: Friday at 2:00 PM, `cron(0 14 ? * FRI *)`;
-- school-administrator aggregate digest: Friday at 3:30 PM, `cron(30 15 ? * FRI *)`.
+The approved default **local** delivery times are:
 
-Teachers receive no automatic reminder when all required submissions are complete. A teacher with outstanding work receives one combined reminder naming the exact professional class(es) and whether each is missing the current-week reflection/completed packet, the following-week lesson plan, or both. The administrator email contains aggregate counts and a link only; teacher/class exceptions remain authenticated in TPP.
+- teacher courtesy reminder: Friday at **2:00 PM local time**;
+- school-administrator aggregate digest: Friday at **3:30 PM local time**.
 
-The normal administrator UI does not expose a routine `Weekly admin email` action. Any retained manual path is controlled operational recovery, not the primary workflow.
+Anniston High School and Anniston Middle School initially use `America/Chicago`, but that value is stored independently on each school. The architecture must continue to work when a future school uses another IANA timezone or belongs to another configured district.
 
-Before automatic delivery can be enabled, the scheduled-delivery migration `20260815013000_scheduled_friday_notifications.sql` must be explicitly applied, the approved SES sender must be active, the dedicated Supabase service-role secret must exist at the governed path, live deployment-role policies must match the accepted source, and Help/privacy/subprocessor review must be complete.
+The scheduler layer itself uses two exact quarter-hour dispatchers:
 
-The activation workflow stages both schedules as `DISABLED`, verifies the immutable image, exact worker commands, exact two Supabase secrets, schedule expressions, timezone, and interactive service-role exclusion, and only then changes both schedules to `ENABLED`. It does not run either task immediately and sends no immediate/test email.
+- `tpp-pilot-teacher-friday-reminder`
+- `tpp-pilot-admin-weekly-digest`
+- expression: `cron(0/15 * ? * * *)`
+- dispatcher timezone: `UTC`
 
-## Retry and recovery behavior
+Every quarter hour, an isolated worker asks the database for enabled schools whose **local Friday clock** is inside that school's configured 15-minute send window. The database converts the current dispatcher timestamp through each school's IANA timezone, so daylight-saving-time changes follow the timezone database rather than a manually maintained offset.
 
-- **Preflight TPP Pilot Release** is read-only and can be rerun at any time.
-- **Apply TPP Pilot Database Migrations** defaults to dry-run and refuses mutation unless the exact SHA/head are supplied and target application is explicitly confirmed.
-- **Provision TPP Pilot Access** validates the complete access list before connecting and applies its changes in one database transaction.
-- **Bootstrap TPP Pilot** can resume a new or partially completed stack for the same accepted commit. It will not remove an existing service and will refuse to replace an existing service with a different commit.
-- After bootstrap, application changes must use **Deploy TPP Pilot**.
-- Bootstrap and deploy reuse the immutable ECR digest already tagged with the same commit after a partial failure.
-- Deploy avoids registering or activating a new task-definition revision when the same exact image is already active; it verifies the existing deployment instead.
-- **Enable TPP Pilot TLS** preserves and verifies the active exact image and confirms the HTTPS listener, approved certificate, HTTP redirect, and target health.
-- SES sender activation and Friday-worker activation remain separate from an application deployment and have their own fail-closed checks.
-- Application rollback, database correction, staff-access correction, OAuth restoration, TLS correction, DNS rollback, and future Route 53 delegation rollback remain separate controlled actions.
+The quarter-hour cadence is not a quarter-hour email cadence. If no enabled school is due, the worker sends nothing.
 
-## Operational acceptance before volunteer access or a material pilot release
+For every due school, the worker makes an explicit `school_id`-scoped claim. The delivery ledger's at-most-once key includes school ID, recipient profile ID, notification type, and week as defense in depth against cross-school claims.
+
+Teachers with every required submission complete receive no reminder. Teachers with outstanding work receive one combined email for their assigned school, naming the exact professional class/course and whether each is missing the current-week reflection/completed packet, following-week lesson plan, or both.
+
+The administrator email contains aggregate school-scoped operational counts and an authenticated TPP link only. It must not contain teacher names, teacher/class exception lists, reflection text, lesson-plan content, generated instructional insight, student information, or teacher-quality/performance content.
+
+## Notification database activation boundary
+
+The notification chain must be applied as a single reviewed forward sequence when email preparation is intentionally opened:
+
+1. `20260815013000_scheduled_friday_notifications.sql` — bounded delivery ledger and initial isolated-worker claim foundation.
+2. `20260815215500_multi_school_notification_controls.sql` — school notification settings, school-scoped at-most-once key, school-local window selector, and explicit school-scoped candidate claims.
+3. `20260815220500_harden_school_local_notification_windows.sql` — quarter-hour local-time constraints and hardened IANA-timezone dispatch-window calculation.
+
+Until that controlled target is approved and applied, the live migration head remains earlier and automatic delivery remains inactive.
+
+After the migration chain is applied, run governed provisioning with the reviewed district/school configuration before enabling dispatchers. Confirm each school's district, timezone, and notification enabled/disabled state. A school with notification flags disabled must return no automatic-delivery candidates.
+
+## SES activation boundary
+
+The approved sender is exactly `notifications@planner.guidedscholar.ai` in `us-east-2`.
+
+Before running **Enable TPP SES Notifications**:
+
+- verify the exact address or `planner.guidedscholar.ai` domain identity in Amazon SES;
+- complete required DNS records without inventing DKIM/verification values;
+- confirm SES account sending status supports intended professional recipients;
+- complete privacy/subprocessor and Help review for the enabled data flow;
+- confirm deployment-role policies match accepted source; and
+- verify the interactive web task still excludes the service-role credential.
+
+The SES activation workflow configures the approved sender and least-privilege task permission. It sends no test email.
+
+Before routine automated delivery, also define and verify bounce/complaint/suppression monitoring and the intended Reply-To/monitored mailbox behavior.
+
+## Friday dispatcher activation boundary
+
+Run **Enable TPP Friday Notifications** only after all of the following are true:
+
+- the notification migration chain through `20260815220500` is applied;
+- approved SES sender infrastructure is active;
+- the dedicated `tpp/pilot/supabase-service-role-key-*` secret exists and only its ARN is supplied to the workflow;
+- live deployment-role policies match source;
+- Help/privacy/subprocessor review is current;
+- every school intended to receive notifications has an approved district, IANA timezone, and local settings; and
+- any newly added school not intended for email remains disabled.
+
+The activation workflow:
+
+1. validates the main pilot stack, SES state, immutable image, and interactive credential boundary;
+2. stages the two exact dispatcher schedules as `DISABLED`;
+3. verifies worker commands exactly:
+   - `python -m app.scheduled_digest_worker teacher`
+   - `python -m app.scheduled_digest_worker admin`;
+4. verifies isolated tasks contain only the two approved Supabase secrets;
+5. verifies the two exact schedule names, `cron(0/15 * ? * * *)`, and `UTC` dispatcher timezone while disabled;
+6. changes both dispatchers to `ENABLED` only after those checks pass; and
+7. sends no immediate/test email and does not invoke `ecs run-task`.
+
+## First live Friday acceptance
+
+At the first approved Friday window for each enabled school, verify:
+
+- the teacher worker processes the school at its configured 2:00 PM local window;
+- only teachers with outstanding required submissions are claimed for that school;
+- a multi-class teacher receives one school-specific email with exact missing class(es)/item(s);
+- a fully complete teacher receives no reminder;
+- the admin worker processes the school at its configured 3:30 PM local window;
+- eligible active `school_admin` recipients receive only their assigned school's aggregate digest;
+- `district_admin` reporting spans only schools attached to the same district as the district administrator's assigned school;
+- district/platform roles do not become school-admin email recipients unless the notification-recipient policy is explicitly expanded and reviewed;
+- a newly provisioned school with notification flags disabled receives no automatic email;
+- retries do not create duplicate sends because of at-most-once claims;
+- worker logs do not print recipient email, names, course names, school identifiers, message bodies, credentials, or SES MessageIds; and
+- no student data appears anywhere in the delivery path.
+
+## Operational acceptance before a material pilot expansion
 
 - The read-only deployment verification passes for the exact accepted commit.
 - Public HTTPS `/health` returns HTTP 200 without a certificate warning when public verification is in scope.
@@ -134,70 +232,39 @@ The activation workflow stages both schedules as `DISABLED`, verifies the immuta
 - No secret-bearing value appears in plaintext task-definition environment values.
 - The exact permitted interactive runtime secrets are mapped through ECS secret references; prohibited privileged credentials are absent.
 - Supabase migration history contains the exact migration target required by the release; any later intentionally deferred source migration is recorded as deferred rather than treated as missing accidentally.
-- The approved access list is active and unapproved accounts receive no application data.
+- The approved district/school access configuration is active and unapproved accounts receive no application data.
 - Platform Owner retains both `platform_admin` and `teacher` in one session.
-- School Administrator reporting is aggregate and school-scoped where the product contract calls for aggregates; authorized Friday operational follow-up may identify teachers/classes but remains within governed reporting scope and is not evaluation.
-- Platform Administrator cost/adoption reporting is restricted to the governed Platform Administrator role.
+- School Administrator reporting remains school-scoped and within the non-evaluative professional reporting boundary.
+- District Administrator reporting remains intentionally district-scoped through the governed school-to-district relationship.
+- Platform Administrator cost/adoption reporting remains restricted to the governed Platform Administrator role.
 - No student table, roster, student account, or student-specific field is used.
-
-## Volunteer-teacher acceptance
-
-The volunteer teacher must independently be able to:
-
-1. authenticate with an approved Google school account;
-2. see only the approved role set;
-3. import or select a sequenced curriculum;
-4. configure independent teaching assignments and meeting patterns;
-5. generate a week using instructional minutes and calendar exceptions;
-6. complete nonblank Literacy Standards and ACT Preparation fields;
-7. save and reopen a weekly draft;
-8. export each approved Anniston document and the combined packet;
-9. validate lessons as completed, modified, missed, or skipped;
-10. carry missed instruction forward without changing unrelated curricula;
-11. recognize the teacher-and-curriculum-only boundary throughout the workflow.
-
-For the Friday-status release, also verify that the Dashboard reports each required class independently, distinguishes current completed-packet/reflection submission from following-week lesson-plan submission, and does not treat a saved draft as submitted.
 
 ## Rollback
 
-Use `docs/PILOT_ROLLBACK.md` to identify the failing layer before mutation. Application rollback, database correction, staff-access correction, OAuth restoration, TLS correction, application-record rollback, and future Route 53 delegation rollback are separate controlled actions.
+Use `docs/PILOT_ROLLBACK.md` to identify the failing layer before mutation. Application rollback, database forward correction, staff-access correction, OAuth restoration, TLS correction, SES correction, scheduler correction, and DNS rollback are separate controlled actions.
 
-A failed ECS deployment uses the configured deployment circuit breaker. A manual application rollback uses the recorded prior task definition and exact image. Application rollback does not reverse database migrations.
+If automatic Friday notifications are unsafe, disable both EventBridge Scheduler dispatchers first so no new worker tasks launch, then remediate the worker/database/SES path.
 
-If automatic Friday notifications are unsafe, disable both EventBridge Scheduler schedules first so no new worker tasks launch, then remediate the worker/database/SES path.
+If the dispatcher infrastructure is sound but one school's configuration is unsafe, disable that school's teacher/admin notification flags through governed provisioning. Do not disable unrelated schools unless the incident requires it.
 
 ## Human-controlled gates
 
 The following require human action or explicit approval:
 
-- pull-request merge when standing release authorization does not already cover it;
 - selection/approval of the exact migration target for a mutating database run;
 - protected-environment approval for database, provisioning, infrastructure, TLS, deployment, preflight, and verification workflows;
-- staff access-list contents and academic-year dates;
-- ACM/SES validation DNS record creation when required;
-- setting accepted protected environment values such as a certificate ARN;
+- real district/school graph, staff access-list contents, and academic-year dates;
+- creation of a new district or school with real professional users;
+- moving an existing professional account to another school or district;
+- enabling automatic notifications for a school for the first time;
+- ACM/SES validation DNS records when required;
 - Supabase and Google console changes;
-- SES identity/sending activation and the first live/pilot email acceptance message;
+- SES identity/sending activation and first live/pilot email acceptance;
 - creation/update of the dedicated scheduled-worker service-role secret;
 - live AWS IAM policy changes when no already-approved governed workflow performs them;
 - execution of the Friday notification activation workflow;
-- live browser acceptance with approved school accounts;
-- any production rollback;
+- live browser/recipient acceptance with approved school accounts;
+- any production rollback; and
 - the later coordinated Route 53 nameserver migration.
 
-## Route 53 preparation boundary
-
-The hosted zone and record inventory may be prepared while Cloudflare remains authoritative. Do not change registrar nameservers until:
-
-- Guided Scholar and TPP are both stable and accepted;
-- every Cloudflare record is inventoried and deliberately represented or retired;
-- email, OAuth, Supabase, ACM, verification, and application records are validated;
-- Cloudflare proxy-only behavior has an approved replacement;
-- DNSSEC handling and rollback nameservers are documented;
-- an explicit coordinated migration is authorized.
-
-Do not migrate `planner.guidedscholar.ai` independently from the parent `guidedscholar.ai` zone.
-
-## Rollout boundary
-
-The first exercise is a controlled volunteer-teacher pilot. Full-school rollout is a separate decision contingent on pilot acceptance, defect closeout, administrator validation, monitoring review, and explicit authorization.
+Do not bypass failed validation by weakening tests, broadening access, moving protected values into repository files, or selecting a later migration merely to make a workflow pass.

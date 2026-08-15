@@ -26,6 +26,18 @@ DELIVERY_MIGRATION = (
     / "migrations"
     / "20260815013000_scheduled_friday_notifications.sql"
 )
+MULTI_SCHOOL_MIGRATION = (
+    ROOT
+    / "supabase"
+    / "migrations"
+    / "20260815215500_multi_school_notification_controls.sql"
+)
+WINDOW_HARDENING_MIGRATION = (
+    ROOT
+    / "supabase"
+    / "migrations"
+    / "20260815220500_harden_school_local_notification_windows.sql"
+)
 SCHEDULED_STACK = ROOT / "infra" / "scheduled-admin-digest-stack.yml"
 MAIN_STACK = ROOT / "infra" / "pilot-stack.yml"
 ACTIVATION_WORKFLOW = (
@@ -35,12 +47,45 @@ CFN_POLICY = ROOT / "infra" / "iam" / "tpp-cloudformation-execution-policy.json"
 OIDC_POLICY = ROOT / "infra" / "iam" / "tpp-github-oidc-deployment-policy.json"
 MAIN_FRONTEND = ROOT / "frontend" / "src" / "main.tsx"
 
+SCHOOL_ID = "11111111-1111-4111-8111-111111111111"
+
 
 def test_worker_uses_school_local_monday() -> None:
     sunday_utc = datetime(2026, 8, 17, 2, 30, tzinfo=UTC)
     assert (
         worker.week_start_for_timezone("America/Chicago", sunday_utc).isoformat()
         == "2026-08-10"
+    )
+
+
+def test_dispatch_window_is_explicitly_school_scoped_and_timezone_checked() -> None:
+    class FakeClient:
+        def request(
+            self,
+            method: str,
+            path: str,
+            *,
+            payload: dict[str, str],
+        ) -> object:
+            assert method == "POST"
+            assert path == "rpc/scheduled_notification_school_windows"
+            assert payload["target_mode"] == "teacher"
+            return [
+                {
+                    "school_id": SCHOOL_ID,
+                    "timezone": "America/Chicago",
+                    "week_start": "2026-08-10",
+                }
+            ]
+
+    now = datetime(2026, 8, 14, 19, 2, tzinfo=UTC)
+    windows = worker._dispatch_windows(FakeClient(), mode="teacher", now=now)  # type: ignore[arg-type]
+    assert windows == (
+        worker.SchoolDispatchWindow(
+            school_id=SCHOOL_ID,
+            timezone="America/Chicago",
+            week_start=datetime(2026, 8, 10).date(),
+        ),
     )
 
 
@@ -102,10 +147,10 @@ def test_teacher_worker_sends_only_claimed_outstanding_courses(
         supabase_url="https://example.supabase.co",
         supabase_service_role_key="service-role-placeholder",
         allowed_email_domains="anniston.k12.al.us",
-        scheduled_digest_timezone="America/Chicago",
     )
     candidate: dict[str, Any] = {
         "delivery_id": "claim-1",
+        "school_id": SCHOOL_ID,
         "recipient_email": "teacher@anniston.k12.al.us",
         "recipient_display_name": "Teacher Example",
         "outstanding_items": [
@@ -119,6 +164,7 @@ def test_teacher_worker_sends_only_claimed_outstanding_courses(
     sent: list[tuple[str, str]] = []
     completions: list[tuple[str, bool]] = []
     fake_client = object()
+    week_start = datetime(2026, 8, 10).date()
 
     def fake_send(
         _settings: Settings,
@@ -136,13 +182,19 @@ def test_teacher_worker_sends_only_claimed_outstanding_courses(
     monkeypatch.setattr(worker, "_service_client", lambda _settings: fake_client)
     monkeypatch.setattr(
         worker,
-        "week_start_for_timezone",
-        lambda _timezone: datetime(2026, 8, 10).date(),
+        "_dispatch_windows",
+        lambda _client, *, mode, now: (
+            worker.SchoolDispatchWindow(
+                school_id=SCHOOL_ID,
+                timezone="America/Chicago",
+                week_start=week_start,
+            ),
+        ),
     )
     monkeypatch.setattr(
         worker,
         "_claim_teacher_candidates",
-        lambda _client, *, week_start: [candidate],
+        lambda _client, *, school_id, week_start: [candidate],
     )
     monkeypatch.setattr(worker, "send_teacher_friday_reminder", fake_send)
     monkeypatch.setattr(
@@ -153,17 +205,22 @@ def test_teacher_worker_sends_only_claimed_outstanding_courses(
         ),
     )
 
-    result = worker.run_teacher_friday_reminders(settings)
+    result = worker.run_teacher_friday_reminders(
+        settings,
+        now=datetime(2026, 8, 14, 19, 0, tzinfo=UTC),
+    )
 
     assert sent == [("teacher@anniston.k12.al.us", "Course Six")]
     assert completions == [("claim-1", True)]
+    assert result["school_windows"] == 1
     assert result["sent"] == 1
     assert result["failed"] == 0
 
 
-def test_delivery_ledger_is_at_most_once_and_content_minimized() -> None:
-    source = DELIVERY_MIGRATION.read_text(encoding="utf-8")
-    table_definition = source.split(
+def test_delivery_ledger_becomes_school_scoped_and_content_minimized() -> None:
+    foundation = DELIVERY_MIGRATION.read_text(encoding="utf-8")
+    multi_school = MULTI_SCHOOL_MIGRATION.read_text(encoding="utf-8")
+    table_definition = foundation.split(
         "create table public.scheduled_notification_deliveries",
         maxsplit=1,
     )[1].split("create index", maxsplit=1)[0]
@@ -172,11 +229,35 @@ def test_delivery_ledger_is_at_most_once_and_content_minimized() -> None:
     assert "recipient_profile_id uuid" in table_definition
     assert "recipient_email" not in table_definition
     assert "course_name" not in table_definition
-    assert "unique (notification_key, recipient_profile_id, week_start)" in source
-    assert "claim_teacher_friday_reminder_candidates" in source
-    assert "claim_scheduled_admin_weekly_digest_candidates" in source
-    assert "complete_scheduled_notification_delivery" in source
-    assert "<> 'service_role'" in source
+    assert "unique (notification_key, recipient_profile_id, week_start)" in foundation
+    assert (
+        "unique (notification_key, school_id, recipient_profile_id, week_start)"
+        in multi_school
+    )
+    assert "school_notification_settings" in multi_school
+    assert "teacher_reminders_enabled boolean not null default false" in multi_school
+    assert "admin_digest_enabled boolean not null default false" in multi_school
+    assert "scheduled_notification_school_windows" in multi_school
+    assert "target_school_id uuid" in multi_school
+    assert "<> 'service_role'" in multi_school
+
+
+def test_initial_school_local_window_sql_is_executable_before_hardening() -> None:
+    source = MULTI_SCHOOL_MIGRATION.read_text(encoding="utf-8")
+    assert "target_now at time zone s.timezone" in source
+    assert "lc.local_now::date + lc.teacher_reminder_local_time" in source
+    assert "lc.local_now::date + lc.admin_digest_local_time" in source
+    assert "date_trunc('day', lc.local_now) +" not in source
+
+
+def test_school_local_windows_are_iana_and_quarter_hour_governed() -> None:
+    source = WINDOW_HARDENING_MIGRATION.read_text(encoding="utf-8")
+    assert "teacher_reminder_local_time" in source
+    assert "admin_digest_local_time" in source
+    assert "mod(extract(minute" in source
+    assert "target_now at time zone s.timezone" in source
+    assert "extract(isodow from lc.local_now) = 5" in source
+    assert "interval '15 minutes'" in source
 
 
 def test_status_migration_is_separate_from_scheduled_delivery_activation() -> None:
@@ -201,18 +282,20 @@ def test_scheduled_tasks_are_isolated_from_interactive_web_credentials() -> None
     assert "Resource: !Ref SesIdentityArn" in scheduled
 
 
-def test_exact_teacher_and_admin_schedule_contract_is_locked() -> None:
+def test_dispatchers_are_fixed_but_delivery_time_is_school_local() -> None:
     stack = SCHEDULED_STACK.read_text(encoding="utf-8")
     workflow = ACTIVATION_WORKFLOW.read_text(encoding="utf-8")
     for source in (stack, workflow):
-        assert "cron(0 14 ? * FRI *)" in source
-        assert "cron(30 15 ? * FRI *)" in source
-        assert "America/Chicago" in source
+        assert "cron(0/15 * ? * * *)" in source
+        assert "UTC" in source
     assert "tpp-pilot-teacher-friday-reminder" in stack
     assert "tpp-pilot-admin-weekly-digest" in stack
     assert "app.scheduled_digest_worker" in stack
     assert "- teacher" in stack
     assert "- admin" in stack
+    assert "TPP_SCHEDULED_DIGEST_TIMEZONE" not in stack
+    assert "configured local Friday window" in workflow
+    assert "New-school notification default: disabled" in workflow
     assert "ScheduleState=DISABLED" in workflow
     assert "ScheduleState=ENABLED" in workflow
     assert "aws ecs run-task" not in workflow.lower()
@@ -220,7 +303,7 @@ def test_exact_teacher_and_admin_schedule_contract_is_locked() -> None:
     assert "immediate/test email sent by this workflow: no" in workflow.lower()
 
 
-def test_deployment_policies_are_limited_to_both_exact_schedules() -> None:
+def test_deployment_policies_remain_limited_to_both_exact_dispatchers() -> None:
     cfn = CFN_POLICY.read_text(encoding="utf-8")
     oidc = OIDC_POLICY.read_text(encoding="utf-8")
     for source in (cfn, oidc):

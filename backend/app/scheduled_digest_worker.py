@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import sys
-from datetime import date, datetime, timedelta
+from dataclasses import dataclass
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, cast
+from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .notification_email import (
@@ -18,6 +20,13 @@ from .supabase_rest import SupabaseRestClient, SupabaseRestError
 
 class ScheduledDigestWorkerError(RuntimeError):
     """Bounded Friday-notification failure that never exposes credentials or email content."""
+
+
+@dataclass(frozen=True, slots=True)
+class SchoolDispatchWindow:
+    school_id: str
+    timezone: str
+    week_start: date
 
 
 def _service_client(settings: Settings) -> SupabaseRestClient:
@@ -62,33 +71,103 @@ def _required_text(row: dict[str, Any], key: str) -> str:
     return value.strip()
 
 
+def _required_uuid(row: dict[str, Any], key: str) -> str:
+    value = _required_text(row, key)
+    try:
+        return str(UUID(value))
+    except ValueError as error:
+        raise ScheduledDigestWorkerError(
+            "Scheduled notification candidate data is invalid"
+        ) from error
+
+
+def _required_date(row: dict[str, Any], key: str) -> date:
+    value = _required_text(row, key)
+    try:
+        return date.fromisoformat(value)
+    except ValueError as error:
+        raise ScheduledDigestWorkerError(
+            "Scheduled notification candidate data is invalid"
+        ) from error
+
+
+def _dispatch_windows(
+    client: SupabaseRestClient,
+    *,
+    mode: str,
+    now: datetime,
+) -> tuple[SchoolDispatchWindow, ...]:
+    if now.tzinfo is None:
+        raise ScheduledDigestWorkerError("Scheduled notification clock must be timezone-aware")
+    try:
+        payload = client.request(
+            "POST",
+            "rpc/scheduled_notification_school_windows",
+            payload={"target_mode": mode, "target_now": now.isoformat()},
+        )
+    except SupabaseRestError as error:
+        raise ScheduledDigestWorkerError(
+            "Scheduled notification school windows are unavailable"
+        ) from error
+
+    windows: list[SchoolDispatchWindow] = []
+    for row in _records(payload):
+        school_id = _required_uuid(row, "school_id")
+        timezone_name = _required_text(row, "timezone")
+        week_start = _required_date(row, "week_start")
+        if week_start != week_start_for_timezone(timezone_name, now):
+            raise ScheduledDigestWorkerError(
+                "Scheduled notification school window is inconsistent"
+            )
+        windows.append(
+            SchoolDispatchWindow(
+                school_id=school_id,
+                timezone=timezone_name,
+                week_start=week_start,
+            )
+        )
+    return tuple(windows)
+
+
 def _claim(
     client: SupabaseRestClient,
     *,
     rpc: str,
+    school_id: str,
     week_start: date,
 ) -> list[dict[str, Any]]:
     try:
         payload = client.request(
             "POST",
             f"rpc/{rpc}",
-            payload={"target_week_start": week_start.isoformat()},
+            payload={
+                "target_school_id": school_id,
+                "target_week_start": week_start.isoformat(),
+            },
         )
     except SupabaseRestError as error:
         raise ScheduledDigestWorkerError(
             "Scheduled notification candidates are unavailable"
         ) from error
-    return _records(payload)
+    rows = _records(payload)
+    for row in rows:
+        if _required_uuid(row, "school_id") != school_id:
+            raise ScheduledDigestWorkerError(
+                "Scheduled notification candidate escaped its school scope"
+            )
+    return rows
 
 
 def _claim_admin_candidates(
     client: SupabaseRestClient,
     *,
+    school_id: str,
     week_start: date,
 ) -> list[dict[str, Any]]:
     return _claim(
         client,
         rpc="claim_scheduled_admin_weekly_digest_candidates",
+        school_id=school_id,
         week_start=week_start,
     )
 
@@ -96,11 +175,13 @@ def _claim_admin_candidates(
 def _claim_teacher_candidates(
     client: SupabaseRestClient,
     *,
+    school_id: str,
     week_start: date,
 ) -> list[dict[str, Any]]:
     return _claim(
         client,
         rpc="claim_teacher_friday_reminder_candidates",
+        school_id=school_id,
         week_start=week_start,
     )
 
@@ -193,51 +274,61 @@ def _assert_approved_sender(settings: Settings) -> None:
 
 def run_teacher_friday_reminders(
     settings: Settings | None = None,
-) -> dict[str, int | str]:
-    """Send one class-specific courtesy reminder only to teachers with outstanding submissions."""
+    *,
+    now: datetime | None = None,
+) -> dict[str, int]:
+    """Send school-local class-specific reminders only for explicitly enabled schools."""
     effective_settings = settings or Settings()
     _assert_approved_sender(effective_settings)
-    week_start = week_start_for_timezone(effective_settings.scheduled_digest_timezone)
+    dispatch_now = now or datetime.now(UTC)
     client = _service_client(effective_settings)
-    candidates = _claim_teacher_candidates(client, week_start=week_start)
+    windows = _dispatch_windows(client, mode="teacher", now=dispatch_now)
 
+    claimed = 0
     sent = 0
     failed = 0
-    for row in candidates:
-        delivery_id = _required_text(row, "delivery_id")
-        recipient = _required_text(row, "recipient_email").lower()
-        display_name = _required_text(row, "recipient_display_name")
-        if not effective_settings.email_is_allowed(recipient):
-            _complete_delivery(client, delivery_id=delivery_id, success=False)
-            failed += 1
-            continue
-        try:
-            send_teacher_friday_reminder(
-                effective_settings,
-                recipient_email=recipient,
-                display_name=display_name,
-                week_start=week_start,
-                next_week_start=week_start + timedelta(days=7),
-                items=_teacher_items(row),
-            )
-        except (SesDeliveryError, ScheduledDigestWorkerError):
-            _complete_delivery(client, delivery_id=delivery_id, success=False)
-            failed += 1
-            continue
-        _complete_delivery(client, delivery_id=delivery_id, success=True)
-        sent += 1
+    for window in windows:
+        candidates = _claim_teacher_candidates(
+            client,
+            school_id=window.school_id,
+            week_start=window.week_start,
+        )
+        claimed += len(candidates)
+        for row in candidates:
+            delivery_id = _required_text(row, "delivery_id")
+            recipient = _required_text(row, "recipient_email").lower()
+            display_name = _required_text(row, "recipient_display_name")
+            if not effective_settings.email_is_allowed(recipient):
+                _complete_delivery(client, delivery_id=delivery_id, success=False)
+                failed += 1
+                continue
+            try:
+                send_teacher_friday_reminder(
+                    effective_settings,
+                    recipient_email=recipient,
+                    display_name=display_name,
+                    week_start=window.week_start,
+                    next_week_start=window.week_start + timedelta(days=7),
+                    items=_teacher_items(row),
+                )
+            except (SesDeliveryError, ScheduledDigestWorkerError):
+                _complete_delivery(client, delivery_id=delivery_id, success=False)
+                failed += 1
+                continue
+            _complete_delivery(client, delivery_id=delivery_id, success=True)
+            sent += 1
 
     # Never print recipient addresses, names, course names, message bodies, school IDs, or SES IDs.
     print(
         "teacher_friday_reminder_complete",
-        f"week_start={week_start.isoformat()}",
-        f"claimed={len(candidates)}",
+        f"school_windows={len(windows)}",
+        f"claimed={claimed}",
         f"sent={sent}",
         f"failed={failed}",
     )
     return {
-        "week_start": week_start.isoformat(),
-        "claimed": len(candidates),
+        "school_windows": len(windows),
+        "claimed": claimed,
         "sent": sent,
         "failed": failed,
     }
@@ -245,46 +336,56 @@ def run_teacher_friday_reminders(
 
 def run_scheduled_admin_digest(
     settings: Settings | None = None,
-) -> dict[str, int | str]:
-    """Send one automatic aggregate Friday status digest per eligible school administrator."""
+    *,
+    now: datetime | None = None,
+) -> dict[str, int]:
+    """Send school-local aggregate digests only for explicitly enabled schools."""
     effective_settings = settings or Settings()
     _assert_approved_sender(effective_settings)
-    week_start = week_start_for_timezone(effective_settings.scheduled_digest_timezone)
+    dispatch_now = now or datetime.now(UTC)
     client = _service_client(effective_settings)
-    candidates = _claim_admin_candidates(client, week_start=week_start)
+    windows = _dispatch_windows(client, mode="admin", now=dispatch_now)
 
+    claimed = 0
     sent = 0
     failed = 0
-    for row in candidates:
-        delivery_id = _required_text(row, "delivery_id")
-        recipient = _required_text(row, "recipient_email").lower()
-        if not effective_settings.email_is_allowed(recipient):
-            _complete_delivery(client, delivery_id=delivery_id, success=False)
-            failed += 1
-            continue
-        try:
-            send_friday_admin_digest(
-                effective_settings,
-                recipient_email=recipient,
-                metrics=_admin_metrics(row, week_start=week_start),
-            )
-        except (SesDeliveryError, ScheduledDigestWorkerError):
-            _complete_delivery(client, delivery_id=delivery_id, success=False)
-            failed += 1
-            continue
-        _complete_delivery(client, delivery_id=delivery_id, success=True)
-        sent += 1
+    for window in windows:
+        candidates = _claim_admin_candidates(
+            client,
+            school_id=window.school_id,
+            week_start=window.week_start,
+        )
+        claimed += len(candidates)
+        for row in candidates:
+            delivery_id = _required_text(row, "delivery_id")
+            recipient = _required_text(row, "recipient_email").lower()
+            if not effective_settings.email_is_allowed(recipient):
+                _complete_delivery(client, delivery_id=delivery_id, success=False)
+                failed += 1
+                continue
+            try:
+                send_friday_admin_digest(
+                    effective_settings,
+                    recipient_email=recipient,
+                    metrics=_admin_metrics(row, week_start=window.week_start),
+                )
+            except (SesDeliveryError, ScheduledDigestWorkerError):
+                _complete_delivery(client, delivery_id=delivery_id, success=False)
+                failed += 1
+                continue
+            _complete_delivery(client, delivery_id=delivery_id, success=True)
+            sent += 1
 
     print(
         "scheduled_admin_digest_complete",
-        f"week_start={week_start.isoformat()}",
-        f"claimed={len(candidates)}",
+        f"school_windows={len(windows)}",
+        f"claimed={claimed}",
         f"sent={sent}",
         f"failed={failed}",
     )
     return {
-        "week_start": week_start.isoformat(),
-        "claimed": len(candidates),
+        "school_windows": len(windows),
+        "claimed": claimed,
         "sent": sent,
         "failed": failed,
     }
