@@ -11,7 +11,7 @@
       "Resource": "*"
     },
     {
-      "Sid": "ManageNamedPilotStack",
+      "Sid": "ManageNamedPilotStacks",
       "Effect": "Allow",
       "Action": [
         "cloudformation:CreateChangeSet",
@@ -28,6 +28,7 @@
       ],
       "Resource": [
         "arn:aws:cloudformation:us-east-2:697091778129:stack/TeacherPlanningPlatformPilot/*",
+        "arn:aws:cloudformation:us-east-2:697091778129:stack/TeacherPlanningPlatformPilotScheduledDigest/*",
         "arn:aws:cloudformation:us-east-2:697091778129:changeSet/*/*"
       ],
       "Condition": {
@@ -91,6 +92,12 @@
           "aws:RequestedRegion": "us-east-2"
         }
       }
+    },
+    {
+      "Sid": "ReadScheduledDigestSchedule",
+      "Effect": "Allow",
+      "Action": "scheduler:GetSchedule",
+      "Resource": "arn:aws:scheduler:us-east-2:697091778129:schedule/default/tpp-pilot-admin-weekly-digest"
     },
     {
       "Sid": "ReadPilotLoadBalancerState",
