@@ -94,10 +94,10 @@ begin
       on teacher_role.profile_id = teacher.id
       and teacher_role.school_id = ta.school_id
       and teacher_role.role = 'teacher'::public.app_role
-    -- Read immutable submissions directly by assignment + week. Do not anchor these
-    -- counts to the newest mutable weekly_plan_snapshot: a teacher may create a newer
-    -- working snapshot after submitting an earlier revision, and that must not make an
-    -- already-submitted lesson plan or completed packet disappear from the digest.
+    -- Read immutable submissions directly by assignment + week.
+    -- Do not anchor these counts to the newest mutable weekly_plan_snapshot.
+    -- A teacher may create a newer working snapshot after submitting an earlier revision;
+    -- that must not make an already-submitted lesson plan or completed packet disappear.
     left join lateral (
       select wps.revision
       from public.weekly_plan_submissions wps
