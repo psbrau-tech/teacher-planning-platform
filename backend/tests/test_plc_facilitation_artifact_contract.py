@@ -126,9 +126,16 @@ def test_plc_artifact_preserves_professional_learning_and_data_boundaries() -> N
     assert "student_name" not in source
 
 
-def test_print_contract_targets_letter_and_keeps_embedded_summary_compact() -> None:
+def test_print_contract_targets_letter_and_isolates_only_the_plc_handout() -> None:
     source = STYLE.read_text(encoding="utf-8").lower()
+    experience = EXPERIENCE.read_text(encoding="utf-8")
     shared_print = PRINT_STYLE.read_text(encoding="utf-8").lower()
+
+    assert 'import { printArtifact } from "./printArtifact"' in experience
+    assert 'printArtifact(".plc-facilitation-handout")' in experience
+    assert "window.print()" not in experience
+    assert "tpp-printing-artifact" in shared_print
+    assert "body.tpp-printing-artifact > *:not(.tpp-print-portal)" in shared_print
 
     assert "@media print" in source
     assert "size: letter portrait" in source
@@ -140,7 +147,6 @@ def test_print_contract_targets_letter_and_keeps_embedded_summary_compact() -> N
     assert ".plc-summary-action-grid" in source
     assert ".plc-assessment-snapshot" in source
     assert "break-inside: avoid" in source
-    assert ":has(.plc-facilitation-handout)" in shared_print
     assert ".plc-action-workspace" in shared_print
 
 
