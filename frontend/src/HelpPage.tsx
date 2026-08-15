@@ -189,7 +189,15 @@ export function HelpPage({ roles }: Props) {
               teacher-authored reflection. View, Download, and Print remain available.
             </p>
             <p>
-              <strong>4. Continue to the following week.</strong> TPP moves to the next Monday and
+              <strong>4. Review Reflection Insights if useful.</strong> After the reflection is
+              submitted and the completed packet is reviewed, the Friday validation page offers an
+              optional private recap based only on your own already-submitted professional
+              reflections. The recap is an AI-generated analytical aid; it does not alter your
+              submitted reflection and is not an official response or teacher-performance score.
+              Reflection Insights are optional and do not block the Friday workflow.
+            </p>
+            <p>
+              <strong>5. Continue to the following week.</strong> TPP moves to the next Monday and
               uses that class&apos;s accumulated pacing progress plus your carry-forward decisions.
             </p>
             <p>
@@ -213,12 +221,6 @@ export function HelpPage({ roles }: Props) {
               <strong>If you refresh after closeout.</strong> TPP should recognize an already
               submitted Completed Weekly Packet and return you to packet review rather than asking
               you to submit the reflection again.
-            </p>
-            <p>
-              <strong>Reflection Intelligence is after submission.</strong> Where enabled, you may
-              ask TPP for a private recap based on your own already-submitted professional
-              reflections. That recap is an AI-generated analytical aid; it does not alter your
-              submitted reflection and is not an official response or teacher-performance score.
             </p>
             <p>
               <strong>One-time Pilot feedback.</strong> Pilot teachers may receive a short feedback
@@ -298,21 +300,24 @@ export function HelpPage({ roles }: Props) {
           </div>
 
           <div className="help-notes">
-            <h3>Reflection Intelligence and PLC use</h3>
+            <h3>School Reflection Summary and PLC Meeting Guide</h3>
             <p>
-              <strong>School PLC briefs use submitted professional reflections.</strong> TPP may
-              generate an anonymous aggregate school brief only through the governed reporting
-              role and source-threshold rules. Common themes require support from at least two
-              distinct anonymous teacher sources. The brief is for professional learning and
-              discussion, not teacher ranking, quality scoring, personnel evaluation, or student
-              outcome inference.
+              <strong>The School Reflection Summary uses submitted professional reflections.</strong>
+              TPP may generate an anonymous aggregate school summary only through the governed
+              reporting role and source-threshold rules. Common themes require support from at
+              least two distinct anonymous teacher sources. The summary identifies common
+              successes, common challenges, emerging themes, discussion questions, possible
+              actions, and support needs. It is for professional learning and discussion, not
+              teacher ranking, quality scoring, personnel evaluation, or student outcome inference.
             </p>
             <p>
-              <strong>PLC facilitation handout.</strong> An authorized administrator can turn the
-              school brief into a condensed print-oriented meeting resource with a fixed 40-minute
-              facilitation protocol and action workspace. Formatting the handout does not make a
-              second AI request. The action workspace is not stored by TPP in the current design;
-              do not add student-specific information to PLC notes.
+              <strong>The PLC Meeting Guide embeds that School Reflection Summary.</strong> The
+              meeting guide is therefore grounded in what teachers collectively reported rather
+              than being a generic agenda. It adds a suggested meeting focus, the governed aggregate
+              formative-assessment planning snapshot when available, a fixed 40-minute facilitation
+              protocol, and a non-persistent team action workspace. Formatting the guide does not
+              make a second AI request. The action workspace is not stored by TPP in the current
+              design; do not add student-specific information to PLC notes.
             </p>
           </div>
 
@@ -383,10 +388,10 @@ export function HelpPage({ roles }: Props) {
             </p>
             <p>
               <strong>Reflection Intelligence adoption</strong> reports product-use counts such as
-              private recaps generated, aggregate PLC briefs generated, PLC handout use, and, when
-              activated, minimized administrator-digest delivery. These are product
-              adoption/operations signals. They contain no reflection text or student data and must
-              not be used to rank staff or infer teacher quality, effort, productivity, or
+              private recaps generated, aggregate School Reflection Summaries generated, PLC Meeting
+              Guide use, and, when activated, minimized administrator-digest delivery. These are
+              product adoption/operations signals. They contain no reflection text or student data
+              and must not be used to rank staff or infer teacher quality, effort, productivity, or
               performance.
             </p>
             <p>
