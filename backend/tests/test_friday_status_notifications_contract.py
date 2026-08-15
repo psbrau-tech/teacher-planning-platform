@@ -39,8 +39,8 @@ def test_friday_status_api_is_authenticated_and_registered() -> None:
 def test_teacher_and_admin_status_ui_is_professional_operational_only() -> None:
     source = FRONTEND.read_text(encoding="utf-8")
     assert "What still needs to be submitted?" in source
-    assert "This week's reflection / packet" in source
-    assert "Next week's lesson plan" in source
+    assert "This week&apos;s reflection / packet" in source
+    assert "Next week&apos;s lesson plan" in source
     assert "Needs submission" in source
     assert "teacher-performance" in source
     assert "compliance score" in source
