@@ -1,0 +1,19 @@
+@media print {
+  body.tpp-printing-artifact > *:not(.tpp-print-portal) {
+    display: none !important;
+  }
+
+  body.tpp-printing-artifact > .tpp-print-portal {
+    display: block !important;
+    position: static !important;
+    width: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .tpp-print-portal,
+  .tpp-print-portal * {
+    visibility: visible !important;
+  }
+}
