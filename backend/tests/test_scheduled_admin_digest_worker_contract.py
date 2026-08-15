@@ -14,11 +14,23 @@ from app.notification_email import (
 from app.settings import APPROVED_SES_FROM_EMAIL, Settings
 
 ROOT = Path(__file__).resolve().parents[2]
-STATUS_MIGRATION = ROOT / "supabase" / "migrations" / "20260815011000_friday_submission_status.sql"
-DELIVERY_MIGRATION = ROOT / "supabase" / "migrations" / "20260815013000_scheduled_friday_notifications.sql"
+STATUS_MIGRATION = (
+    ROOT
+    / "supabase"
+    / "migrations"
+    / "20260815011000_friday_submission_status.sql"
+)
+DELIVERY_MIGRATION = (
+    ROOT
+    / "supabase"
+    / "migrations"
+    / "20260815013000_scheduled_friday_notifications.sql"
+)
 SCHEDULED_STACK = ROOT / "infra" / "scheduled-admin-digest-stack.yml"
 MAIN_STACK = ROOT / "infra" / "pilot-stack.yml"
-ACTIVATION_WORKFLOW = ROOT / ".github" / "workflows" / "enable-scheduled-admin-digest.yml"
+ACTIVATION_WORKFLOW = (
+    ROOT / ".github" / "workflows" / "enable-scheduled-admin-digest.yml"
+)
 CFN_POLICY = ROOT / "infra" / "iam" / "tpp-cloudformation-execution-policy.json"
 OIDC_POLICY = ROOT / "infra" / "iam" / "tpp-github-oidc-deployment-policy.json"
 MAIN_FRONTEND = ROOT / "frontend" / "src" / "main.tsx"
@@ -26,7 +38,10 @@ MAIN_FRONTEND = ROOT / "frontend" / "src" / "main.tsx"
 
 def test_worker_uses_school_local_monday() -> None:
     sunday_utc = datetime(2026, 8, 17, 2, 30, tzinfo=UTC)
-    assert worker.week_start_for_timezone("America/Chicago", sunday_utc).isoformat() == "2026-08-10"
+    assert (
+        worker.week_start_for_timezone("America/Chicago", sunday_utc).isoformat()
+        == "2026-08-10"
+    )
 
 
 def test_worker_rejects_any_sender_other_than_locked_tpp_address() -> None:
@@ -104,6 +119,20 @@ def test_teacher_worker_sends_only_claimed_outstanding_courses(
     sent: list[tuple[str, str]] = []
     completions: list[tuple[str, bool]] = []
     fake_client = object()
+
+    def fake_send(
+        _settings: Settings,
+        *,
+        recipient_email: str,
+        display_name: str,
+        week_start: object,
+        next_week_start: object,
+        items: tuple[FridayTeacherReminderItem, ...],
+    ) -> str:
+        del display_name, week_start, next_week_start
+        sent.append((recipient_email, items[0].course_name))
+        return "message-id-not-retained"
+
     monkeypatch.setattr(worker, "_service_client", lambda _settings: fake_client)
     monkeypatch.setattr(
         worker,
@@ -115,18 +144,13 @@ def test_teacher_worker_sends_only_claimed_outstanding_courses(
         "_claim_teacher_candidates",
         lambda _client, *, week_start: [candidate],
     )
-    monkeypatch.setattr(
-        worker,
-        "send_teacher_friday_reminder",
-        lambda _settings, *, recipient_email, display_name, week_start, next_week_start, items: sent.append(
-            (recipient_email, items[0].course_name)
-        )
-        or "message-id-not-retained",
-    )
+    monkeypatch.setattr(worker, "send_teacher_friday_reminder", fake_send)
     monkeypatch.setattr(
         worker,
         "_complete_delivery",
-        lambda _client, *, delivery_id, success: completions.append((delivery_id, success)),
+        lambda _client, *, delivery_id, success: completions.append(
+            (delivery_id, success)
+        ),
     )
 
     result = worker.run_teacher_friday_reminders(settings)
