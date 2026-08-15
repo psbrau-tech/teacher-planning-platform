@@ -44,9 +44,13 @@ Those privileged credentials remain outside the interactive application task. Da
 
 ### Notification and scheduled-worker credential boundary
 
-Manual admin email delivery uses the interactive task's AWS task role for `ses:SendEmail` only after the SES sender is separately activated. `TPP_SES_FROM_EMAIL` and `TPP_SES_REGION` are non-secret runtime configuration; they are not AWS access keys.
+The approved SES sender is `notifications@planner.guidedscholar.ai`. SES delivery uses AWS task-role permission for `ses:SendEmail` only after the sender is separately activated. `TPP_SES_FROM_EMAIL` and `TPP_SES_REGION` are non-secret runtime configuration; they are not AWS access keys.
 
-The optional automatic weekly digest uses a **separate scheduled ECS task**, not the interactive web task. Only that isolated worker may receive `TPP_SUPABASE_SERVICE_ROLE_KEY`, together with `TPP_SUPABASE_URL`, after the scheduled-worker database/AWS activation gates are approved. The scheduled worker must not receive the OpenAI key, Supabase anon key, or Google OAuth secrets.
+The approved automatic Friday workflow uses **separate scheduled one-shot ECS tasks**, not the interactive web task. Only those isolated worker tasks may receive `TPP_SUPABASE_SERVICE_ROLE_KEY`, together with `TPP_SUPABASE_URL`, after the scheduled Friday notification database/AWS activation gates are approved. The scheduled workers must not receive the OpenAI key, Supabase anon key, PostgreSQL database URL, or Google OAuth secrets.
+
+The teacher task runs `python -m app.scheduled_digest_worker teacher`; the administrator task runs `python -m app.scheduled_digest_worker admin`. The teacher task is scheduled for Friday 2:00 PM and the administrator task for Friday 3:30 PM in `America/Chicago`. The activation workflow stages both schedules disabled and verifies them before enabling. It does not run either task immediately.
+
+The normal administrator UI does not require a routine manual email action. Any retained manual send path is controlled operational recovery and must not become a route for exposing privileged credentials to the browser.
 
 ## GitHub environment: `tpp-pilot`
 
@@ -102,20 +106,22 @@ The record matching `TPP_PLATFORM_OWNER_EMAIL` must contain both `platform_admin
 ## Controlled workflow order
 
 1. Merge the reviewed release pull request and record the exact resulting `main` SHA.
-2. Select the exact migration target required by that release. For the August 14 professional-learning/application release, `20260815001500` intentionally leaves `20260815011000_scheduled_admin_digest_worker.sql` deferred.
+2. Select the exact migration target required by that release. The accepted professional-learning/application release is live through `20260815001500`. For the Friday-status dashboard/application release, the intended next target is `20260815011000_friday_submission_status.sql`; `20260815013000_scheduled_friday_notifications.sql` remains deliberately deferred until automatic email activation is being prepared.
 3. Run **Apply TPP Pilot Database Migrations** from `main` with the exact `expected_main_sha`, exact `target_migration_head`, `dry_run_only=true`, and `apply_target_confirmed=false`; review the target-scoped pending list.
 4. Approve a second migration run only when the preview is accepted. Use the same exact SHA/head, `dry_run_only=false`, and `apply_target_confirmed=true`. Its final dry run must report no migration pending **through that target**. Later intentionally deferred migrations may remain in the repository.
 5. Run **Preflight TPP Pilot Release** with the approved academic-year dates.
-6. Run **Provision TPP Pilot Access** with the same dates and protected access-list secret.
+6. Run **Provision TPP Pilot Access** with the same dates and protected access-list secret when access changes are part of the release.
 7. Run **Bootstrap TPP Pilot** only for an initial stack. It creates or resumes the isolated AWS foundation, builds or reuses an exact commit-plus-build-configuration image, deploys the first ECS service, verifies target health, and requests or reuses the ACM certificate.
-8. Run **Verify TPP Pilot Deployment** with public-hostname verification disabled.
-9. Add the ACM validation CNAME returned in the workflow summary to Cloudflare.
+8. Run **Verify TPP Pilot Deployment** with public-hostname verification disabled for an initial stack.
+9. Add the ACM validation CNAME returned in the workflow summary to Cloudflare when certificate validation is required.
 10. After ACM reports `ISSUED`, run **Enable TPP Pilot TLS** with that certificate ARN.
 11. Set `TPP_CERTIFICATE_ARN` to the accepted issued certificate ARN.
 12. Add the Cloudflare application record: CNAME `planner` to the exact ALB DNS name, initially **DNS only**.
 13. Complete Supabase and Google redirect configuration.
 14. Run deployment verification with public HTTPS enabled, then perform live Google SSO acceptance.
 15. For subsequent application releases, run **Deploy TPP Pilot** from `main` with the exact `expected_main_sha`, exact `expected_migration_head`, `migration_head_applied_confirmed=true`, and the required Help review confirmation.
+16. Prepare SES identity/sending activation separately when email is ready; normal application deployment does not turn email on.
+17. Before automatic Friday delivery, explicitly apply `20260815013000_scheduled_friday_notifications.sql`, create/update the dedicated service-role secret through the approved AWS path, reconcile live IAM with the accepted source, and run **Enable TPP Friday Notifications** only after its database/SES/schedule/privacy/Help/IAM confirmations are true.
 
 No workflow in this sequence changes Cloudflare or Route 53 directly.
 

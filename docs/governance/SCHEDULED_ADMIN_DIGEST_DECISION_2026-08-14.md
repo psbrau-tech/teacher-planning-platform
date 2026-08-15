@@ -1,108 +1,57 @@
-# Scheduled Admin Weekly Digest Decision
+# Scheduled Admin Weekly Digest Decision — Superseded
 
-**Date:** 2026-08-14  
-**Status:** Approved implementation direction; scheduler remains unactivated  
+**Original date:** 2026-08-14  
+**Superseded:** 2026-08-15  
+**Status:** Historical decision record; not the current implementation contract  
 **Scope:** Teacher Planning Platform (TPP) controlled pilot
 
-## Purpose
+## Supersession
 
-School leadership approved a notification layer to reduce repetitive weekly operational follow-up. This slice prepares an automatic weekly school-admin digest using the same deliberately minimized content contract as the authenticated manual digest.
+This document recorded the original admin-only automatic weekly-digest direction. It is superseded by:
 
-Automatic delivery is an operational convenience. It does not expand the instructional, privacy, personnel, or student-data boundary.
+`docs/governance/FRIDAY_STATUS_NOTIFICATION_DECISION_2026-08-15.md`
 
-## First scheduled recipient scope
+and the reconciled controlled release runbook:
 
-The first automatic release is limited to active governed TPP accounts holding the `school_admin` role for their own school.
+`docs/governance/INTELLIGENCE_NOTIFICATION_CONTROLLED_RELEASE_RUNBOOK_2026-08-14.md`.
 
-The scheduled worker does not deliver to:
+Do not use this file as the current source for recipient scope, schedule, worker command, migration filename, or activation sequence.
 
-- teachers;
-- district administrators;
-- Platform Owners solely because of those roles;
-- arbitrary addresses supplied by a client or workflow; or
-- accounts outside the governed TPP professional email boundary.
+## What remains valid from the original decision
 
-Broader recipient rules, individual teacher reminders, custom reminders, and potentially-minimal-reflection reminders remain separate future decisions.
+The following governance principles remain in force:
 
-## Email content boundary
+- automatic email is an operational convenience and does not expand TPP's adult educator/administrator data boundary;
+- the interactive web ECS task must never receive `TPP_SUPABASE_SERVICE_ROLE_KEY`;
+- scheduled delivery runs in isolated short-lived ECS/Fargate tasks;
+- the isolated worker receives only the minimum Supabase service-role database credentials required for its service-role-only candidate functions and does not receive the OpenAI key, Supabase anon key, PostgreSQL database URL, or Google/OAuth credentials;
+- SES permission is limited to the approved professional sender identity;
+- automatic delivery uses at-most-once claims before send attempts;
+- the retained delivery ledger does not persist recipient email, email body, reflection text, lesson-plan content, generated instructional insight, student data, or SES MessageId;
+- worker logs must not print recipient addresses, teacher names, course names, message bodies, school identifiers, credentials, or provider IDs; and
+- scheduler/SES activation remains a separately controlled operational boundary rather than an effect of normal application deployment.
 
-The scheduled worker reuses the existing `WeeklyAdminDigestMetrics` and `send_weekly_admin_digest` path. The email remains limited to school-scoped operational counts plus the authenticated TPP link.
+## Current approved replacement
 
-The first scheduled digest must not contain:
+The current design is a coordinated Friday workflow in `America/Chicago` for the Anniston Pilot:
 
-- teacher names or teacher-level exception lists;
-- teacher reflection text;
-- AI-generated instructional insight;
-- student PII or student education records;
-- student assessment results;
-- identifiable student work;
-- teacher quality, performance, effort, productivity, rating, ranking, or personnel judgments; or
-- secrets, internal identifiers, SES MessageIds, or provider response bodies.
+- **2:00 PM Friday:** a teacher courtesy reminder is sent only when a required current-week reflection/completed packet or following-week lesson plan is still missing. One email combines all outstanding items and names the exact professional class/course for each missing submission.
+- **3:30 PM Friday:** eligible school administrators receive an automatic aggregate status digest. Teacher/class exceptions remain behind authenticated TPP reporting.
+- **Teacher Dashboard:** class-by-class current-closeout and following-week-plan status.
+- **Administration reporting:** authorized teacher/class operational status for follow-up.
+- **Normal administrator UI:** no routine manual `Weekly admin email` control. Any retained manual path is controlled recovery only.
 
-## Isolated execution architecture
+The teacher email may contain the professional course name because that specificity is necessary to make the reminder actionable. It must not contain reflection text, lesson-plan content, generated insight, student data, or teacher-performance/evaluation language.
 
-The automatic worker is intentionally separate from the interactive TPP web task.
+The administrator email remains aggregate counts plus an authenticated link; it does not contain teacher names or class-level exception lists.
 
-The main web ECS task continues to use the governed authenticated-user Supabase path and must not receive `TPP_SUPABASE_SERVICE_ROLE_KEY`.
+## Current migration and activation boundary
 
-A separate EventBridge Scheduler target runs a short-lived Fargate task using the accepted immutable TPP application image with a different command:
+The implementation is split deliberately:
 
-`python -m app.scheduled_digest_worker`
+- `20260815011000_friday_submission_status.sql` — authenticated dashboard/report status sources and instruction-requirement logic. This may be released while email remains fail-closed.
+- `20260815013000_scheduled_friday_notifications.sql` — scheduled delivery ledger and service-role-only teacher/admin candidate functions. This remains deferred until automatic email activation is explicitly prepared.
 
-Only that scheduled task receives the Supabase service-role credential. Its execution role can read only the Supabase URL secret and the separately created service-role secret. It does not receive the OpenAI API key, the Supabase anon key, or Google/OAuth credentials.
+The Friday activation workflow stages both exact schedules disabled, verifies the immutable image, exact worker commands, exact secret set, schedule expressions, timezone, and the interactive service-role exclusion, then enables both schedules only after all manual activation confirmations are satisfied. It does not invoke a worker immediately or send a test email.
 
-Its task role can call only `ses:SendEmail` against the approved SES identity.
-
-## Database boundary and at-most-once claims
-
-The scheduled worker may not query unrestricted planning content through generic service-role table access in application code. Instead, it invokes service-role-only database functions that return a content-minimized manifest containing:
-
-- a transient delivery claim identifier;
-- school and professional profile identifiers needed for governed delivery accounting;
-- the recipient professional email address for the current send only; and
-- the already-approved aggregate submission counts needed by the weekly digest.
-
-The manifest excludes course names, teacher names, raw lesson-plan text, reflection content, generated insight, and all student information.
-
-Before a candidate is returned, the database atomically inserts a unique claim for notification type + professional recipient profile + week. This gives the automatic path conservative at-most-once behavior across scheduler/task retries.
-
-If a worker claims a delivery and then cannot complete it, that automatic claim is marked failed or remains claimed and is not automatically resent. An authorized administrator may still use the existing authenticated manual-send path. Avoiding an accidental duplicate automated email takes precedence over automatic retry convenience in the first release.
-
-## Retained scheduled-delivery data
-
-The scheduled-delivery ledger retains only:
-
-- school ID;
-- recipient professional profile ID;
-- week start;
-- notification key;
-- claimed/sent/failed status; and
-- claim/completion timestamps.
-
-It does not persist the recipient email address, email body, SES MessageId, reflection text, generated insight, teacher names, student data, or provider response content.
-
-Platform Owner adoption reporting may aggregate successful scheduled deliveries, distinct recipient administrators, and schools reached. These are product-adoption/operations signals, not staff-performance measures.
-
-## Schedule activation remains a human gate
-
-No weekly clock time is selected or activated by this code change.
-
-The separate scheduled stack requires an explicit EventBridge Scheduler cron expression. The controlled activation workflow requires a human to approve the exact schedule expression and school-local timezone before enabling it.
-
-The stack is staged with the schedule `DISABLED`, verifies the immutable image, isolated command, exact two-secret worker set, and approved schedule expression/timezone, and only then updates the schedule to `ENABLED`.
-
-The activation workflow does not run the task immediately and does not send a test email.
-
-## Required activation prerequisites
-
-Before automatic delivery is enabled, all of the following must be complete:
-
-1. the scheduled-digest database migration is applied and accepted;
-2. the approved SES sender is verified and active in `us-east-2`;
-3. the Supabase service-role key is stored in its own AWS Secrets Manager secret at the governed TPP path;
-4. the GitHub deployment role and CloudFormation execution-role policies are updated to the exact scheduled-worker resources in this release;
-5. privacy/subprocessor and Help text are reconciled for automatic professional email delivery;
-6. the exact weekly schedule expression and `America/Chicago` (or other explicitly approved school-local IANA timezone) are approved; and
-7. the controlled activation workflow is run against an accepted immutable application image.
-
-Merging this slice does not satisfy those prerequisites and does not authorize deployment, migration application, scheduler creation, or email delivery.
+Git history retains the original August 14 admin-only decision for historical provenance.

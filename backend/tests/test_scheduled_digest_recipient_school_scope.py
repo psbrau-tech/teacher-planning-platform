@@ -5,7 +5,7 @@ MIGRATION = (
     ROOT
     / "supabase"
     / "migrations"
-    / "20260815011000_scheduled_admin_digest_worker.sql"
+    / "20260815013000_scheduled_friday_notifications.sql"
 )
 
 
@@ -15,7 +15,7 @@ def test_scheduled_school_admin_recipient_matches_profile_governed_school() -> N
         "create or replace function public.claim_scheduled_admin_weekly_digest_candidates",
         maxsplit=1,
     )[1].split(
-        "create or replace function public.complete_scheduled_admin_weekly_digest_delivery",
+        "create or replace function public.complete_scheduled_notification_delivery",
         maxsplit=1,
     )[0]
 

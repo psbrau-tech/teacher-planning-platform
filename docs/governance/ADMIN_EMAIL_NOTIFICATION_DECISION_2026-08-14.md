@@ -1,91 +1,73 @@
-# Admin Email Notification Decision — Weekly School Operations Digest
+# Admin Email Notification Decision — Historical Foundation / Current Friday Use
 
-**Date:** 2026-08-14  
-**Status:** Approved product direction; implementation may merge fail-closed before SES activation  
+**Original date:** 2026-08-14  
+**Reconciled:** 2026-08-15  
+**Status:** Original manual-admin notification decision retained as recovery foundation; normal UI and automatic cadence are governed by the August 15 Friday decision  
 **Scope:** Teacher Planning Platform (TPP) controlled pilot
 
-## Approval context
+## Superseding product decision
 
-Anniston High School leadership approved moving forward with the Reflection Intelligence analytics, email-notification layer, and PLC/faculty artifacts reviewed in the August 14 concept discussion.
+This file originally approved the first fail-closed, administrator-requested weekly digest. The normal product workflow has since been simplified. Current teacher/admin Friday status, recipient logic, and automatic schedule are governed by:
 
-This decision narrows the first email implementation to a deliberately minimized school-operations digest rather than putting teacher names or reflection content into email.
+`docs/governance/FRIDAY_STATUS_NOTIFICATION_DECISION_2026-08-15.md`.
+
+The normal administrator UI no longer mounts the manual `Weekly admin email` action. The existing authenticated manual endpoint/code may remain only as controlled operational recovery while the automatic path is introduced; it is not the primary administrator workflow.
 
 ## Approved sender identity
 
-The approved TPP notification From address is:
+The approved TPP notification From address remains exactly:
 
 `notifications@planner.guidedscholar.ai`
 
 Application code must reject a different configured From address. The runtime sender remains blank until the approved identity is verified in AWS SES and the controlled ECS IAM/deployment configuration is completed. Recording this address does not activate email delivery.
 
-## First-release notification
+## Original/manual recovery contract
 
-An authorized school reporting administrator may explicitly request a weekly TPP admin digest for a selected Monday week.
+The retained manual recovery path, if invoked through controlled support, sends only to the authenticated requesting administrator's own governed TPP professional email account. A client does not supply an arbitrary recipient address.
 
-The recipient is always the requesting administrator's own authenticated TPP professional email address. The client does not supply an arbitrary recipient address.
+Its historical minimized content is limited to school operational counts and an authenticated TPP link. It must not contain student data, teacher reflection text, AI-generated instructional insight, teacher names or teacher-level exception lists, teacher-quality/performance judgments, secrets, tokens, internal identifiers, or provider response bodies.
 
-The email may include only:
+This recovery contract does not define the normal Friday administrator experience and must not be used to bypass automatic-delivery at-most-once controls.
 
-- configured course-assignment count;
-- lesson-plan submitted/missing counts;
-- completed Friday packet submitted/missing counts;
-- whether enough distinct completed-packet teacher sources exist to generate an aggregate school PLC brief; and
-- a link back to authenticated TPP for details.
+## Current automatic Friday contract
 
-The email must not include:
+The approved Anniston Pilot sequence is:
 
-- student data;
-- teacher reflection text;
-- AI-generated instructional insight text;
-- teacher names or teacher-level exception lists;
-- teacher quality scores, ratings, rankings, or performance judgments;
-- secrets, tokens, internal identifiers, or provider response bodies.
+- Friday 2:00 PM `America/Chicago`: one teacher courtesy reminder only when a required current-week reflection/completed packet or following-week lesson plan remains unsubmitted. The email names the exact professional class/course for each missing item so the teacher does not have to inspect every class.
+- Friday 3:30 PM `America/Chicago`: an aggregate school-administrator digest with current-week closeout and following-week lesson-plan counts plus an authenticated TPP link. Teacher/class exceptions remain inside authenticated reporting.
 
-Named teacher follow-up remains available only inside the authenticated operational reporting surface where it is already role-authorized.
+The teacher courtesy email may include teacher display name and professional course name as transient delivery data necessary to make the reminder actionable. It must not include reflection text, lesson-plan content, student information, generated instructional insight, teacher rankings, or quality/performance/effort/productivity judgments.
+
+The administrator email remains aggregate and must not include teacher names or class-level exception lists.
 
 ## Delivery architecture
 
-The application uses AWS SES through the ECS task role. No static AWS access key is introduced into application configuration.
+SES delivery uses AWS task-role permission rather than static AWS credentials. Automatic Friday delivery uses isolated short-lived ECS tasks, not the interactive web task. The interactive web task must never receive the Supabase service-role key for scheduler convenience.
 
-SES delivery remains fail-closed unless all of the following are configured and verified:
+The scheduled worker's database access is limited to purpose-built service-role-only candidate functions. The delivery ledger stores only bounded professional identifiers, notification key, week, status, and timestamps needed for at-most-once delivery. It does not retain recipient email, course/class reminder lists, email body, reflection text, lesson-plan content, student data, generated insight, or SES MessageId.
 
-1. `notifications@planner.guidedscholar.ai` (or an approved parent-domain identity covering that exact address) is verified in the production/pilot SES Region;
-2. the runtime environment supplies `notifications@planner.guidedscholar.ai` as the From address;
-3. the ECS task role has least-privilege `ses:SendEmail` permission scoped to the approved SES identity where technically supported;
-4. the SES account is allowed to send to the intended professional recipients;
-5. current AWS terms/DPA/service settings and the TPP subprocessor/privacy disclosures are reconciled for the email data flow; and
-6. the controlled deployment workflow is updated and reviewed before activation.
+## Activation boundary
 
-A blank sender configuration is the intended disabled state.
+SES and automatic delivery remain fail-closed unless the controlled release prerequisites are complete. These include:
 
-## Telemetry
+1. verified/accepted `notifications@planner.guidedscholar.ai` or an approved parent-domain SES identity covering that exact address in `us-east-2`;
+2. intended-recipient sending status permitted by the SES account;
+3. least-privilege SES IAM using the approved identity;
+4. privacy/subprocessor and Help reconciliation;
+5. the Friday scheduled-delivery migration explicitly applied;
+6. the isolated Supabase service-role secret stored through the approved AWS secret path;
+7. live deployment-role policies reconciled to accepted source;
+8. exact teacher/admin schedule expressions and `America/Chicago` verified; and
+9. execution of the controlled Friday-notification activation workflow.
 
-TPP may record the content-free event `admin_weekly_digest_sent` with school, authenticated requesting professional, event key, and timestamp.
+The activation workflow stages both schedules disabled, verifies them, and only then enables them. It does not invoke the workers immediately and sends no immediate/test email.
 
-TPP does not persist the email body, recipient address, SES MessageId, teacher names, reflection text, or generated insight in notification telemetry.
+## Telemetry and tracking
 
-## Automatic/scheduled email is deferred
+The historical manual path may record the content-free event `admin_weekly_digest_sent`. Automatic scheduled-admin delivery may be counted through its bounded delivery ledger for Platform Owner adoption reporting. Teacher courtesy reminders are operational reminders and should not be repurposed as staff-performance analytics.
 
-This release does not create automatic Friday/Sunday scheduling, bulk recipient resolution, or cross-admin delivery.
+TPP does not persist email bodies or SES MessageIds in notification telemetry. The design does not add SES engagement tracking, tracking pixels, click/open tracking, advertising technology, or behavioral email analytics. Any such expansion requires separate privacy/governance review.
 
-A future scheduled notification service must use a separately governed execution path rather than expanding the main web application's database privilege. In particular, the main web application must not receive a Supabase service-role credential merely to support a scheduler.
+## Current source of truth
 
-Potential future notification types from the approved concept — individual missing-plan reminders, missing-packet reminders, potentially-minimal-reflection reminders, and custom reminders — require separate rule, recipient, frequency, suppression, and privacy review before activation.
-
-## No engagement tracking
-
-The first release does not use SES configuration sets, tracking pixels, click/open tracking, behavioral analytics, or advertising technology. Any such addition requires separate privacy/governance review.
-
-## Release requirements
-
-Before SES is enabled in the controlled pilot:
-
-- verify `notifications@planner.guidedscholar.ai` (or its approved parent-domain identity) in SES and verify SES account sending status;
-- verify the exact IAM policy and runtime From address;
-- verify only the requesting admin can trigger delivery to their own governed account;
-- verify the message contains counts plus the authenticated TPP link only;
-- verify no student or reflection content enters the SES request;
-- verify content-free notification telemetry only;
-- reconcile `docs/legal/PRIVACY_POLICY.md` and `docs/legal/SUBPROCESSORS.md` to the enabled AWS SES data flow;
-- review Help text against the exact release candidate; and
-- retain exact commit/image/infrastructure evidence for deployment.
+For release/activation decisions, use the August 15 Friday decision and the reconciled controlled release runbook. Git history preserves the original August 14 manual-admin design for provenance.

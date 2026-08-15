@@ -93,7 +93,7 @@ Any merged branch that adds a migration requires a new protected migration revie
 
 The workflow temporarily removes migrations later than the approved target from the runner's Supabase migration directory. Its preview, apply, migration list, and final dry-run therefore concern only migrations through that target. A later source migration may remain intentionally deferred when the release runbook permits it.
 
-For the August 14 professional-learning/application release, `20260815001500` is the planned target boundary and `20260815011000_scheduled_admin_digest_worker.sql` remains deferred until automatic delivery is separately prepared.
+The Reflection Intelligence/formative-assessment pilot is live through `20260815001500`. For the approved Friday-status dashboard release, `20260815011000_friday_submission_status.sql` is the next intended application boundary. `20260815013000_scheduled_friday_notifications.sql` remains deferred until SES, the isolated worker, and the approved Friday 2:00 PM teacher / 3:30 PM administrator schedules are separately prepared for activation.
 
 ## Controlled sequence
 
@@ -119,7 +119,7 @@ For a brand-new stack, bootstrap/TLS/DNS/OAuth steps still follow the controlled
 - **Deploy TPP Pilot** is the only workflow for application upgrades after bootstrap.
 - Repeated deployment of the same commit reuses its immutable ECR digest and does not force an unnecessary task-definition revision.
 - TLS attachment preserves and verifies the active exact image.
-- SES sender activation and scheduled-worker activation are separate controlled workflows; neither is implied by a normal application deployment.
+- SES sender activation and Friday scheduled-worker activation are separate controlled workflows; neither is implied by a normal application deployment.
 
 ## Data boundary
 
