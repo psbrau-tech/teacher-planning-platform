@@ -11,7 +11,7 @@
       "Resource": "*"
     },
     {
-      "Sid": "ManageNamedPilotStacks",
+      "Sid": "ManageNamedPilotStack",
       "Effect": "Allow",
       "Action": [
         "cloudformation:CreateChangeSet",
@@ -28,6 +28,31 @@
       ],
       "Resource": [
         "arn:aws:cloudformation:us-east-2:697091778129:stack/TeacherPlanningPlatformPilot/*",
+        "arn:aws:cloudformation:us-east-2:697091778129:changeSet/*/*"
+      ],
+      "Condition": {
+        "StringEqualsIfExists": {
+          "cloudformation:RoleArn": "arn:aws:iam::697091778129:role/TeacherPlanningPlatformPilotCloudFormationExecution"
+        }
+      }
+    },
+    {
+      "Sid": "ManageNamedScheduledDigestStack",
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:CreateChangeSet",
+        "cloudformation:DeleteChangeSet",
+        "cloudformation:DescribeChangeSet",
+        "cloudformation:ExecuteChangeSet",
+        "cloudformation:DescribeStacks",
+        "cloudformation:DescribeStackEvents",
+        "cloudformation:DescribeStackResource",
+        "cloudformation:DescribeStackResources",
+        "cloudformation:GetTemplate",
+        "cloudformation:ListStackResources",
+        "cloudformation:ListChangeSets"
+      ],
+      "Resource": [
         "arn:aws:cloudformation:us-east-2:697091778129:stack/TeacherPlanningPlatformPilotScheduledDigest/*",
         "arn:aws:cloudformation:us-east-2:697091778129:changeSet/*/*"
       ],
