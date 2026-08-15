@@ -77,7 +77,6 @@ export function ReflectionIntelligenceExperience() {
   const [stepperTarget, setStepperTarget] = useState<Element | null>(null);
   const [weekStart, setWeekStart] = useState(mondayFor());
   const [lookbackWeeks, setLookbackWeeks] = useState(12);
-  const [boundaryConfirmed, setBoundaryConfirmed] = useState(false);
   const [teacherInsight, setTeacherInsight] = useState<TeacherInsight | null>(null);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
@@ -92,7 +91,6 @@ export function ReflectionIntelligenceExperience() {
       setSession(nextSession);
       setIdentity(null);
       setTeacherInsight(null);
-      setBoundaryConfirmed(false);
       setError("");
     });
     return () => data.subscription.unsubscribe();
@@ -207,10 +205,6 @@ export function ReflectionIntelligenceExperience() {
   }
 
   async function generateTeacherInsight() {
-    if (!boundaryConfirmed) {
-      setError("Confirm the no-student-data boundary before generating your private recap.");
-      return;
-    }
     setWorking(true);
     setError("");
     try {
@@ -261,7 +255,7 @@ export function ReflectionIntelligenceExperience() {
       <div className="ri-inline-body">
         <div className="ri-boundary" role="note">
           <strong>Instructional insight, not evaluation.</strong>
-          <span> No teacher quality score. No student data. AI synthesizes only your submitted teacher-authored professional reflections.</span>
+          <span> No teacher quality score. No student data. AI synthesizes only your submitted teacher-authored professional reflections after the governed local data-boundary preflight.</span>
         </div>
 
         <div className="ri-controls">
@@ -284,17 +278,6 @@ export function ReflectionIntelligenceExperience() {
             </select>
           </label>
         </div>
-
-        <label className="ri-confirmation">
-          <input
-            type="checkbox"
-            checked={boundaryConfirmed}
-            onChange={(event) => setBoundaryConfirmed(event.target.checked)}
-          />
-          <span>
-            I confirm my submitted reflections use class- or group-level observations only and contain no student names, identifiers, identifiable student work, IEP/504, health, discipline, or other student-specific information.
-          </span>
-        </label>
 
         <div className="button-row ri-action-row">
           <button type="button" className="ri-primary" disabled={working} onClick={() => void generateTeacherInsight()}>

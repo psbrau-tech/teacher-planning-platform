@@ -2,6 +2,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 EXPERIENCE = ROOT / "frontend" / "src" / "ReflectionIntelligenceExperience.tsx"
+REFLECTION_ENTRY = ROOT / "frontend" / "src" / "AiReflectionPanel.tsx"
 STYLES = ROOT / "frontend" / "src" / "reflection-intelligence.css"
 MAIN = ROOT / "frontend" / "src" / "main.tsx"
 
@@ -12,13 +13,19 @@ def test_reflection_intelligence_is_mounted_in_authenticated_app() -> None:
     assert "<ReflectionIntelligenceExperience />" in source
 
 
-def test_teacher_recap_requires_explicit_boundary_confirmation() -> None:
-    source = EXPERIENCE.read_text(encoding="utf-8")
-    assert "boundaryConfirmed" in source
-    assert "Confirm the no-student-data boundary" in source
-    assert "class- or group-level observations only" in source
-    assert "student names, identifiers" in source
-    assert "IEP/504" in source
+def test_teacher_recap_uses_entry_boundary_without_redundant_step_four_attestation() -> None:
+    insight_source = EXPERIENCE.read_text(encoding="utf-8")
+    entry_source = REFLECTION_ENTRY.read_text(encoding="utf-8")
+
+    assert "boundaryConfirmed" not in insight_source
+    assert 'type="checkbox"' not in insight_source
+    assert "governed local data-boundary preflight" in insight_source
+    assert "Instructional insight, not evaluation" in insight_source
+
+    assert "Use class- or group-level observations only" in entry_source
+    assert "student names, identifiers" in entry_source
+    assert "IEP/504" in entry_source
+    assert "describe groups or instructional needs rather than individual students" in entry_source
 
 
 def test_teacher_reflection_insights_are_scoped_inline_to_friday_step_four() -> None:
