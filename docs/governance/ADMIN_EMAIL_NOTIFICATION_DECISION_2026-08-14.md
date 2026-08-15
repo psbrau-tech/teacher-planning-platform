@@ -10,6 +10,14 @@ Anniston High School leadership approved moving forward with the Reflection Inte
 
 This decision narrows the first email implementation to a deliberately minimized school-operations digest rather than putting teacher names or reflection content into email.
 
+## Approved sender identity
+
+The approved TPP notification From address is:
+
+`notifications@planner.guidedscholar.ai`
+
+Application code must reject a different configured From address. The runtime sender remains blank until the approved identity is verified in AWS SES and the controlled ECS IAM/deployment configuration is completed. Recording this address does not activate email delivery.
+
 ## First-release notification
 
 An authorized school reporting administrator may explicitly request a weekly TPP admin digest for a selected Monday week.
@@ -41,8 +49,8 @@ The application uses AWS SES through the ECS task role. No static AWS access key
 
 SES delivery remains fail-closed unless all of the following are configured and verified:
 
-1. an approved sender identity is verified in the production/pilot SES Region;
-2. the runtime environment supplies the approved From address;
+1. `notifications@planner.guidedscholar.ai` (or an approved parent-domain identity covering that exact address) is verified in the production/pilot SES Region;
+2. the runtime environment supplies `notifications@planner.guidedscholar.ai` as the From address;
 3. the ECS task role has least-privilege `ses:SendEmail` permission scoped to the approved SES identity where technically supported;
 4. the SES account is allowed to send to the intended professional recipients;
 5. current AWS terms/DPA/service settings and the TPP subprocessor/privacy disclosures are reconciled for the email data flow; and
@@ -72,7 +80,7 @@ The first release does not use SES configuration sets, tracking pixels, click/op
 
 Before SES is enabled in the controlled pilot:
 
-- verify sender identity and SES account sending status;
+- verify `notifications@planner.guidedscholar.ai` (or its approved parent-domain identity) in SES and verify SES account sending status;
 - verify the exact IAM policy and runtime From address;
 - verify only the requesting admin can trigger delivery to their own governed account;
 - verify the message contains counts plus the authenticated TPP link only;
