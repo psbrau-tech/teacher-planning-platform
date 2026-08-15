@@ -1,6 +1,7 @@
 import { createClient, type Session } from "@supabase/supabase-js";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { printArtifact } from "./printArtifact";
 import "./plc-facilitation-artifact.css";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ?? "";
@@ -371,7 +372,9 @@ export function PlcFacilitationArtifactExperience() {
     } catch {
       // Content-free adoption telemetry may never block the PLC artifact.
     }
-    window.print();
+    if (!printArtifact(".plc-facilitation-handout")) {
+      setError("The PLC Meeting Guide could not be prepared for printing.");
+    }
   }
 
   if (!portalTarget || !accessToken || !canView) return null;
