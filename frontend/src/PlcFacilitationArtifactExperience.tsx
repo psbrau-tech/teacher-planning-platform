@@ -38,6 +38,23 @@ type SchoolBrief = {
   };
 };
 
+type AssessmentTypeCount = {
+  key: string;
+  label: string;
+  count: number;
+};
+
+type AssessmentPlanningSnapshot = {
+  submitted_course_weeks: number;
+  distinct_teachers: number;
+  daily_assessment_entries: number;
+  assessment_types: AssessmentTypeCount[];
+  source_scope: "immutable-submitted-lesson-plans";
+  classification_method: "deterministic-keyword-v1";
+  interpretation: "planned-formative-assessment-signals-only";
+  evaluation: "none";
+};
+
 function localIsoDate(date = new Date()): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -50,6 +67,12 @@ function mondayFor(date = new Date()): string {
   const day = copy.getDay();
   copy.setDate(copy.getDate() + (day === 0 ? -6 : 1 - day));
   return localIsoDate(copy);
+}
+
+function addDays(iso: string, days: number): string {
+  const date = new Date(`${iso}T12:00:00`);
+  date.setDate(date.getDate() + days);
+  return localIsoDate(date);
 }
 
 async function readError(response: Response, fallback: string): Promise<string> {
@@ -90,7 +113,50 @@ function BoundedList({ title, items, limit = 4 }: { title: string; items: string
   );
 }
 
-function FacilitationHandout({ brief, weekLabel }: { brief: SchoolBrief; weekLabel: string }) {
+function AssessmentSnapshot({ snapshot }: { snapshot: AssessmentPlanningSnapshot }) {
+  const exitTicketCount = snapshot.assessment_types.find((item) => item.key === "exit_ticket")?.count ?? 0;
+  const otherTopTypes = snapshot.assessment_types
+    .filter((item) => item.key !== "exit_ticket")
+    .slice(0, 3);
+
+  return (
+    <section className="plc-assessment-snapshot" aria-label="Aggregate formative-assessment planning snapshot">
+      <div className="plc-assessment-snapshot-heading">
+        <div>
+          <p className="eyebrow">Planning snapshot</p>
+          <h5>Daily formative-assessment signals in submitted lesson plans</h5>
+        </div>
+        <small>Deterministic classification · no assessment text sent to AI</small>
+      </div>
+      <div className="plc-assessment-metrics">
+        <div><strong>{snapshot.daily_assessment_entries}</strong><span>planned daily entries</span></div>
+        <div><strong>{exitTicketCount}</strong><span>exit tickets / slips</span></div>
+        <div><strong>{snapshot.submitted_course_weeks}</strong><span>course-weeks represented</span></div>
+        <div><strong>{snapshot.distinct_teachers}</strong><span>anonymous teachers represented</span></div>
+      </div>
+      {otherTopTypes.length ? (
+        <p className="plc-assessment-type-summary">
+          <strong>Other common planned types:</strong>{" "}
+          {otherTopTypes.map((item) => `${item.label} (${item.count})`).join(" · ")}
+        </p>
+      ) : null}
+      <p className="plc-assessment-snapshot-note">
+        Planning signal only. These counts do not show whether an assessment was administered,
+        student results, or teacher effectiveness. Read them alongside course-week coverage.
+      </p>
+    </section>
+  );
+}
+
+function FacilitationHandout({
+  brief,
+  assessmentSnapshot,
+  weekLabel,
+}: {
+  brief: SchoolBrief;
+  assessmentSnapshot: AssessmentPlanningSnapshot | null;
+  weekLabel: string;
+}) {
   const focus = brief.brief.common_challenges[0]
     ?? brief.brief.emerging_themes[0]
     ?? brief.brief.common_successes[0]
@@ -114,6 +180,8 @@ function FacilitationHandout({ brief, weekLabel }: { brief: SchoolBrief; weekLab
           <p>{focus.evidence_summary}</p>
         </section>
       ) : null}
+
+      {assessmentSnapshot ? <AssessmentSnapshot snapshot={assessmentSnapshot} /> : null}
 
       <div className="plc-artifact-columns">
         <div>
@@ -148,9 +216,10 @@ function FacilitationHandout({ brief, weekLabel }: { brief: SchoolBrief; weekLab
       </section>
 
       <footer className="plc-artifact-footer">
-        AI synthesis is limited to the governed anonymous school brief. The facilitation protocol and
-        handout formatting are deterministic. Do not add student-specific information to PLC notes.
-        Use this artifact for professional learning, not personnel evaluation, ranking, or comparison.
+        AI synthesis is limited to the governed anonymous reflection brief. The assessment planning
+        snapshot, facilitation protocol, and handout formatting are deterministic. Do not add
+        student-specific information to PLC notes. Use this artifact for professional learning,
+        not personnel evaluation, ranking, or comparison.
       </footer>
     </article>
   );
@@ -162,6 +231,8 @@ export function PlcFacilitationArtifactExperience() {
   const [portalTarget, setPortalTarget] = useState<Element | null>(null);
   const [weekStart, setWeekStart] = useState(mondayFor());
   const [brief, setBrief] = useState<SchoolBrief | null>(null);
+  const [assessmentSnapshot, setAssessmentSnapshot] = useState<AssessmentPlanningSnapshot | null>(null);
+  const [assessmentWarning, setAssessmentWarning] = useState("");
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
 
@@ -184,6 +255,8 @@ export function PlcFacilitationArtifactExperience() {
       setSession(nextSession);
       setIdentity(null);
       setBrief(null);
+      setAssessmentSnapshot(null);
+      setAssessmentWarning("");
       setError("");
     });
     return () => data.subscription.unsubscribe();
@@ -221,17 +294,39 @@ export function PlcFacilitationArtifactExperience() {
   async function generateHandout() {
     setWorking(true);
     setError("");
+    setAssessmentWarning("");
     try {
-      const response = await authenticatedFetch(
-        `/api/v1/reflection-intelligence/school/${encodeURIComponent(weekStart)}`,
-        { method: "POST" },
-      );
-      if (!response.ok) {
-        throw new Error(await readError(response, "The PLC facilitation handout could not be generated."));
+      const assessmentQuery = new URLSearchParams({
+        period_start: weekStart,
+        period_end: addDays(weekStart, 6),
+      });
+      const [briefResponse, assessmentResponse] = await Promise.all([
+        authenticatedFetch(
+          `/api/v1/reflection-intelligence/school/${encodeURIComponent(weekStart)}`,
+          { method: "POST" },
+        ),
+        authenticatedFetch(`/api/v1/assessment-analytics/school?${assessmentQuery.toString()}`),
+      ]);
+      if (!briefResponse.ok) {
+        throw new Error(await readError(
+          briefResponse,
+          "The PLC facilitation handout could not be generated.",
+        ));
       }
-      setBrief(await response.json() as SchoolBrief);
+      setBrief(await briefResponse.json() as SchoolBrief);
+
+      if (assessmentResponse.ok) {
+        setAssessmentSnapshot(await assessmentResponse.json() as AssessmentPlanningSnapshot);
+      } else {
+        setAssessmentSnapshot(null);
+        setAssessmentWarning(
+          "The reflection-based handout is ready, but the optional formative-assessment planning snapshot is unavailable.",
+        );
+      }
     } catch (caught) {
       setBrief(null);
+      setAssessmentSnapshot(null);
+      setAssessmentWarning("");
       setError(caught instanceof Error
         ? caught.message
         : "The PLC facilitation handout could not be generated.");
@@ -260,11 +355,12 @@ export function PlcFacilitationArtifactExperience() {
       <div className="section-heading compact">
         <div>
           <p className="eyebrow">PLC artifact</p>
-          <h3 id="plc-artifact-title">Turn the weekly reflection brief into a meeting handout</h3>
+          <h3 id="plc-artifact-title">Turn weekly reflection and planning signals into a meeting handout</h3>
           <p className="supporting">
             Generate a condensed one-to-two-page facilitation resource from the governed anonymous school
-            brief. The handout adds a fixed meeting protocol and action workspace without another AI pass
-            over the content and without storing PLC notes.
+            reflection brief plus an aggregate snapshot of formative-assessment types already planned for
+            the same week. The assessment snapshot is deterministic, adds no AI pass over lesson-plan text,
+            and does not store PLC notes.
           </p>
         </div>
       </div>
@@ -279,6 +375,8 @@ export function PlcFacilitationArtifactExperience() {
             onChange={(event) => {
               setWeekStart(event.target.value);
               setBrief(null);
+              setAssessmentSnapshot(null);
+              setAssessmentWarning("");
               setError("");
             }}
           />
@@ -294,12 +392,19 @@ export function PlcFacilitationArtifactExperience() {
       </div>
 
       <p className="plc-artifact-boundary">
-        Professional learning only · anonymous aggregate teacher sources · no student data · no teacher
-        scoring, ranking, comparison, or personnel evaluation.
+        Professional learning only · anonymous aggregate teacher sources · planned assessment signals only ·
+        no student data · no teacher scoring, ranking, comparison, or personnel evaluation.
       </p>
 
       {error ? <p className="error-message" role="alert">{error}</p> : null}
-      {brief ? <FacilitationHandout brief={brief} weekLabel={weekLabel} /> : null}
+      {assessmentWarning ? <p className="guidance-text" role="status">{assessmentWarning}</p> : null}
+      {brief ? (
+        <FacilitationHandout
+          brief={brief}
+          assessmentSnapshot={assessmentSnapshot}
+          weekLabel={weekLabel}
+        />
+      ) : null}
     </section>,
     portalTarget,
   );
