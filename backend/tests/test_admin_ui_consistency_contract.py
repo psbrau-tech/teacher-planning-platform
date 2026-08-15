@@ -5,6 +5,7 @@ MAIN = ROOT / "frontend" / "src" / "main.tsx"
 CONSISTENCY = ROOT / "frontend" / "src" / "UiConsistencyExperience.tsx"
 STYLES = ROOT / "frontend" / "src" / "ui-consistency.css"
 REFLECTION = ROOT / "frontend" / "src" / "AiReflectionPanel.tsx"
+SHELL = ROOT / "frontend" / "src" / "TeacherPlanningShell.tsx"
 
 
 def test_success_and_error_toasts_auto_dismiss_after_five_seconds() -> None:
@@ -21,11 +22,15 @@ def test_success_and_error_toasts_auto_dismiss_after_five_seconds() -> None:
 
 
 def test_pdf_preview_headers_share_top_right_close_layout() -> None:
-    source = REFLECTION.read_text(encoding="utf-8")
+    reflection = REFLECTION.read_text(encoding="utf-8")
+    shell = SHELL.read_text(encoding="utf-8")
     styles = STYLES.read_text(encoding="utf-8")
 
-    assert 'className="pdf-modal-header"' in source
-    assert "Close preview" in source
+    assert 'className="pdf-modal-header"' in reflection
+    assert 'className="pdf-modal-heading"' in shell
+    assert "Close preview" in reflection
+    assert "Close preview" in shell
+    assert ".pdf-modal-heading," in styles
     assert ".pdf-modal-header" in styles
     assert "justify-content: space-between" in styles
     assert "align-items: center" in styles
