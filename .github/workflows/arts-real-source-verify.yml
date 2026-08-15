@@ -24,19 +24,45 @@ jobs:
         run: |
           python - <<'PY'
           from collections import Counter
+          from time import sleep
 
           from app.standards_alabama_arts import (
               _course_key,
               _discover_sections,
               parse_alabama_arts_2024,
           )
-          from app.standards_ingest import extract_document, fetch_source
+          from app.standards_ingest import (
+              StandardsIngestError,
+              extract_document,
+              fetch_source,
+          )
 
           url = (
               "https://www.alabamaachieves.org/wp-content/uploads/2025/01/"
               "AS_20250108_2024-Alabama-Course-of-Study-Arts-Education_V1.0.pdf"
           )
-          fetched = fetch_source(url, "pdf")
+
+          # GitHub-hosted runners can experience transient DNS/network failures. Retry only
+          # the bounded source-unavailable condition; invalid content, parser failures, and
+          # every other verification error still fail closed immediately.
+          fetched = None
+          for attempt in range(1, 5):
+              try:
+                  fetched = fetch_source(url, "pdf")
+                  break
+              except StandardsIngestError as error:
+                  if str(error) != "Authoritative standards source is unavailable" or attempt == 4:
+                      raise
+                  wait_seconds = 15 * attempt
+                  print(
+                      f"authoritative source unavailable on attempt {attempt}/4; "
+                      f"retrying in {wait_seconds}s"
+                  )
+                  sleep(wait_seconds)
+
+          if fetched is None:
+              raise RuntimeError("Authoritative Arts source verification did not obtain a source")
+
           extracted = extract_document(fetched)
           markers = tuple(
               index for index, line in enumerate(extracted.lines) if line == "Content Standards"
