@@ -77,6 +77,6 @@ def test_help_explains_new_admin_features_without_expanding_data_boundary() -> N
     assert "professional operational email" in source
     assert "notifications@planner.guidedscholar.ai" in source
     assert "does not include teacher names, class-level exception lists" in source
-    assert "teacher/class exceptions remain inside the authenticated application" in source
+    assert "named operational follow-up remains inside the authenticated application" in source
     assert "no-student-information boundary" in source
     assert "not teacher-performance measures" in source
