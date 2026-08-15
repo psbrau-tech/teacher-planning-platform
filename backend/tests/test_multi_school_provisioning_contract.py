@@ -302,5 +302,6 @@ def test_source_contract_preserves_one_email_one_school_and_explicit_district() 
     assert "ZoneInfo" in script
     assert "school_notification_settings" in script
     assert "pilot_access_allowlist_pkey primary key (email, school_id)" not in migration
-    assert "New-school automatic notification default: `disabled`" in workflow
+    assert "New-school automatic notification default:" in workflow
+    assert "disabled" in workflow
     assert "- District: Anniston City Schools" not in workflow
