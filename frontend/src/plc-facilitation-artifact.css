@@ -1,0 +1,252 @@
+.plc-facilitation-artifact {
+  margin-top: 1.25rem;
+  border-top: 1px solid #d7dde8;
+  padding-top: 1.25rem;
+}
+
+.plc-artifact-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.65rem;
+  margin: 0.85rem 0;
+}
+
+.plc-artifact-controls label {
+  display: grid;
+  gap: 0.3rem;
+  font-weight: 700;
+}
+
+.plc-artifact-controls input {
+  min-height: 2.55rem;
+  border: 1px solid #9aa7b9;
+  border-radius: 0.4rem;
+  padding: 0.45rem 0.55rem;
+  background: #fff;
+  color: #172033;
+  font: inherit;
+}
+
+.plc-artifact-boundary {
+  margin: 0.8rem 0;
+  border-left: 0.3rem solid #0d6b4f;
+  border-radius: 0.3rem;
+  padding: 0.65rem 0.8rem;
+  background: #eef8f4;
+  color: #344054;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.plc-facilitation-handout {
+  margin-top: 1rem;
+  border: 1px solid #d7dde8;
+  border-radius: 0.6rem;
+  padding: 1rem;
+  background: #fff;
+  color: #172033;
+}
+
+.plc-artifact-header {
+  border-bottom: 2px solid #7b001c;
+  margin-bottom: 0.85rem;
+  padding-bottom: 0.65rem;
+}
+
+.plc-artifact-header h4 {
+  margin: 0.15rem 0 0.4rem;
+  font-size: 1.2rem;
+}
+
+.plc-artifact-header p:last-child {
+  margin: 0;
+  color: #475467;
+  line-height: 1.4;
+}
+
+.plc-focus-box {
+  display: grid;
+  gap: 0.2rem;
+  margin-bottom: 0.85rem;
+  border-left: 0.3rem solid #b88b2d;
+  padding: 0.65rem 0.75rem;
+  background: #fff9e8;
+}
+
+.plc-focus-box > span {
+  color: #6b4d09;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.plc-focus-box p {
+  margin: 0;
+  line-height: 1.4;
+}
+
+.plc-artifact-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.plc-artifact-section {
+  margin-bottom: 0.8rem;
+  break-inside: avoid;
+}
+
+.plc-artifact-section h5,
+.plc-action-workspace h5 {
+  margin: 0 0 0.35rem;
+  color: #4f1020;
+  font-size: 0.95rem;
+}
+
+.plc-artifact-section ul,
+.plc-artifact-section ol {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.plc-artifact-section li + li {
+  margin-top: 0.3rem;
+}
+
+.plc-theme-list {
+  list-style: none;
+  padding-left: 0 !important;
+}
+
+.plc-theme-list li {
+  display: grid;
+  gap: 0.15rem;
+  border-left: 0.2rem solid #b88b2d;
+  padding: 0.4rem 0.5rem;
+  background: #fbfcfe;
+}
+
+.plc-theme-list span {
+  line-height: 1.35;
+}
+
+.plc-theme-list small {
+  color: #667085;
+}
+
+.plc-protocol li {
+  line-height: 1.35;
+}
+
+.plc-action-workspace {
+  margin-top: 0.8rem;
+  border: 1px solid #9aa7b9;
+  border-radius: 0.4rem;
+  padding: 0.65rem;
+  break-inside: avoid;
+}
+
+.plc-action-workspace > div {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.5rem;
+  align-items: end;
+  min-height: 1.6rem;
+}
+
+.plc-action-workspace > div span {
+  display: block;
+  border-bottom: 1px solid #667085;
+  min-height: 1.2rem;
+}
+
+.plc-action-workspace small {
+  display: block;
+  margin-top: 0.45rem;
+  color: #667085;
+}
+
+.plc-artifact-footer {
+  margin-top: 0.8rem;
+  border-top: 1px solid #d7dde8;
+  padding-top: 0.55rem;
+  color: #667085;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+@media (max-width: 48rem) {
+  .plc-artifact-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media print {
+  @page {
+    size: letter portrait;
+    margin: 0.45in;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  .plc-facilitation-handout,
+  .plc-facilitation-handout * {
+    visibility: visible !important;
+  }
+
+  .plc-facilitation-handout {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    color: #000;
+    font-size: 9.5pt;
+    line-height: 1.25;
+  }
+
+  .plc-artifact-header {
+    margin-bottom: 0.45rem;
+    padding-bottom: 0.4rem;
+  }
+
+  .plc-artifact-header h4 {
+    font-size: 14pt;
+  }
+
+  .plc-focus-box,
+  .plc-artifact-section,
+  .plc-action-workspace {
+    break-inside: avoid;
+  }
+
+  .plc-artifact-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.7rem;
+  }
+
+  .plc-artifact-section {
+    margin-bottom: 0.45rem;
+  }
+
+  .plc-theme-list li {
+    padding: 0.25rem 0.35rem;
+  }
+
+  .plc-action-workspace {
+    margin-top: 0.45rem;
+    padding: 0.45rem;
+  }
+
+  .plc-artifact-footer {
+    margin-top: 0.45rem;
+    padding-top: 0.35rem;
+    font-size: 8pt;
+  }
+}
