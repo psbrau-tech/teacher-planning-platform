@@ -80,8 +80,13 @@ def _parse_local_time(value: object, name: str, default: time) -> time:
         parsed = time.fromisoformat(value.strip())
     except ValueError as error:
         raise ValueError(f"{name} must use HH:MM local time") from error
-    if parsed.second or parsed.microsecond or parsed.tzinfo is not None:
-        raise ValueError(f"{name} must use HH:MM local time")
+    if (
+        parsed.second
+        or parsed.microsecond
+        or parsed.tzinfo is not None
+        or parsed.minute % 15 != 0
+    ):
+        raise ValueError(f"{name} must use a 15-minute HH:MM boundary")
     return parsed
 
 
@@ -386,7 +391,11 @@ def provision(
                 school_ids[school.name] = school_id
                 with connection.cursor() as cursor:
                     cursor.execute(
-                        "update public.academic_years set is_active = false where school_id = %s::uuid",
+                        """
+                        update public.academic_years
+                        set is_active = false
+                        where school_id = %s::uuid
+                        """,
                         (school_id,),
                     )
                     cursor.execute(
@@ -514,7 +523,10 @@ def provision(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Provision governed Anniston TPP schools, notification settings, and staff access."
+        description=(
+            "Provision governed Anniston TPP schools, notification settings, "
+            "and staff access."
+        )
     )
     parser.add_argument("--database-url", required=True)
     parser.add_argument("--access-json", required=True, type=Path)
