@@ -26,13 +26,6 @@ type TeacherStatusRow = {
   next_plan_submitted: boolean;
 };
 
-type AdminStatusRow = TeacherStatusRow & {
-  school_id: string;
-  school_name: string;
-  teacher_id: string;
-  teacher_name: string;
-};
-
 type StatusState<T> = {
   rows: T[];
   loading: boolean;
@@ -91,19 +84,12 @@ export function FridayStatusExperience() {
   const [session, setSession] = useState<Session | null>(null);
   const [identity, setIdentity] = useState<Identity | null>(null);
   const [teacherTarget, setTeacherTarget] = useState<Element | null>(null);
-  const [adminTarget, setAdminTarget] = useState<Element | null>(null);
   const [teacher, setTeacher] = useState<StatusState<TeacherStatusRow>>({
-    rows: [], loading: false, error: "",
-  });
-  const [admin, setAdmin] = useState<StatusState<AdminStatusRow>>({
     rows: [], loading: false, error: "",
   });
   const currentMonday = mondayFor();
   const accessToken = session?.access_token ?? "";
   const isTeacher = identity?.roles.includes("teacher") ?? false;
-  const canViewAdministration = identity?.roles.some((role) => (
-    role === "school_admin" || role === "district_admin" || role === "platform_admin"
-  )) ?? false;
 
   useEffect(() => {
     if (!statusSupabase) return;
@@ -112,7 +98,6 @@ export function FridayStatusExperience() {
       setSession(nextSession);
       setIdentity(null);
       setTeacher({ rows: [], loading: false, error: "" });
-      setAdmin({ rows: [], loading: false, error: "" });
     });
     return () => data.subscription.unsubscribe();
   }, []);
@@ -129,19 +114,16 @@ export function FridayStatusExperience() {
   }, [accessToken]);
 
   useEffect(() => {
-    function updateTargets() {
+    function updateTarget() {
       const activeNavigation = document.querySelector(".workflow-nav button.active")?.textContent?.trim();
       setTeacherTarget(
         activeNavigation === "Dashboard" && isTeacher
           ? document.querySelector(".shell > main")
           : null,
       );
-      setAdminTarget(document.querySelector(
-        '.administration-overview [role="tabpanel"][aria-label="Administration reporting"]',
-      ));
     }
-    updateTargets();
-    const observer = new MutationObserver(updateTargets);
+    updateTarget();
+    const observer = new MutationObserver(updateTarget);
     observer.observe(document.body, {
       childList: true,
       subtree: true,
@@ -170,35 +152,11 @@ export function FridayStatusExperience() {
     }
   }
 
-  async function loadAdminStatus() {
-    if (!accessToken || !canViewAdministration) return;
-    setAdmin((current) => ({ ...current, loading: true, error: "" }));
-    try {
-      const query = new URLSearchParams({ week_start: currentMonday });
-      const response = await fetch(`/api/v1/friday-status/admin?${query.toString()}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      if (!response.ok) throw new Error(await responseError(response));
-      setAdmin({ rows: await response.json() as AdminStatusRow[], loading: false, error: "" });
-    } catch (caught) {
-      setAdmin({
-        rows: [],
-        loading: false,
-        error: caught instanceof Error ? caught.message : "Friday submission status could not be loaded.",
-      });
-    }
-  }
-
   useEffect(() => {
     if (teacherTarget && accessToken && isTeacher) void loadTeacherStatus();
   }, [accessToken, currentMonday, isTeacher, teacherTarget]);
 
-  useEffect(() => {
-    if (adminTarget && accessToken && canViewAdministration) void loadAdminStatus();
-  }, [accessToken, adminTarget, canViewAdministration, currentMonday]);
-
   const nextWeekStart = teacher.rows[0]?.next_week_start
-    ?? admin.rows[0]?.next_week_start
     ?? localIsoDate(new Date(new Date(`${currentMonday}T12:00:00`).getTime() + 7 * 86_400_000));
 
   const teacherOutstanding = useMemo(() => teacher.rows.filter((row) => (
@@ -206,31 +164,9 @@ export function FridayStatusExperience() {
     || (row.next_week_required && !row.next_plan_submitted)
   )).length, [teacher.rows]);
 
-  const adminSummary = useMemo(() => {
-    const currentRows = admin.rows.filter((row) => row.current_week_required);
-    const nextRows = admin.rows.filter((row) => row.next_week_required);
-    const teacherRollup = new Map<string, { current: boolean[]; next: boolean[] }>();
-    admin.rows.forEach((row) => {
-      const status = teacherRollup.get(row.teacher_id) ?? { current: [], next: [] };
-      if (row.current_week_required) status.current.push(row.current_packet_submitted);
-      if (row.next_week_required) status.next.push(row.next_plan_submitted);
-      teacherRollup.set(row.teacher_id, status);
-    });
-    const currentTeachers = [...teacherRollup.values()].filter((value) => value.current.length > 0);
-    const nextTeachers = [...teacherRollup.values()].filter((value) => value.next.length > 0);
-    return {
-      currentExpected: currentRows.length,
-      currentSubmitted: currentRows.filter((row) => row.current_packet_submitted).length,
-      currentTeachersExpected: currentTeachers.length,
-      currentTeachersComplete: currentTeachers.filter((value) => value.current.every(Boolean)).length,
-      nextExpected: nextRows.length,
-      nextSubmitted: nextRows.filter((row) => row.next_plan_submitted).length,
-      nextTeachersExpected: nextTeachers.length,
-      nextTeachersComplete: nextTeachers.filter((value) => value.next.every(Boolean)).length,
-    };
-  }, [admin.rows]);
+  if (!teacherTarget || !isTeacher) return null;
 
-  const teacherView = teacherTarget && isTeacher ? createPortal(
+  return createPortal(
     <section className="friday-status teacher-friday-status" aria-labelledby="teacher-friday-status-title">
       <div className="section-heading compact">
         <div>
@@ -288,83 +224,5 @@ export function FridayStatusExperience() {
       ) : null}
     </section>,
     teacherTarget,
-  ) : null;
-
-  const adminView = adminTarget && canViewAdministration ? createPortal(
-    <section className="friday-status admin-friday-status" aria-labelledby="admin-friday-status-title">
-      <div className="section-heading compact">
-        <div>
-          <p className="eyebrow">Friday submission status</p>
-          <h3 id="admin-friday-status-title">Current-week closeout and following-week planning</h3>
-          <p className="supporting">
-            Authorized professional operational status by teacher and class. This is submission
-            follow-up, not a teacher-performance, quality, effort, or compliance score.
-          </p>
-        </div>
-        <button className="secondary" type="button" disabled={admin.loading} onClick={() => void loadAdminStatus()}>
-          Refresh status
-        </button>
-      </div>
-      {admin.error ? <p className="error-message" role="alert">{admin.error}</p> : null}
-      {admin.loading ? <p className="working-status" role="status">Updating Friday status…</p> : null}
-      {!admin.loading && !admin.error ? (
-        <>
-          <div className="friday-admin-summary-grid">
-            <article>
-              <strong>{adminSummary.currentTeachersComplete} / {adminSummary.currentTeachersExpected}</strong>
-              <span>teachers fully complete this week</span>
-            </article>
-            <article>
-              <strong>{adminSummary.currentSubmitted} / {adminSummary.currentExpected}</strong>
-              <span>completed packets submitted</span>
-            </article>
-            <article>
-              <strong>{adminSummary.nextTeachersComplete} / {adminSummary.nextTeachersExpected}</strong>
-              <span>teachers fully planned next week</span>
-            </article>
-            <article>
-              <strong>{adminSummary.nextSubmitted} / {adminSummary.nextExpected}</strong>
-              <span>next-week lesson plans submitted</span>
-            </article>
-          </div>
-          {admin.rows.length ? (
-            <div className="friday-status-table-wrap" tabIndex={0}>
-              <table className="friday-status-table admin-status-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Teacher</th>
-                    <th scope="col">Class</th>
-                    <th scope="col">This week&apos;s reflection / packet</th>
-                    <th scope="col">Next week&apos;s lesson plan</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {admin.rows.map((row) => (
-                    <tr key={`${row.teacher_id}:${row.assignment_id}`}>
-                      <th scope="row">
-                        {row.teacher_name}
-                        <small>{row.school_name}</small>
-                      </th>
-                      <td>{row.course_name}</td>
-                      <td><StatusBadge required={row.current_week_required} submitted={row.current_packet_submitted} /></td>
-                      <td><StatusBadge required={row.next_week_required} submitted={row.next_plan_submitted} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p>No active class has a current- or following-week submission requirement.</p>
-          )}
-          <p className="friday-status-note">
-            The planned 3:30 PM Friday administrator email contains aggregate counts and an authenticated
-            link only; teacher/class exceptions remain here behind TPP authorization.
-          </p>
-        </>
-      ) : null}
-    </section>,
-    adminTarget,
-  ) : null;
-
-  return <>{teacherView}{adminView}</>;
+  );
 }

@@ -1,5 +1,5 @@
 import { createClient, type Session } from "@supabase/supabase-js";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import "./reflection-intelligence.css";
 
@@ -75,15 +75,12 @@ export function ReflectionIntelligenceExperience() {
   const [identity, setIdentity] = useState<Identity | null>(null);
   const [stepTarget, setStepTarget] = useState<Element | null>(null);
   const [stepperTarget, setStepperTarget] = useState<Element | null>(null);
-  const [open, setOpen] = useState(false);
   const [weekStart, setWeekStart] = useState(mondayFor());
   const [lookbackWeeks, setLookbackWeeks] = useState(12);
   const [boundaryConfirmed, setBoundaryConfirmed] = useState(false);
   const [teacherInsight, setTeacherInsight] = useState<TeacherInsight | null>(null);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
-  const closeButton = useRef<HTMLButtonElement>(null);
-  const triggerButton = useRef<HTMLButtonElement>(null);
 
   const accessToken = session?.access_token ?? "";
   const isTeacher = identity?.roles.includes("teacher") ?? false;
@@ -94,8 +91,9 @@ export function ReflectionIntelligenceExperience() {
     const { data } = reflectionSupabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
       setIdentity(null);
-      setOpen(false);
       setTeacherInsight(null);
+      setBoundaryConfirmed(false);
+      setError("");
     });
     return () => data.subscription.unsubscribe();
   }, []);
@@ -116,7 +114,6 @@ export function ReflectionIntelligenceExperience() {
     if (!isTeacher) {
       setStepTarget(null);
       setStepperTarget(null);
-      setOpen(false);
       return;
     }
 
@@ -125,7 +122,6 @@ export function ReflectionIntelligenceExperience() {
       if (!panel) {
         setStepTarget(null);
         setStepperTarget(null);
-        setOpen(false);
         return;
       }
 
@@ -196,22 +192,6 @@ export function ReflectionIntelligenceExperience() {
     };
   }, [isTeacher]);
 
-  useEffect(() => {
-    if (!open) return;
-    const frame = window.requestAnimationFrame(() => closeButton.current?.focus());
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setOpen(false);
-        window.requestAnimationFrame(() => triggerButton.current?.focus());
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
-
   const weekLabel = useMemo(() => {
     const value = new Date(`${weekStart}T12:00:00`);
     return Number.isNaN(value.getTime())
@@ -250,11 +230,6 @@ export function ReflectionIntelligenceExperience() {
     }
   }
 
-  function closePanel() {
-    setOpen(false);
-    window.requestAnimationFrame(() => triggerButton.current?.focus());
-  }
-
   if (!reflectionSupabase || !accessToken || !identity || !isTeacher) return null;
 
   const marker = stepperTarget ? createPortal(
@@ -269,12 +244,12 @@ export function ReflectionIntelligenceExperience() {
   ) : null;
 
   const fridayStep = stepTarget ? createPortal(
-    <section className="setup-step-card active-step ri-friday-reflection-step">
+    <section className="setup-step-card active-step ri-friday-reflection-step" aria-labelledby="reflection-intelligence-title">
       <div className="step-heading">
         <span className="step-number">4</span>
         <div>
           <p className="eyebrow">Step 4 · Optional</p>
-          <h2>Review your reflection insights</h2>
+          <h2 id="reflection-intelligence-title">Review your reflection insights</h2>
           <p className="supporting">
             After your teacher-authored reflection is submitted and the completed packet is reviewed,
             TPP can privately synthesize patterns from your own submitted reflections. This does not
@@ -282,24 +257,71 @@ export function ReflectionIntelligenceExperience() {
           </p>
         </div>
       </div>
-      <div className="button-row">
-        <button
-          ref={triggerButton}
-          type="button"
-          className="primary"
-          aria-expanded={open}
-          aria-controls="reflection-intelligence-panel"
-          onClick={() => {
-            setOpen(true);
-            setError("");
-          }}
-        >
-          {teacherInsight ? "Review reflection insights again" : "Review reflection insights"}
-        </button>
+
+      <div className="ri-inline-body">
+        <div className="ri-boundary" role="note">
+          <strong>Instructional insight, not evaluation.</strong>
+          <span> No teacher quality score. No student data. AI synthesizes only your submitted teacher-authored professional reflections.</span>
+        </div>
+
+        <div className="ri-controls">
+          <label>
+            Week of
+            <input type="date" value={weekStart} onChange={(event) => {
+              setWeekStart(event.target.value);
+              setTeacherInsight(null);
+            }} />
+          </label>
+          <label>
+            Pattern window
+            <select value={lookbackWeeks} onChange={(event) => {
+              setLookbackWeeks(Number(event.target.value));
+              setTeacherInsight(null);
+            }}>
+              <option value={4}>4 weeks</option>
+              <option value={8}>8 weeks</option>
+              <option value={12}>12 weeks</option>
+            </select>
+          </label>
+        </div>
+
+        <label className="ri-confirmation">
+          <input
+            type="checkbox"
+            checked={boundaryConfirmed}
+            onChange={(event) => setBoundaryConfirmed(event.target.checked)}
+          />
+          <span>
+            I confirm my submitted reflections use class- or group-level observations only and contain no student names, identifiers, identifiable student work, IEP/504, health, discipline, or other student-specific information.
+          </span>
+        </label>
+
+        <div className="button-row ri-action-row">
+          <button type="button" className="ri-primary" disabled={working} onClick={() => void generateTeacherInsight()}>
+            {working ? "Generating private recap…" : teacherInsight ? "Regenerate my private recap" : "Generate my private recap"}
+          </button>
+          {teacherInsight ? (
+            <span className="ri-step-status" role="status">Private recap generated for this session.</span>
+          ) : null}
+        </div>
+
         {teacherInsight ? (
-          <span className="ri-step-status" role="status">Private recap generated for this session.</span>
+          <section className="ri-results" aria-live="polite">
+            <p className="ri-meta">
+              Private to you · {teacherInsight.source_submission_count} submitted reflection{teacherInsight.source_submission_count === 1 ? "" : "s"} across {teacherInsight.source_week_count} week{teacherInsight.source_week_count === 1 ? "" : "s"}
+            </p>
+            <h3>Week of {weekLabel}</h3>
+            <p className="ri-recap">{teacherInsight.insight.weekly_recap}</p>
+            <BulletSection title="Recurring themes" items={teacherInsight.insight.recurring_themes} />
+            <BulletSection title="Strategies I keep seeing work" items={teacherInsight.insight.strategies_that_work} />
+            <BulletSection title="Challenges to keep seeing" items={teacherInsight.insight.challenges_to_watch} />
+            <BulletSection title="Carry-forward ideas" items={teacherInsight.insight.carry_forward_ideas} />
+          </section>
         ) : null}
+
+        {error ? <p className="ri-error" role="alert">{error}</p> : null}
       </div>
+
       <p className="ri-step-note">
         Reflection insights are optional. You may continue to Step 5 without generating a recap.
       </p>
@@ -307,80 +329,5 @@ export function ReflectionIntelligenceExperience() {
     stepTarget,
   ) : null;
 
-  return (
-    <>
-      {marker}
-      {fridayStep}
-      {open ? (
-        <aside
-          id="reflection-intelligence-panel"
-          className="ri-panel"
-          aria-labelledby="reflection-intelligence-title"
-        >
-          <div className="ri-panel-header">
-            <div>
-              <p className="ri-eyebrow">Reflection Intelligence</p>
-              <h2 id="reflection-intelligence-title">Your private reflection insights</h2>
-            </div>
-            <button ref={closeButton} type="button" className="ri-close" onClick={closePanel}>
-              Close
-            </button>
-          </div>
-
-          <div className="ri-boundary" role="note">
-            <strong>Instructional insight, not evaluation.</strong>
-            <span> No teacher quality score. No student data. AI synthesizes only your submitted teacher-authored professional reflections.</span>
-          </div>
-
-          <div className="ri-controls">
-            <label>
-              Week of
-              <input type="date" value={weekStart} onChange={(event) => {
-                setWeekStart(event.target.value);
-                setTeacherInsight(null);
-              }} />
-            </label>
-            <label>
-              Pattern window
-              <select value={lookbackWeeks} onChange={(event) => setLookbackWeeks(Number(event.target.value))}>
-                <option value={4}>4 weeks</option>
-                <option value={8}>8 weeks</option>
-                <option value={12}>12 weeks</option>
-              </select>
-            </label>
-          </div>
-
-          <label className="ri-confirmation">
-            <input
-              type="checkbox"
-              checked={boundaryConfirmed}
-              onChange={(event) => setBoundaryConfirmed(event.target.checked)}
-            />
-            <span>
-              I confirm my submitted reflections use class- or group-level observations only and contain no student names, identifiers, identifiable student work, IEP/504, health, discipline, or other student-specific information.
-            </span>
-          </label>
-          <button type="button" className="ri-primary" disabled={working} onClick={() => void generateTeacherInsight()}>
-            {working ? "Generating private recap…" : "Generate my private recap"}
-          </button>
-
-          {teacherInsight ? (
-            <section className="ri-results" aria-live="polite">
-              <p className="ri-meta">
-                Private to you · {teacherInsight.source_submission_count} submitted reflection{teacherInsight.source_submission_count === 1 ? "" : "s"} across {teacherInsight.source_week_count} week{teacherInsight.source_week_count === 1 ? "" : "s"}
-              </p>
-              <h3>Week of {weekLabel}</h3>
-              <p className="ri-recap">{teacherInsight.insight.weekly_recap}</p>
-              <BulletSection title="Recurring themes" items={teacherInsight.insight.recurring_themes} />
-              <BulletSection title="Strategies I keep seeing work" items={teacherInsight.insight.strategies_that_work} />
-              <BulletSection title="Challenges to keep seeing" items={teacherInsight.insight.challenges_to_watch} />
-              <BulletSection title="Carry-forward ideas" items={teacherInsight.insight.carry_forward_ideas} />
-            </section>
-          ) : null}
-
-          {error ? <p className="ri-error" role="alert">{error}</p> : null}
-        </aside>
-      ) : null}
-    </>
-  );
+  return <>{marker}{fridayStep}</>;
 }

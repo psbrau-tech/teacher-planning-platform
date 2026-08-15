@@ -15,6 +15,22 @@ type WeeklySubmission = {
   lesson_plan_submitted_at: string | null;
   completed_packet_revision: number | null;
   completed_packet_submitted_at: string | null;
+  lesson_plan_required: boolean;
+  completed_packet_required: boolean;
+};
+
+type AdminFridayStatusRow = {
+  school_id: string;
+  school_name: string;
+  teacher_id: string;
+  teacher_name: string;
+  assignment_id: string;
+  course_name: string;
+  current_week_required: boolean;
+  current_packet_submitted: boolean;
+  next_week_start: string;
+  next_week_required: boolean;
+  next_plan_submitted: boolean;
 };
 
 type Props = { accessToken: string; roles: string[]; disabled?: boolean };
@@ -58,6 +74,34 @@ function downloadBlob(blob: Blob, filename: string) {
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);
+}
+
+function SubmissionState({
+  revision,
+  submittedAt,
+  required,
+  completedLabel,
+  onView,
+  disabled,
+}: {
+  revision: number | null;
+  submittedAt: string | null;
+  required: boolean;
+  completedLabel: string;
+  onView: () => void;
+  disabled: boolean;
+}) {
+  if (revision) {
+    return (
+      <div className="submission-artifact">
+        <span className="submission-status submitted">{completedLabel} · Rev {revision}</span>
+        <small>{submittedAt ? new Date(submittedAt).toLocaleString() : ""}</small>
+        <button className="link-button" disabled={disabled} onClick={onView}>View {completedLabel.toLowerCase()}</button>
+      </div>
+    );
+  }
+  if (!required) return <span className="submission-status not-required">Not required</span>;
+  return <span className="submission-status attention">Needs submission</span>;
 }
 
 export function AdminSubmissionPanel({ accessToken, roles, disabled = false }: Props) {
@@ -130,11 +174,13 @@ export function AdminSubmissionPanel({ accessToken, roles, disabled = false }: P
   const allFilteredSelected = selectableFilteredRows.length > 0
     && selectableFilteredRows.every((row) => selectedPlanKeys.has(rowKey(row)));
   const summary = useMemo(() => ({
-    plans: filteredRows.filter((row) => Boolean(row.lesson_plan_revision)).length,
-    completed: filteredRows.filter((row) => Boolean(row.completed_packet_revision)).length,
-    pendingPlans: filteredRows.filter((row) => row.assignment_id && !row.lesson_plan_revision).length,
+    plans: filteredRows.filter((row) => row.lesson_plan_required && Boolean(row.lesson_plan_revision)).length,
+    completed: filteredRows.filter((row) => row.completed_packet_required && Boolean(row.completed_packet_revision)).length,
+    pendingPlans: filteredRows.filter(
+      (row) => row.assignment_id && row.lesson_plan_required && !row.lesson_plan_revision,
+    ).length,
     pendingCloseout: filteredRows.filter(
-      (row) => row.lesson_plan_revision && !row.completed_packet_revision,
+      (row) => row.assignment_id && row.completed_packet_required && !row.completed_packet_revision,
     ).length,
   }), [filteredRows]);
 
@@ -218,17 +264,47 @@ export function AdminSubmissionPanel({ accessToken, roles, disabled = false }: P
     closePreview();
     setSelectedPlanKeys(new Set());
     try {
-      const response = await fetch(
-        `/api/v1/administration/submissions?week_start=${encodeURIComponent(weekStart)}`,
-        { headers: { Authorization: `Bearer ${accessToken}` } },
-      );
-      if (!response.ok) {
+      const previousWeek = addDays(weekStart, -7);
+      const [submissionResponse, currentRequirementResponse, previousRequirementResponse] = await Promise.all([
+        fetch(
+          `/api/v1/administration/submissions?week_start=${encodeURIComponent(weekStart)}`,
+          { headers: { Authorization: `Bearer ${accessToken}` } },
+        ),
+        fetch(
+          `/api/v1/friday-status/admin?week_start=${encodeURIComponent(weekStart)}`,
+          { headers: { Authorization: `Bearer ${accessToken}` } },
+        ),
+        fetch(
+          `/api/v1/friday-status/admin?week_start=${encodeURIComponent(previousWeek)}`,
+          { headers: { Authorization: `Bearer ${accessToken}` } },
+        ),
+      ]);
+      if (!submissionResponse.ok) {
         throw new Error(await responseMessage(
-          response,
+          submissionResponse,
           "Weekly submission reporting could not be loaded.",
         ));
       }
-      setRows(await response.json() as WeeklySubmission[]);
+      if (!currentRequirementResponse.ok || !previousRequirementResponse.ok) {
+        throw new Error("Weekly submission requirement status could not be loaded.");
+      }
+
+      const submissionRows = await submissionResponse.json() as Omit<WeeklySubmission, "lesson_plan_required" | "completed_packet_required">[];
+      const currentRequirements = await currentRequirementResponse.json() as AdminFridayStatusRow[];
+      const previousRequirements = await previousRequirementResponse.json() as AdminFridayStatusRow[];
+      const currentByAssignment = new Map(currentRequirements.map((row) => [row.assignment_id, row]));
+      const previousByAssignment = new Map(previousRequirements.map((row) => [row.assignment_id, row]));
+
+      setRows(submissionRows.map((row) => {
+        if (!row.assignment_id) {
+          return { ...row, lesson_plan_required: false, completed_packet_required: false };
+        }
+        return {
+          ...row,
+          lesson_plan_required: previousByAssignment.get(row.assignment_id)?.next_week_required ?? true,
+          completed_packet_required: currentByAssignment.get(row.assignment_id)?.current_week_required ?? true,
+        };
+      }));
     } catch (caught) {
       setRows([]);
       setError(caught instanceof Error ? caught.message : "Weekly submission reporting could not be loaded.");
@@ -378,8 +454,12 @@ export function AdminSubmissionPanel({ accessToken, roles, disabled = false }: P
       <div className="section-heading compact">
         <div>
           <p className="eyebrow">{scopeLabel}</p>
-          <h2>Weekly submissions</h2>
-          <p className="supporting">Choose the week and one or more teachers before TPP builds the submission report. Each Monday-starting week has two administrative records: the lesson plan submitted before instruction and the completed packet after Friday reflection.</p>
+          <h2>Weekly submission status & review</h2>
+          <p className="supporting">
+            Choose the week and one or more teachers before TPP builds the report. It combines the
+            operational submission status with the existing immutable PDF review workflow, so there
+            is no separate administrator Friday-status report.
+          </p>
         </div>
       </div>
 
@@ -400,7 +480,8 @@ export function AdminSubmissionPanel({ accessToken, roles, disabled = false }: P
         <div className="guidance-card"><strong>Select one or more teachers to build the weekly submission report.</strong></div>
       ) : (
         <>
-          <section className="summary" aria-label="Weekly submission summary"><div><strong>{summary.plans}</strong><span>lesson plans submitted</span></div><div><strong>{summary.completed}</strong><span>completed packets</span></div><div><strong>{summary.pendingPlans}</strong><span>lesson plans pending</span></div><div><strong>{summary.pendingCloseout}</strong><span>Friday closeouts pending</span></div></section>
+          <section className="summary" aria-label="Weekly submission summary"><div><strong>{summary.plans}</strong><span>required lesson plans submitted</span></div><div><strong>{summary.completed}</strong><span>required completed packets submitted</span></div><div><strong>{summary.pendingPlans}</strong><span>lesson plans needing submission</span></div><div><strong>{summary.pendingCloseout}</strong><span>closeouts needing submission</span></div></section>
+          <div className="submission-status-legend" aria-label="Submission status legend"><span className="submission-status submitted">Submitted</span><span className="submission-status attention">Needs submission</span><span className="submission-status not-required">Not required</span></div>
           <div className="submission-mode-bar"><strong>Bulk review:</strong><div className="button-row"><button className={reviewMode === "lesson_plan" ? "primary" : "secondary"} onClick={() => changeReviewMode("lesson_plan")}>Upcoming lesson plans</button><button className={reviewMode === "completed_packet" ? "primary" : "secondary"} onClick={() => changeReviewMode("completed_packet")}>Completed weekly packets</button></div><span>Select individual rows below or select all filtered records for this review type.</span></div>
           {selectedRows.length > 0 && <div className="bulk-review-bar" role="region" aria-label="Selected submissions"><strong>{selectedRows.length} {modeLabel(reviewMode)}{selectedRows.length === 1 ? "" : "s"} selected</strong><div className="button-row"><button className="secondary" disabled={disabled || detailLoading} onClick={() => void reviewSelectedPlans()}>{detailLoading ? "Preparing selected PDFs…" : "Review selected PDFs"}</button><button className="secondary" disabled={disabled || detailLoading} onClick={() => void downloadSelectedPlans()}>Download selected PDF</button><button className="link-button" onClick={() => setSelectedPlanKeys(new Set())}>Clear selection</button></div></div>}
 
@@ -412,7 +493,7 @@ export function AdminSubmissionPanel({ accessToken, roles, disabled = false }: P
                 <thead><tr><th className="selection-column"><label className="sr-only" htmlFor="select-all-submitted">Select all filtered {modeLabel(reviewMode)}s</label><input id="select-all-submitted" type="checkbox" checked={allFilteredSelected} disabled={!selectableFilteredRows.length} onChange={toggleAllFiltered} /></th><th>School</th><th>Teacher</th><th>Course</th><th>Upcoming lesson plan</th><th>Completed weekly packet</th></tr></thead>
                 <tbody>{filteredRows.map((row) => {
                   const selectable = Boolean(row.assignment_id && revisionFor(row, reviewMode));
-                  return <tr key={`${row.school_id}-${row.teacher_id}-${row.assignment_id ?? "none"}`}><td className="selection-column"><input type="checkbox" aria-label={`Select ${row.teacher_name} ${row.course_name ?? "submission"} for ${modeLabel(reviewMode)} review`} checked={selectedPlanKeys.has(rowKey(row))} disabled={!selectable} onChange={() => togglePlan(row)} /></td><td>{row.school_name}</td><td>{row.teacher_name}</td><td>{row.course_name ?? "—"}</td><td>{row.lesson_plan_revision ? <div className="submission-artifact"><span className="status">Submitted · Rev {row.lesson_plan_revision}</span><small>{row.lesson_plan_submitted_at ? new Date(row.lesson_plan_submitted_at).toLocaleString() : ""}</small><button className="link-button" disabled={disabled || detailLoading} onClick={() => void viewSubmittedPlan(row, "lesson_plan")}>View lesson plan</button></div> : <span className="badge">Not submitted</span>}</td><td>{row.completed_packet_revision ? <div className="submission-artifact"><span className="status">Completed · Rev {row.completed_packet_revision}</span><small>{row.completed_packet_submitted_at ? new Date(row.completed_packet_submitted_at).toLocaleString() : ""}</small><button className="link-button" disabled={disabled || detailLoading} onClick={() => void viewSubmittedPlan(row, "completed_packet")}>View completed packet</button></div> : <span className="badge">Awaiting Friday closeout</span>}</td></tr>;
+                  return <tr key={`${row.school_id}-${row.teacher_id}-${row.assignment_id ?? "none"}`}><td className="selection-column"><input type="checkbox" aria-label={`Select ${row.teacher_name} ${row.course_name ?? "submission"} for ${modeLabel(reviewMode)} review`} checked={selectedPlanKeys.has(rowKey(row))} disabled={!selectable} onChange={() => togglePlan(row)} /></td><td>{row.school_name}</td><td>{row.teacher_name}</td><td>{row.course_name ?? "—"}</td><td>{row.assignment_id ? <SubmissionState revision={row.lesson_plan_revision} submittedAt={row.lesson_plan_submitted_at} required={row.lesson_plan_required} completedLabel="Lesson plan" disabled={disabled || detailLoading} onView={() => void viewSubmittedPlan(row, "lesson_plan")} /> : <span className="submission-status not-required">No active course</span>}</td><td>{row.assignment_id ? <SubmissionState revision={row.completed_packet_revision} submittedAt={row.completed_packet_submitted_at} required={row.completed_packet_required} completedLabel="Completed packet" disabled={disabled || detailLoading} onView={() => void viewSubmittedPlan(row, "completed_packet")} /> : <span className="submission-status not-required">—</span>}</td></tr>;
                 })}</tbody>
               </table>
             </div>
@@ -420,7 +501,7 @@ export function AdminSubmissionPanel({ accessToken, roles, disabled = false }: P
         </>
       )}
 
-      {pdfPreviewUrl && <div className="submission-preview-backdrop" role="dialog" aria-modal="true" aria-label={`${pdfPreviewTitle} preview`}><section className="submission-preview"><div className="submission-preview-heading"><div><p className="eyebrow">Immutable submitted record</p><h2>{pdfPreviewTitle}</h2></div><div className="button-row"><button className="secondary" onClick={downloadPreview}>Download PDF</button><button className="secondary" onClick={printPreview}>Print</button><button className="secondary" onClick={closePreview}>Close</button></div></div><iframe src={pdfPreviewUrl} title={`${pdfPreviewTitle} PDF`} /></section></div>}
+      {pdfPreviewUrl && <div className="submission-preview-backdrop" role="dialog" aria-modal="true" aria-label={`${pdfPreviewTitle} preview`}><section className="submission-preview"><div className="submission-preview-heading"><div><p className="eyebrow">Immutable submitted record</p><h2>{pdfPreviewTitle}</h2></div><div className="button-row"><button className="secondary" onClick={downloadPreview}>Download PDF</button><button className="secondary" onClick={printPreview}>Print</button><button className="secondary" onClick={closePreview}>Close preview</button></div></div><iframe src={pdfPreviewUrl} title={`${pdfPreviewTitle} PDF`} /></section></div>}
     </section>
   );
 }

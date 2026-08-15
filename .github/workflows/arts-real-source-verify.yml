@@ -2,6 +2,7 @@ name: Arts Real Source Verify
 
 on:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -14,29 +15,116 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Determine whether live Arts source verification is required
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import subprocess
+
+          event_name = os.environ.get("EVENT_NAME", "")
+          protected_paths = {
+              "backend/app/standards_alabama_arts.py",
+              "backend/app/standards_ingest.py",
+              "backend/pyproject.toml",
+          }
+
+          if event_name != "pull_request":
+              live_required = True
+              changed = []
+              reason = "manual verification"
+          else:
+              base_sha = os.environ["BASE_SHA"]
+              head_sha = os.environ["HEAD_SHA"]
+              changed = subprocess.check_output(
+                  ["git", "diff", "--name-only", base_sha, head_sha],
+                  text=True,
+              ).splitlines()
+              protected_changes = sorted(protected_paths.intersection(changed))
+              live_required = bool(protected_changes)
+              reason = (
+                  "Arts parser/source transport changed: " + ", ".join(protected_changes)
+                  if protected_changes
+                  else "Arts parser/source transport unchanged"
+              )
+
+          output_path = Path(os.environ["GITHUB_OUTPUT"])
+          with output_path.open("a", encoding="utf-8") as handle:
+              handle.write(f"live_required={'true' if live_required else 'false'}\n")
+          print(f"live_source_required={live_required}")
+          print(f"scope_reason={reason}")
+          if changed:
+              print("changed_files=")
+              for path in changed:
+                  print(f"  {path}")
+          if not live_required:
+              print(
+                  "Live Arts re-fetch is not required for this pull request. "
+                  "The governed standards architecture keeps the last approved snapshot active "
+                  "when a source is unavailable and reconciles authoritative sources through "
+                  "annual, quarterly, event-driven, and manual maintenance."
+              )
+          PY
       - uses: actions/setup-python@v5
+        if: steps.scope.outputs.live_required == 'true'
         with:
           python-version: '3.12'
           cache: pip
       - name: Install backend
+        if: steps.scope.outputs.live_required == 'true'
         run: python -m pip install -e '.[dev]'
       - name: Parse current Alabama Arts source read-only
+        if: steps.scope.outputs.live_required == 'true'
         run: |
           python - <<'PY'
           from collections import Counter
+          from time import sleep
 
           from app.standards_alabama_arts import (
               _course_key,
               _discover_sections,
               parse_alabama_arts_2024,
           )
-          from app.standards_ingest import extract_document, fetch_source
+          from app.standards_ingest import (
+              StandardsIngestError,
+              extract_document,
+              fetch_source,
+          )
 
           url = (
               "https://www.alabamaachieves.org/wp-content/uploads/2025/01/"
               "AS_20250108_2024-Alabama-Course-of-Study-Arts-Education_V1.0.pdf"
           )
-          fetched = fetch_source(url, "pdf")
+
+          # Retry only the bounded source-unavailable condition. Invalid content,
+          # parser failures, and every other verification error fail closed immediately.
+          fetched = None
+          for attempt in range(1, 5):
+              try:
+                  fetched = fetch_source(url, "pdf")
+                  break
+              except StandardsIngestError as error:
+                  if str(error) != "Authoritative standards source is unavailable":
+                      raise
+                  if attempt == 4:
+                      raise
+                  wait_seconds = 15 * attempt
+                  print(
+                      f"authoritative source unavailable on attempt {attempt}/4; "
+                      f"retrying in {wait_seconds}s"
+                  )
+                  sleep(wait_seconds)
+
+          if fetched is None:
+              raise RuntimeError("Authoritative Arts source verification did not obtain a source")
+
           extracted = extract_document(fetched)
           markers = tuple(
               index for index, line in enumerate(extracted.lines) if line == "Content Standards"

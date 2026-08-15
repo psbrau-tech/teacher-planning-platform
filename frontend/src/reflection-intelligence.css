@@ -51,6 +51,19 @@
   margin-top: 1rem;
 }
 
+.ri-inline-body {
+  margin-top: 0.5rem;
+  border-top: 1px solid #d7dde8;
+  padding-top: 0.75rem;
+}
+
+.ri-inline-body button:focus-visible,
+.ri-inline-body input:focus-visible,
+.ri-inline-body select:focus-visible {
+  outline: 3px solid #1468a0;
+  outline-offset: 3px;
+}
+
 .ri-step-status {
   color: #1e603f;
   font-size: 0.88rem;
@@ -64,73 +77,8 @@
   line-height: 1.45;
 }
 
-.ri-panel button:focus-visible,
-.ri-panel input:focus-visible,
-.ri-panel select:focus-visible {
-  outline: 3px solid #1468a0;
-  outline-offset: 3px;
-}
-
-.ri-panel {
-  position: fixed;
-  top: 0;
-  right: 0;
-  z-index: 70;
-  width: min(46rem, 96vw);
-  height: 100vh;
-  overflow-y: auto;
-  padding: 1.25rem;
-  background: #fff;
-  color: #172033;
-  border-left: 1px solid #d7dde8;
-  box-shadow: -0.5rem 0 2rem rgb(0 0 0 / 18%);
-}
-
-.ri-panel-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  border-bottom: 1px solid #d7dde8;
-  padding-bottom: 1rem;
-}
-
-.ri-panel h2,
-.ri-panel h3,
-.ri-panel h4,
-.ri-panel p {
-  margin-top: 0;
-}
-
-.ri-panel h2 {
-  margin-bottom: 0.25rem;
-  font-size: clamp(1.35rem, 3vw, 1.8rem);
-  line-height: 1.2;
-}
-
-.ri-eyebrow {
-  margin-bottom: 0.25rem;
-  color: #7b001c;
-  font-size: 0.78rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.ri-close,
-.ri-secondary {
-  border: 1px solid #9aa7b9;
-  border-radius: 0.45rem;
-  background: #fff;
-  color: #172033;
-  padding: 0.55rem 0.75rem;
-  font: inherit;
-  font-weight: 700;
-  cursor: pointer;
-}
-
 .ri-boundary {
-  margin: 1rem 0;
+  margin: 0 0 1rem;
   border-left: 0.35rem solid #0d6b4f;
   border-radius: 0.35rem;
   padding: 0.8rem 0.95rem;
@@ -149,6 +97,7 @@
   display: grid;
   gap: 0.35rem;
   font-weight: 700;
+  color: #24344c;
 }
 
 .ri-controls input,
@@ -198,17 +147,27 @@
   cursor: wait;
 }
 
+.ri-action-row {
+  margin-top: 0.75rem;
+}
+
 .ri-meta {
   color: #475467;
   line-height: 1.45;
 }
 
 .ri-results {
-  margin-top: 1.25rem;
+  margin-top: 1rem;
   border: 1px solid #d7dde8;
   border-radius: 0.6rem;
   padding: 1rem;
   background: #fbfcfe;
+}
+
+.ri-results h3,
+.ri-results h4,
+.ri-results p {
+  margin-top: 0;
 }
 
 .ri-recap {
@@ -252,14 +211,5 @@
 @media (max-width: 47.5rem) {
   .setup-stepper.closeout-stepper:has([data-ri-step-marker-host]) {
     grid-template-columns: 1fr;
-  }
-
-  .ri-panel {
-    width: 100vw;
-    padding: 1rem;
-  }
-
-  .ri-panel-header {
-    align-items: center;
   }
 }

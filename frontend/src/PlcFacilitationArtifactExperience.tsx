@@ -194,13 +194,15 @@ function PlcMeetingGuide({
         <p className="eyebrow">Teacher Planning Platform · Reflection Intelligence</p>
         <h4>PLC Meeting Guide — Week of {weekLabel}</h4>
         <p>
-          The School Reflection Summary below is the evidence base for this meeting. It is synthesized
-          from anonymous teacher-authored submitted reflections and is used for professional learning,
+          The School Reflection Summary is the evidence base for this meeting. It is synthesized from
+          anonymous teacher-authored submitted reflections and is used for professional learning,
           not teacher evaluation.
         </p>
       </header>
 
-      <SchoolReflectionSummary brief={brief} />
+      <div className="plc-print-embedded-summary">
+        <SchoolReflectionSummary brief={brief} />
+      </div>
 
       {focus ? (
         <section className="plc-focus-box">
@@ -308,7 +310,7 @@ export function PlcFacilitationArtifactExperience() {
     return await fetch(path, { ...init, headers });
   }
 
-  async function generateMeetingGuide() {
+  async function generateSchoolReflectionSummary() {
     setWorking(true);
     setError("");
     setAssessmentWarning("");
@@ -326,13 +328,13 @@ export function PlcFacilitationArtifactExperience() {
       ]);
 
       if (briefResult.status === "rejected") {
-        throw new Error("The PLC meeting guide could not be generated.");
+        throw new Error("The School Reflection Summary could not be generated.");
       }
       const briefResponse = briefResult.value;
       if (!briefResponse.ok) {
         throw new Error(await readError(
           briefResponse,
-          "The PLC meeting guide could not be generated.",
+          "The School Reflection Summary could not be generated.",
         ));
       }
       setBrief(await briefResponse.json() as SchoolBrief);
@@ -344,7 +346,7 @@ export function PlcFacilitationArtifactExperience() {
       } else {
         setAssessmentSnapshot(null);
         setAssessmentWarning(
-          "The School Reflection Summary and meeting guide are ready, but the optional formative-assessment planning snapshot is unavailable.",
+          "The School Reflection Summary is ready, but the optional formative-assessment planning snapshot is unavailable.",
         );
       }
     } catch (caught) {
@@ -353,7 +355,7 @@ export function PlcFacilitationArtifactExperience() {
       setAssessmentWarning("");
       setError(caught instanceof Error
         ? caught.message
-        : "The PLC meeting guide could not be generated.");
+        : "The School Reflection Summary could not be generated.");
     } finally {
       setWorking(false);
     }
@@ -378,13 +380,11 @@ export function PlcFacilitationArtifactExperience() {
     <section className="plc-facilitation-artifact" aria-labelledby="plc-artifact-title">
       <div className="section-heading compact">
         <div>
-          <p className="eyebrow">PLC meeting guide</p>
-          <h3 id="plc-artifact-title">Move from school reflection patterns to a focused PLC conversation</h3>
+          <p className="eyebrow">Reflection-informed PLC</p>
+          <h3 id="plc-artifact-title">School Reflection Summary → PLC Meeting Guide</h3>
           <p className="supporting">
-            Generate a one-to-two-page meeting guide that embeds the School Reflection Summary first,
-            then adds a suggested focus, an aggregate formative-assessment planning snapshot, a fixed
-            40-minute protocol, and a non-persistent team action workspace. The reflection summary is
-            the meeting evidence base; the guide is not a generic agenda.
+            Start with what teachers are collectively reporting, then use those patterns alongside
+            the week-over-week planned assessment signals above to focus the PLC conversation.
           </p>
         </div>
       </div>
@@ -405,33 +405,61 @@ export function PlcFacilitationArtifactExperience() {
             }}
           />
         </label>
-        <button type="button" className="primary" disabled={working} onClick={() => void generateMeetingGuide()}>
-          {working ? "Generating PLC meeting guide…" : "Generate PLC meeting guide"}
+        <button type="button" className="primary" disabled={working} onClick={() => void generateSchoolReflectionSummary()}>
+          {working ? "Generating School Reflection Summary…" : "Generate School Reflection Summary"}
         </button>
         {brief ? (
           <button type="button" className="secondary" onClick={() => void printMeetingGuide()}>
-            Print PLC meeting guide
+            Print PLC Meeting Guide
           </button>
         ) : null}
       </div>
 
       <div className="plc-artifact-boundary" role="note">
         <strong>Professional learning only.</strong>{" "}
-        The School Reflection Summary uses anonymous teacher source references and requires governed
-        aggregate support. It contains no teacher quality score and no student data. The meeting guide
-        does not persist team notes.
+        The School Reflection Summary uses anonymous teacher source references and governed aggregate
+        support. It contains no teacher quality score and no student data. The meeting guide does not
+        persist team notes.
       </div>
 
       {assessmentWarning ? (
         <p className="plc-assessment-warning" role="status">{assessmentWarning}</p>
       ) : null}
       {error ? <p className="plc-artifact-error" role="alert">{error}</p> : null}
+
       {brief ? (
-        <PlcMeetingGuide
-          brief={brief}
-          assessmentSnapshot={assessmentSnapshot}
-          weekLabel={weekLabel}
-        />
+        <>
+          <section className="plc-screen-summary-block" aria-labelledby="school-reflection-summary-heading">
+            <div className="section-heading compact plc-flow-heading">
+              <div>
+                <p className="eyebrow">Step 1 · Understand the week</p>
+                <h3 id="school-reflection-summary-heading">School Reflection Summary</h3>
+                <p className="supporting">
+                  This is the anonymous aggregate synthesis of submitted teacher-authored professional reflections.
+                </p>
+              </div>
+            </div>
+            <SchoolReflectionSummary brief={brief} />
+          </section>
+
+          <section className="plc-screen-guide-block" aria-labelledby="plc-meeting-guide-heading">
+            <div className="section-heading compact plc-flow-heading">
+              <div>
+                <p className="eyebrow">Step 2 · Use the evidence</p>
+                <h3 id="plc-meeting-guide-heading">PLC Meeting Guide</h3>
+                <p className="supporting">
+                  The guide below turns the School Reflection Summary into a focused conversation and
+                  carries the same summary into the printed meeting guide.
+                </p>
+              </div>
+            </div>
+            <PlcMeetingGuide
+              brief={brief}
+              assessmentSnapshot={assessmentSnapshot}
+              weekLabel={weekLabel}
+            />
+          </section>
+        </>
       ) : null}
     </section>,
     portalTarget,

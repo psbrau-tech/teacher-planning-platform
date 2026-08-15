@@ -1,0 +1,81 @@
+/* Shared UI consistency refinements from live pilot acceptance. */
+.pdf-modal-heading,
+.pdf-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #dfe5ee;
+}
+
+.pdf-modal-heading h2,
+.pdf-modal-header h3 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+/* Weekly submission status & review is the administrator's single teacher/class follow-up view. */
+.submission-status-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+  margin: -0.75rem 0 1rem;
+}
+
+.submission-status {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.submission-status.submitted {
+  border: 1px solid #a9d9bd;
+  background: #e9f6ef;
+  color: #1e603f;
+}
+
+.submission-status.attention {
+  border: 1px solid #e2c777;
+  background: #fff3d5;
+  color: #6a4500;
+}
+
+.submission-status.not-required {
+  border: 1px solid #cbd5e1;
+  background: #f4f6f9;
+  color: #5d6b82;
+}
+
+.plc-screen-summary-block,
+.plc-screen-guide-block {
+  margin-top: 1.25rem;
+}
+
+.plc-flow-heading {
+  margin-bottom: 0.75rem !important;
+}
+
+/* The summary is shown once on screen, then embedded again only for the printable meeting guide. */
+.plc-print-embedded-summary {
+  display: none;
+}
+
+@media print {
+  .plc-print-embedded-summary {
+    display: block;
+  }
+}
+
+@media (max-width: 760px) {
+  .pdf-modal-heading,
+  .pdf-modal-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

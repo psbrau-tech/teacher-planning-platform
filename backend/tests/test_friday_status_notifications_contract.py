@@ -4,6 +4,8 @@ ROOT = Path(__file__).resolve().parents[2]
 API = ROOT / "backend" / "app" / "friday_status_api.py"
 ROUTER = ROOT / "backend" / "app" / "ai_reflection_api.py"
 FRONTEND = ROOT / "frontend" / "src" / "FridayStatusExperience.tsx"
+ADMIN_SUBMISSIONS = ROOT / "frontend" / "src" / "AdminSubmissionPanel.tsx"
+UI_STYLES = ROOT / "frontend" / "src" / "ui-consistency.css"
 MAIN = ROOT / "frontend" / "src" / "main.tsx"
 STATUS_MIGRATION = (
     ROOT
@@ -36,21 +38,45 @@ def test_friday_status_api_is_authenticated_and_registered() -> None:
     assert "router.include_router(friday_status_router)" in router
 
 
-def test_teacher_and_admin_status_ui_is_professional_operational_only() -> None:
+def test_teacher_friday_status_ui_is_professional_operational_only() -> None:
     source = FRONTEND.read_text(encoding="utf-8")
     assert "What still needs to be submitted?" in source
     assert "This week&apos;s reflection / packet" in source
     assert "Next week&apos;s lesson plan" in source
     assert "Needs submission" in source
-    assert "teacher-performance" in source
-    assert "compliance score" in source
+    assert "/api/v1/friday-status/teacher" in source
+    assert "/api/v1/friday-status/admin" not in source
+    assert "admin-friday-status" not in source
     forbidden = ("student_name", "student_id", "grade_result", "iep", "504")
     lowered = source.lower()
     for token in forbidden:
         assert token not in lowered
 
 
-def test_normal_ui_uses_status_dashboard_not_manual_email_action() -> None:
+def test_administration_combines_requirement_status_and_weekly_pdf_review() -> None:
+    source = ADMIN_SUBMISSIONS.read_text(encoding="utf-8")
+    styles = UI_STYLES.read_text(encoding="utf-8")
+
+    assert "Weekly submission status & review" in source
+    assert "Select teachers" in source
+    assert "Upcoming lesson plan" in source
+    assert "Completed weekly packet" in source
+    assert 'aria-label="Weekly submission status"' in source
+    assert "/api/v1/administration/submissions?week_start=" in source
+    assert "/api/v1/friday-status/admin?week_start=" in source
+    assert "previousWeek = addDays(weekStart, -7)" in source
+    assert "next_week_required" in source
+    assert "current_week_required" in source
+    assert "Not required" in source
+    assert "Needs submission" in source
+    assert ".submission-status.submitted" in styles
+    assert "background: #e9f6ef" in styles
+    assert ".submission-status.attention" in styles
+    assert "background: #fff3d5" in styles
+    assert ".submission-status.not-required" in styles
+
+
+def test_normal_ui_uses_teacher_status_and_no_manual_email_action() -> None:
     source = MAIN.read_text(encoding="utf-8")
     assert "FridayStatusExperience" in source
     assert "AdminWeeklyDigestAction" not in source

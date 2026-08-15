@@ -23,13 +23,13 @@ def test_admin_report_has_explicit_scope_contract() -> None:
     assert "No aggregate report is built until at least one teacher is selected" in report
 
 
-def test_low_value_selected_teacher_summary_is_not_mounted_above_weekly_submissions() -> None:
+def test_low_value_selected_teacher_summary_is_not_mounted_above_weekly_submission_status() -> None:
     main = MAIN.read_text(encoding="utf-8")
     administration = ADMINISTRATION.read_text(encoding="utf-8")
     submissions = SUBMISSIONS.read_text(encoding="utf-8")
     assert "AdminSelectedTeacherUsagePortal" not in main
     assert "<AdminSubmissionPanel" in administration
-    assert "Weekly submissions" in submissions
+    assert "Weekly submission status & review" in submissions
 
 
 def test_owner_layout_prioritizes_cost_time_and_readability() -> None:
