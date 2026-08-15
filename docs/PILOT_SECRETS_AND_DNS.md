@@ -80,11 +80,11 @@ Optional secret-ID and resource-name overrides are documented in workflow files.
 
 ## Required protected secret for multi-school provisioning
 
-`TPP_PILOT_ACCESS_JSON` contains the approved school configuration and professional access memberships. It is materialized only in the runner's temporary directory, used inside one database transaction, and deleted in an `always()` cleanup step.
+`TPP_PILOT_ACCESS_JSON` contains the approved school configuration and professional account assignments. It is materialized only in the runner's temporary directory, used inside one database transaction, and deleted in an `always()` cleanup step.
 
 Do not paste the real value into source control, an issue, a PR, a workflow input, a chat, or a release summary.
 
-The new governed shape is:
+The governed shape is:
 
 ```json
 {
@@ -116,7 +116,6 @@ The new governed shape is:
       "display_name": "Platform Owner",
       "school": "Anniston High School",
       "roles": ["platform_admin", "teacher"],
-      "is_home": true,
       "is_active": true
     },
     {
@@ -124,7 +123,6 @@ The new governed shape is:
       "display_name": "Middle School Administrator",
       "school": "Anniston Middle School",
       "roles": ["school_admin"],
-      "is_home": true,
       "is_active": true
     }
   ]
@@ -133,23 +131,23 @@ The new governed shape is:
 
 The example addresses are fictitious. Real professional addresses remain only in the protected secret.
 
-### Multi-school membership rules
+### Multi-school account rules
 
 - Every configured school requires a valid IANA timezone such as `America/Chicago`.
 - Notification local times must be on a 15-minute boundary.
 - New schools default teacher/admin notification flags to `false` if notification settings are omitted.
-- Every active professional account has exactly one `is_home: true` school membership.
-- The same professional email may have additional school memberships with `is_home: false` when explicitly authorized.
-- School roles are materialized to `profile_roles` for the exact school membership.
-- The home school populates the existing `profiles.school_id` context; it does not grant authorization to other schools.
-- The record set for `TPP_PLATFORM_OWNER_EMAIL` must collectively include both `platform_admin` and `teacher`.
+- Every professional email appears once and has one explicit school assignment.
+- `school_admin` is scoped to the assigned school.
+- Existing `district_admin` and `platform_admin` roles provide intentionally broader scope through the established authorization model; do not duplicate the email across schools to simulate broader access.
+- Moving an existing professional account to another school is an explicit authorization change and must be reviewed before provisioning.
+- The record for `TPP_PLATFORM_OWNER_EMAIL` must include both `platform_admin` and `teacher`.
 
 The provisioning script temporarily remains backward-compatible with the legacy AHS-only array shape. That compatibility path assigns Anniston High School / `America/Chicago` and keeps automatic notification settings **disabled**, so an old secret cannot accidentally turn email on.
 
 ## Controlled workflow order
 
 1. Merge the reviewed release PR and record the exact resulting `main` SHA.
-2. Select the exact migration target required by the release. The professional-learning/application baseline includes `20260815001500`; the current accepted Friday-status live head is `20260815011000_friday_submission_status.sql`.
+2. Select the exact migration target required by the release. The current accepted Friday-status live head is `20260815011000_friday_submission_status.sql`.
 3. Automatic notification migrations remain deliberately **deferred** until email preparation is intentionally opened:
    - `20260815013000_scheduled_friday_notifications.sql`
    - `20260815215500_multi_school_notification_controls.sql`
@@ -157,7 +155,7 @@ The provisioning script temporarily remains backward-compatible with the legacy 
 4. Run **Apply TPP Pilot Database Migrations** from `main` with exact `expected_main_sha`, exact `target_migration_head`, `dry_run_only=true`, and `apply_target_confirmed=false`; review the target-scoped pending list.
 5. Approve a mutating migration run only after the preview is accepted. Use the same exact SHA/head, `dry_run_only=false`, and `apply_target_confirmed=true`. The final dry run must show nothing pending **through that target**.
 6. Run **Preflight TPP Pilot Release** with the approved academic-year dates when required.
-7. After the multi-school notification schema exists, update the protected `TPP_PILOT_ACCESS_JSON` only with the approved school settings/memberships and run **Provision TPP Pilot Access**. This is a human-controlled gate for real staff access and first-time school notification enablement.
+7. After the multi-school notification schema exists, update the protected `TPP_PILOT_ACCESS_JSON` only with approved school settings/accounts and run **Provision TPP Pilot Access**. This is a human-controlled gate for real staff access and first-time school notification enablement.
 8. Run **Deploy TPP Pilot** for application changes using the exact accepted SHA and confirmed applied migration head.
 9. Run **Verify TPP Pilot Deployment** and complete release-specific acceptance.
 10. Prepare SES identity/sending activation separately; normal application deployment does not turn email on.
@@ -198,7 +196,7 @@ These are operational controls; they do not change the no-student-data content b
 - Add the application origin to the Google OAuth web-client configuration where required.
 - Keep the professional school-domain restriction and database allowlist in force.
 
-Authentication is not authorization. A valid Google school account receives no application data unless its lowercase email has an active governed school membership in `private.pilot_access_allowlist`; the database then creates/synchronizes the profile and approved school-scoped roles.
+Authentication is not authorization. A valid Google school account receives no application data unless its lowercase email has an active governed row in `private.pilot_access_allowlist`; the database then creates/synchronizes the profile, its one assigned school, and approved roles.
 
 ## Cloudflare and ACM
 
