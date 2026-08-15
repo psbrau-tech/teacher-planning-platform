@@ -65,7 +65,10 @@ class FridayAdminDigestMetrics:
         return self.teachers_with_completed_packets >= 2
 
 
-def _validated_sender_and_recipient(settings: Settings, recipient_email: str) -> tuple[str, str]:
+def _validated_sender_and_recipient(
+    settings: Settings,
+    recipient_email: str,
+) -> tuple[str, str]:
     sender = settings.ses_from_email.strip().lower()
     recipient = recipient_email.strip().lower()
     if not sender:
@@ -108,12 +111,18 @@ def _send_text_email(
     return message_id.strip()
 
 
-def weekly_admin_digest_text(metrics: WeeklyAdminDigestMetrics, *, public_base_url: str) -> str:
+def weekly_admin_digest_text(
+    metrics: WeeklyAdminDigestMetrics,
+    *,
+    public_base_url: str,
+) -> str:
     """Render the legacy/manual content-minimized admin operations email."""
     plc_line = (
-        "A school PLC reflection brief can be generated in TPP from aggregate submitted reflections."
+        "A school PLC reflection brief can be generated in TPP from aggregate "
+        "submitted reflections."
         if metrics.plc_brief_available
-        else "A school PLC reflection brief is not yet available from at least two teacher sources."
+        else "A school PLC reflection brief is not yet available from at least two "
+        "teacher sources."
     )
     return "\n".join(
         (
@@ -131,7 +140,8 @@ def weekly_admin_digest_text(metrics: WeeklyAdminDigestMetrics, *, public_base_u
             "Open authenticated TPP for teacher-level operational follow-up and PLC insight:",
             public_base_url.rstrip("/"),
             "",
-            "This email contains school-scoped operational counts only. It contains no student data,",
+            "This email contains school-scoped operational counts only. It contains no "
+            "student data,",
             "teacher reflection text, generated instructional insight, or teacher-quality score.",
         )
     )
@@ -156,7 +166,9 @@ def teacher_friday_reminder_text(
     for item in items:
         missing: list[str] = []
         if item.missing_current_closeout:
-            missing.append(f"this week's reflection / completed packet ({week_start.isoformat()})")
+            missing.append(
+                f"this week's reflection / completed packet ({week_start.isoformat()})"
+            )
         if item.missing_next_plan:
             missing.append(f"next week's lesson plan ({next_week_start.isoformat()})")
         if missing:
@@ -164,8 +176,10 @@ def teacher_friday_reminder_text(
     lines.extend(
         (
             "",
-            "If you have already been working on these, no problem. This courtesy reminder is based",
-            "on submitted status at the time it was sent so you do not have to search through every class.",
+            "If you have already been working on these, no problem. This courtesy reminder "
+            "is based",
+            "on submitted status at the time it was sent so you do not have to search "
+            "through every class.",
             "",
             "Open TPP to finish or submit:",
             public_base_url.rstrip("/"),
@@ -179,25 +193,46 @@ def teacher_friday_reminder_text(
     return "\n".join(lines)
 
 
-def friday_admin_digest_text(metrics: FridayAdminDigestMetrics, *, public_base_url: str) -> str:
+def friday_admin_digest_text(
+    metrics: FridayAdminDigestMetrics,
+    *,
+    public_base_url: str,
+) -> str:
     """Render the automatic 3:30 PM aggregate Friday status email."""
     plc_line = (
         "School PLC Reflection Brief: available in TPP."
         if metrics.plc_brief_available
-        else "School PLC Reflection Brief: not yet available from at least two submitted teacher sources."
+        else "School PLC Reflection Brief: not yet available from at least two submitted "
+        "teacher sources."
+    )
+    current_teacher_line = (
+        f"Teachers fully complete: {metrics.current_teachers_complete} "
+        f"of {metrics.current_teachers_expected}"
+    )
+    current_packet_line = (
+        f"Completed packets submitted: {metrics.current_packets_submitted} "
+        f"of {metrics.current_packets_expected}"
+    )
+    next_teacher_line = (
+        f"Teachers fully complete: {metrics.next_teachers_complete} "
+        f"of {metrics.next_teachers_expected}"
+    )
+    next_plan_line = (
+        f"Lesson plans submitted: {metrics.next_plans_submitted} "
+        f"of {metrics.next_plans_expected}"
     )
     return "\n".join(
         (
             f"Teacher Planning Platform Friday status — week of {metrics.week_start.isoformat()}",
             "",
             "Current-week closeout",
-            f"Teachers fully complete: {metrics.current_teachers_complete} of {metrics.current_teachers_expected}",
-            f"Completed packets submitted: {metrics.current_packets_submitted} of {metrics.current_packets_expected}",
+            current_teacher_line,
+            current_packet_line,
             f"Completed packets missing: {metrics.current_packets_missing}",
             "",
             f"Following-week planning — week of {metrics.next_week_start.isoformat()}",
-            f"Teachers fully complete: {metrics.next_teachers_complete} of {metrics.next_teachers_expected}",
-            f"Lesson plans submitted: {metrics.next_plans_submitted} of {metrics.next_plans_expected}",
+            next_teacher_line,
+            next_plan_line,
             f"Lesson plans missing: {metrics.next_plans_missing}",
             "",
             plc_line,
@@ -205,8 +240,10 @@ def friday_admin_digest_text(metrics: FridayAdminDigestMetrics, *, public_base_u
             "Open authenticated TPP for teacher- and class-level operational follow-up:",
             public_base_url.rstrip("/"),
             "",
-            "This email contains school-scoped professional submission counts only. Teacher names,",
-            "course-level exceptions, reflection text, lesson-plan content, student data, generated",
+            "This email contains school-scoped professional submission counts only. "
+            "Teacher names,",
+            "course-level exceptions, reflection text, lesson-plan content, student data, "
+            "generated",
             "instructional insight, and teacher-quality scores remain out of the email.",
         )
     )
@@ -237,7 +274,9 @@ def send_teacher_friday_reminder(
     items: tuple[FridayTeacherReminderItem, ...],
 ) -> str:
     if not items:
-        raise SesDeliveryError("Teacher Friday reminder has no outstanding professional submissions")
+        raise SesDeliveryError(
+            "Teacher Friday reminder has no outstanding professional submissions"
+        )
     return _send_text_email(
         settings,
         recipient_email=recipient_email,
