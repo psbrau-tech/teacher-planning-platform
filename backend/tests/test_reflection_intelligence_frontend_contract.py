@@ -3,6 +3,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 EXPERIENCE = ROOT / "frontend" / "src" / "ReflectionIntelligenceExperience.tsx"
 STYLES = ROOT / "frontend" / "src" / "reflection-intelligence.css"
+PRINT_HELPER = ROOT / "frontend" / "src" / "printArtifact.ts"
+PRINT_STYLES = ROOT / "frontend" / "src" / "print-artifact.css"
 MAIN = ROOT / "frontend" / "src" / "main.tsx"
 
 
@@ -33,9 +35,14 @@ def test_school_plc_brief_remains_aggregate_and_non_evaluative() -> None:
 def test_plc_handout_is_transient_print_markup() -> None:
     source = EXPERIENCE.read_text(encoding="utf-8")
     styles = STYLES.read_text(encoding="utf-8")
+    helper = PRINT_HELPER.read_text(encoding="utf-8")
+    print_styles = PRINT_STYLES.read_text(encoding="utf-8")
     assert "reflection-intelligence-handout" in source
     assert "Print PLC handout" in source
-    assert "window.print()" in source
+    assert 'printArtifact(".reflection-intelligence-handout")' in source
+    assert "cloneNode(true)" in helper
+    assert "tpp-print-portal" in helper
+    assert "body.tpp-printing-artifact > *:not(.tpp-print-portal)" in print_styles
     assert "@media print" in styles
     assert "visibility: hidden" in styles
     assert "AI-synthesized from teacher-authored submitted reflections" in source
