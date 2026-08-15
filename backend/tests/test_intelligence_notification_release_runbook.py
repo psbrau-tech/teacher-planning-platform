@@ -36,7 +36,8 @@ def test_runbook_keeps_email_fail_closed_until_separate_activation() -> None:
     assert "email must never contain student information" in source
     assert "ses messageid" in source
     assert (
-        "adding a school or professional account does not automatically enable scheduled email"
+        "adding a district, school, or professional account does not automatically enable "
+        "scheduled email"
         in source
     )
 
@@ -54,6 +55,18 @@ def test_runbook_keeps_service_role_out_of_interactive_web_task() -> None:
         in source
     )
     assert "does not receive the openai key, supabase anon key, or oauth secrets" in source
+
+
+def test_runbook_locks_district_and_school_authorization_scope() -> None:
+    source = normalized()
+    assert "district and school as explicit authorization boundaries" in source
+    assert "anniston city schools" in source
+    assert "anniston high school" in source
+    assert "anniston middle school" in source
+    assert "profiles.school_id -> schools.district_id" in source
+    assert "private.current_district_id()" in source
+    assert "same `district_id`" in source
+    assert "does not simulate district access by duplicating" in source
 
 
 def test_runbook_locks_school_local_friday_delivery_behavior() -> None:
@@ -96,5 +109,7 @@ def test_runbook_requires_exact_release_evidence_and_manual_stop_conditions() ->
     assert "live migration head" in source
     assert "ses identity/dns verification" in source
     assert "applying live database migrations" in source
+    assert "creating a new district or school with real professional users" in source
+    assert "moving an existing professional account to another school or district" in source
     assert "enabling notifications for a school for the first time" in source
     assert "running the friday notification activation workflow" in source
