@@ -44,7 +44,11 @@ def test_plc_artifact_adds_only_governed_aggregate_assessment_snapshot() -> None
 def test_assessment_snapshot_is_optional_and_does_not_block_reflection_handout() -> None:
     source = EXPERIENCE.read_text(encoding="utf-8")
 
-    assert "if (assessmentResponse.ok)" in source
+    assert "Promise.allSettled" in source
+    assert (
+        'assessmentResult.status === "fulfilled" && assessmentResult.value.ok'
+        in source
+    )
     assert "setAssessmentSnapshot(null)" in source
     assert "optional formative-assessment planning snapshot is unavailable" in source
     assert "setBrief(await briefResponse.json() as SchoolBrief)" in source

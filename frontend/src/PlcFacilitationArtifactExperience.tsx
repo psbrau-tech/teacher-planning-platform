@@ -300,13 +300,18 @@ export function PlcFacilitationArtifactExperience() {
         period_start: weekStart,
         period_end: addDays(weekStart, 6),
       });
-      const [briefResponse, assessmentResponse] = await Promise.all([
+      const [briefResult, assessmentResult] = await Promise.allSettled([
         authenticatedFetch(
           `/api/v1/reflection-intelligence/school/${encodeURIComponent(weekStart)}`,
           { method: "POST" },
         ),
         authenticatedFetch(`/api/v1/assessment-analytics/school?${assessmentQuery.toString()}`),
       ]);
+
+      if (briefResult.status === "rejected") {
+        throw new Error("The PLC facilitation handout could not be generated.");
+      }
+      const briefResponse = briefResult.value;
       if (!briefResponse.ok) {
         throw new Error(await readError(
           briefResponse,
@@ -315,8 +320,10 @@ export function PlcFacilitationArtifactExperience() {
       }
       setBrief(await briefResponse.json() as SchoolBrief);
 
-      if (assessmentResponse.ok) {
-        setAssessmentSnapshot(await assessmentResponse.json() as AssessmentPlanningSnapshot);
+      if (assessmentResult.status === "fulfilled" && assessmentResult.value.ok) {
+        setAssessmentSnapshot(
+          await assessmentResult.value.json() as AssessmentPlanningSnapshot,
+        );
       } else {
         setAssessmentSnapshot(null);
         setAssessmentWarning(
