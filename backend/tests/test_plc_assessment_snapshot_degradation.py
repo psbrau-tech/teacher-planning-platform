@@ -18,7 +18,7 @@ def test_optional_assessment_network_failure_cannot_block_reflection_handout() -
     assert "optional formative-assessment planning snapshot is unavailable" in source
 
 
-def test_reflection_brief_remains_required_while_assessment_is_optional() -> None:
+def test_reflection_summary_remains_required_while_assessment_is_optional() -> None:
     source = " ".join(EXPERIENCE.read_text(encoding="utf-8").split())
 
     assert "if (!briefResponse.ok)" in source
@@ -27,4 +27,4 @@ def test_reflection_brief_remains_required_while_assessment_is_optional() -> Non
         'if (assessmentResult.status === "fulfilled" && assessmentResult.value.ok)'
         in source
     )
-    assert "The reflection-based handout is ready" in source
+    assert "The School Reflection Summary and meeting guide are ready" in source
