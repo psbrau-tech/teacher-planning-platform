@@ -1,0 +1,392 @@
+name: Enable TPP Scheduled Admin Digest
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: Reason for enabling automatic weekly school-admin digests
+        required: true
+        type: string
+      schedule_expression:
+        description: Approved EventBridge Scheduler cron expression, for example cron(0 15 ? * FRI *)
+        required: true
+        type: string
+      schedule_timezone:
+        description: Approved IANA timezone for the weekly schedule
+        required: true
+        default: America/Chicago
+        type: string
+      supabase_service_role_secret_arn:
+        description: Secrets Manager ARN for tpp/pilot/supabase-service-role-key
+        required: true
+        type: string
+      database_migration_applied_confirmed:
+        description: I confirmed the scheduled-digest database migration is applied
+        required: true
+        default: false
+        type: boolean
+      ses_notifications_active_confirmed:
+        description: I confirmed the approved SES sender infrastructure is active
+        required: true
+        default: false
+        type: boolean
+      schedule_time_approved:
+        description: I approved this exact weekly schedule expression and timezone
+        required: true
+        default: false
+        type: boolean
+      privacy_help_review_confirmed:
+        description: I confirmed privacy/subprocessor and Help review for automatic delivery
+        required: true
+        default: false
+        type: boolean
+      deployment_role_policies_updated_confirmed:
+        description: I confirmed the governed AWS deployment role policies match this release
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: tpp-pilot-infrastructure
+  cancel-in-progress: false
+
+jobs:
+  enable-scheduled-digest:
+    name: Enable isolated weekly admin digest worker
+    runs-on: ubuntu-latest
+    environment: tpp-pilot
+    env:
+      AWS_REGION: ${{ vars.TPP_AWS_REGION || 'us-east-2' }}
+      AWS_ROLE_ARN: ${{ vars.TPP_AWS_ROLE_ARN }}
+      CLOUDFORMATION_ROLE_ARN: ${{ vars.TPP_CLOUDFORMATION_ROLE_ARN }}
+      MAIN_STACK_NAME: ${{ vars.TPP_CLOUDFORMATION_STACK || 'TeacherPlanningPlatformPilot' }}
+      SCHEDULED_STACK_NAME: TeacherPlanningPlatformPilotScheduledDigest
+      ECS_CLUSTER: ${{ vars.TPP_ECS_CLUSTER || 'teacher-planning-platform-pilot' }}
+      ECS_SERVICE: ${{ vars.TPP_ECS_SERVICE || 'teacher-planning-platform-pilot' }}
+      SES_FROM_EMAIL: notifications@planner.guidedscholar.ai
+      SCHEDULE_EXPRESSION: ${{ inputs.schedule_expression }}
+      SCHEDULE_TIMEZONE: ${{ inputs.schedule_timezone }}
+      SUPABASE_SERVICE_ROLE_SECRET_ARN: ${{ inputs.supabase_service_role_secret_arn }}
+
+    steps:
+      - name: Enforce manual automatic-delivery gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          declare -A gates=(
+            [database_migration_applied_confirmed]="${{ inputs.database_migration_applied_confirmed }}"
+            [ses_notifications_active_confirmed]="${{ inputs.ses_notifications_active_confirmed }}"
+            [schedule_time_approved]="${{ inputs.schedule_time_approved }}"
+            [privacy_help_review_confirmed]="${{ inputs.privacy_help_review_confirmed }}"
+            [deployment_role_policies_updated_confirmed]="${{ inputs.deployment_role_policies_updated_confirmed }}"
+          )
+          for gate in "${!gates[@]}"; do
+            if [[ "${gates[$gate]}" != "true" ]]; then
+              echo "Scheduled digest activation is blocked by $gate." >&2
+              exit 1
+            fi
+          done
+
+      - name: Validate exact activation inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(AWS_ROLE_ARN CLOUDFORMATION_ROLE_ARN MAIN_STACK_NAME ECS_CLUSTER ECS_SERVICE)
+          missing=()
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing required tpp-pilot values: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+          if [[ "$AWS_REGION" != "us-east-2" ]]; then
+            echo "Scheduled digest infrastructure is locked to us-east-2." >&2
+            exit 1
+          fi
+          expected_cloudformation_role="arn:aws:iam::697091778129:role/TeacherPlanningPlatformPilotCloudFormationExecution"
+          if [[ "$CLOUDFORMATION_ROLE_ARN" != "$expected_cloudformation_role" ]]; then
+            echo "Unexpected TPP CloudFormation execution-role ARN." >&2
+            exit 1
+          fi
+          if [[ ! "$SCHEDULE_EXPRESSION" =~ ^cron\(.+\)$ ]]; then
+            echo "Automatic weekly delivery requires an explicit EventBridge Scheduler cron expression." >&2
+            exit 1
+          fi
+          if [[ -z "$SCHEDULE_TIMEZONE" || "$SCHEDULE_TIMEZONE" == "UTC" ]]; then
+            echo "Provide the approved school-local IANA timezone rather than implicit UTC." >&2
+            exit 1
+          fi
+          expected_secret_prefix="arn:aws:secretsmanager:us-east-2:697091778129:secret:tpp/pilot/supabase-service-role-key-"
+          if [[ "$SUPABASE_SERVICE_ROLE_SECRET_ARN" != "$expected_secret_prefix"* ]]; then
+            echo "Unexpected Supabase service-role secret ARN." >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials through GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Validate templates and accepted pilot baseline
+        id: baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws cloudformation validate-template --template-body file://infra/pilot-stack.yml >/dev/null
+          aws cloudformation validate-template \
+            --template-body file://infra/scheduled-admin-digest-stack.yml >/dev/null
+
+          stack_json="$(aws cloudformation describe-stacks --stack-name "$MAIN_STACK_NAME" --output json)"
+          stack_status="$(jq -r '.Stacks[0].StackStatus' <<<"$stack_json")"
+          case "$stack_status" in
+            CREATE_COMPLETE|UPDATE_COMPLETE) ;;
+            *)
+              echo "Pilot stack is not stable: $stack_status" >&2
+              exit 1
+              ;;
+          esac
+          output_value() {
+            jq -r --arg key "$1" '
+              .Stacks[0].Outputs[]
+              | select(.OutputKey == $key)
+              | .OutputValue
+            ' <<<"$stack_json"
+          }
+          parameter_value() {
+            jq -r --arg key "$1" '
+              .Stacks[0].Parameters[]
+              | select(.ParameterKey == $key)
+              | .ParameterValue
+            ' <<<"$stack_json"
+          }
+          if [[ "$(output_value SesNotificationsStatus)" != "configured" ]]; then
+            echo "The approved SES sender infrastructure is not active in the pilot stack." >&2
+            exit 1
+          fi
+          if [[ "$(output_value SesFromAddress)" != "$SES_FROM_EMAIL" ]]; then
+            echo "The active pilot stack does not use the approved TPP From address." >&2
+            exit 1
+          fi
+          ses_identity_arn="$(parameter_value SesIdentityArn)"
+          allowed_email_domains="$(parameter_value AllowedEmailDomains)"
+          public_base_url="$(parameter_value PublicBaseUrl)"
+          if [[ -z "$ses_identity_arn" || "$ses_identity_arn" == "null" ]]; then
+            echo "The pilot stack has no active SES identity ARN." >&2
+            exit 1
+          fi
+
+          service_json="$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --output json)"
+          if [[ "$(jq '.failures | length' <<<"$service_json")" != "0" ]]; then
+            jq '.failures' <<<"$service_json" >&2
+            exit 1
+          fi
+          task_definition="$(jq -r '.services[0].taskDefinition' <<<"$service_json")"
+          cluster_arn="$(jq -r '.services[0].clusterArn' <<<"$service_json")"
+          subnets_csv="$(jq -r '.services[0].networkConfiguration.awsvpcConfiguration.subnets | join(",")' <<<"$service_json")"
+          security_groups_csv="$(jq -r '.services[0].networkConfiguration.awsvpcConfiguration.securityGroups | join(",")' <<<"$service_json")"
+          if [[ "$security_groups_csv" == *,* ]]; then
+            echo "Scheduled worker activation expects the pilot service's single governed task security group." >&2
+            exit 1
+          fi
+
+          task_json="$(aws ecs describe-task-definition \
+            --task-definition "$task_definition" \
+            --output json)"
+          image="$(jq -r '.taskDefinition.containerDefinitions[0].image' <<<"$task_json")"
+          if [[ ! "$image" =~ @sha256:[0-9a-f]{64}$ ]]; then
+            echo "The current pilot service image is not immutable." >&2
+            exit 1
+          fi
+          supabase_url_secret_arn="$(jq -r '
+            .taskDefinition.containerDefinitions[0].secrets[]
+            | select(.name == "TPP_SUPABASE_URL")
+            | .valueFrom
+          ' <<<"$task_json")"
+          if [[ -z "$supabase_url_secret_arn" || "$supabase_url_secret_arn" == "null" ]]; then
+            echo "The governed Supabase URL secret could not be resolved from the pilot task." >&2
+            exit 1
+          fi
+          if jq -e '
+            .taskDefinition.containerDefinitions[0].secrets[]
+            | select(.name == "TPP_SUPABASE_SERVICE_ROLE_KEY")
+          ' <<<"$task_json" >/dev/null; then
+            echo "The interactive web task must not contain the Supabase service-role credential." >&2
+            exit 1
+          fi
+
+          {
+            echo "image=$image"
+            echo "cluster_arn=$cluster_arn"
+            echo "subnets_csv=$subnets_csv"
+            echo "security_group=$security_groups_csv"
+            echo "supabase_url_secret_arn=$supabase_url_secret_arn"
+            echo "ses_identity_arn=$ses_identity_arn"
+            echo "allowed_email_domains=$allowed_email_domains"
+            echo "public_base_url=$public_base_url"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Stage isolated scheduled worker with schedule disabled
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws cloudformation deploy \
+            --stack-name "$SCHEDULED_STACK_NAME" \
+            --template-file infra/scheduled-admin-digest-stack.yml \
+            --role-arn "$CLOUDFORMATION_ROLE_ARN" \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              ClusterArn="${{ steps.baseline.outputs.cluster_arn }}" \
+              PublicSubnetIds="${{ steps.baseline.outputs.subnets_csv }}" \
+              TaskSecurityGroupId="${{ steps.baseline.outputs.security_group }}" \
+              ImageUri="${{ steps.baseline.outputs.image }}" \
+              PublicBaseUrl="${{ steps.baseline.outputs.public_base_url }}" \
+              AllowedEmailDomains="${{ steps.baseline.outputs.allowed_email_domains }}" \
+              SupabaseUrlSecretArn="${{ steps.baseline.outputs.supabase_url_secret_arn }}" \
+              SupabaseServiceRoleSecretArn="$SUPABASE_SERVICE_ROLE_SECRET_ARN" \
+              SesIdentityArn="${{ steps.baseline.outputs.ses_identity_arn }}" \
+              SesFromEmail="$SES_FROM_EMAIL" \
+              ScheduleExpression="$SCHEDULE_EXPRESSION" \
+              ScheduleTimezone="$SCHEDULE_TIMEZONE" \
+              ScheduleState=DISABLED
+
+      - name: Verify isolated worker before enabling schedule
+        id: staged
+        shell: bash
+        run: |
+          set -euo pipefail
+          scheduled_stack="$(aws cloudformation describe-stacks \
+            --stack-name "$SCHEDULED_STACK_NAME" \
+            --output json)"
+          output_value() {
+            jq -r --arg key "$1" '
+              .Stacks[0].Outputs[]
+              | select(.OutputKey == $key)
+              | .OutputValue
+            ' <<<"$scheduled_stack"
+          }
+          if [[ "$(output_value ScheduleState)" != "DISABLED" ]]; then
+            echo "Scheduled worker must be staged disabled before activation." >&2
+            exit 1
+          fi
+          task_definition="$(output_value TaskDefinitionArn)"
+          task_json="$(aws ecs describe-task-definition \
+            --task-definition "$task_definition" \
+            --output json)"
+          image="$(jq -r '.taskDefinition.containerDefinitions[0].image' <<<"$task_json")"
+          if [[ "$image" != "${{ steps.baseline.outputs.image }}" ]]; then
+            echo "Scheduled worker does not use the accepted immutable pilot image." >&2
+            exit 1
+          fi
+          command_json="$(jq -c '.taskDefinition.containerDefinitions[0].command' <<<"$task_json")"
+          if [[ "$command_json" != '["python","-m","app.scheduled_digest_worker"]' ]]; then
+            echo "Scheduled worker command is not the governed digest entry point." >&2
+            exit 1
+          fi
+          secret_names="$(jq -r '.taskDefinition.containerDefinitions[0].secrets[].name' <<<"$task_json" | sort)"
+          expected_secret_names=$'TPP_SUPABASE_SERVICE_ROLE_KEY\nTPP_SUPABASE_URL'
+          if [[ "$secret_names" != "$expected_secret_names" ]]; then
+            echo "Scheduled worker has an unexpected runtime secret set:" >&2
+            echo "$secret_names" >&2
+            exit 1
+          fi
+          if jq -e '
+            .taskDefinition.containerDefinitions[0].environment[]
+            | select(.name == "TPP_OPENAI_API_KEY" or .name == "TPP_SUPABASE_ANON_KEY")
+          ' <<<"$task_json" >/dev/null; then
+            echo "Scheduled worker must not receive OpenAI or Supabase anon credentials." >&2
+            exit 1
+          fi
+
+          schedule_json="$(aws scheduler get-schedule \
+            --name tpp-pilot-admin-weekly-digest \
+            --output json)"
+          if [[ "$(jq -r '.State' <<<"$schedule_json")" != "DISABLED" ]]; then
+            echo "EventBridge schedule was not staged disabled." >&2
+            exit 1
+          fi
+          if [[ "$(jq -r '.ScheduleExpression' <<<"$schedule_json")" != "$SCHEDULE_EXPRESSION" ]]; then
+            echo "Staged schedule expression does not match the approved value." >&2
+            exit 1
+          fi
+          if [[ "$(jq -r '.ScheduleExpressionTimezone' <<<"$schedule_json")" != "$SCHEDULE_TIMEZONE" ]]; then
+            echo "Staged schedule timezone does not match the approved value." >&2
+            exit 1
+          fi
+          echo "task_definition=$task_definition" >> "$GITHUB_OUTPUT"
+
+      - name: Enable verified weekly schedule
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws cloudformation deploy \
+            --stack-name "$SCHEDULED_STACK_NAME" \
+            --template-file infra/scheduled-admin-digest-stack.yml \
+            --role-arn "$CLOUDFORMATION_ROLE_ARN" \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              ClusterArn="${{ steps.baseline.outputs.cluster_arn }}" \
+              PublicSubnetIds="${{ steps.baseline.outputs.subnets_csv }}" \
+              TaskSecurityGroupId="${{ steps.baseline.outputs.security_group }}" \
+              ImageUri="${{ steps.baseline.outputs.image }}" \
+              PublicBaseUrl="${{ steps.baseline.outputs.public_base_url }}" \
+              AllowedEmailDomains="${{ steps.baseline.outputs.allowed_email_domains }}" \
+              SupabaseUrlSecretArn="${{ steps.baseline.outputs.supabase_url_secret_arn }}" \
+              SupabaseServiceRoleSecretArn="$SUPABASE_SERVICE_ROLE_SECRET_ARN" \
+              SesIdentityArn="${{ steps.baseline.outputs.ses_identity_arn }}" \
+              SesFromEmail="$SES_FROM_EMAIL" \
+              ScheduleExpression="$SCHEDULE_EXPRESSION" \
+              ScheduleTimezone="$SCHEDULE_TIMEZONE" \
+              ScheduleState=ENABLED
+
+      - name: Verify enabled schedule without sending email
+        shell: bash
+        run: |
+          set -euo pipefail
+          schedule_json="$(aws scheduler get-schedule \
+            --name tpp-pilot-admin-weekly-digest \
+            --output json)"
+          if [[ "$(jq -r '.State' <<<"$schedule_json")" != "ENABLED" ]]; then
+            echo "Scheduled weekly digest was not enabled." >&2
+            exit 1
+          fi
+          if [[ "$(jq -r '.ScheduleExpression' <<<"$schedule_json")" != "$SCHEDULE_EXPRESSION" ]]; then
+            echo "Enabled schedule expression does not match the approved value." >&2
+            exit 1
+          fi
+          if [[ "$(jq -r '.ScheduleExpressionTimezone' <<<"$schedule_json")" != "$SCHEDULE_TIMEZONE" ]]; then
+            echo "Enabled schedule timezone does not match the approved value." >&2
+            exit 1
+          fi
+
+      - name: Publish controlled automatic-delivery activation record
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## TPP scheduled weekly admin digest enabled"
+            echo "- Reason: ${{ inputs.reason }}"
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- From address: \`$SES_FROM_EMAIL\`"
+            echo "- Schedule: \`$SCHEDULE_EXPRESSION\`"
+            echo "- Timezone: \`$SCHEDULE_TIMEZONE\`"
+            echo "- Task definition: \`${{ steps.staged.outputs.task_definition }}\`"
+            echo "- Immutable application image: \`${{ steps.baseline.outputs.image }}\`"
+            echo "- Interactive web task service-role credential: \`false\`"
+            echo "- Immediate/test email sent by this workflow: \`false\`"
+            echo "- Student data boundary: \`prohibited\`"
+          } >> "$GITHUB_STEP_SUMMARY"
