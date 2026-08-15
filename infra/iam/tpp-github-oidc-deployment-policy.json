@@ -4,26 +4,18 @@
     {
       "Sid": "ValidatePilotTemplate",
       "Effect": "Allow",
-      "Action": [
-        "cloudformation:ValidateTemplate",
-        "cloudformation:GetTemplateSummary"
-      ],
+      "Action": ["cloudformation:ValidateTemplate", "cloudformation:GetTemplateSummary"],
       "Resource": "*"
     },
     {
       "Sid": "ManageNamedPilotStack",
       "Effect": "Allow",
       "Action": [
-        "cloudformation:CreateChangeSet",
-        "cloudformation:DeleteChangeSet",
-        "cloudformation:DescribeChangeSet",
-        "cloudformation:ExecuteChangeSet",
-        "cloudformation:DescribeStacks",
-        "cloudformation:DescribeStackEvents",
-        "cloudformation:DescribeStackResource",
-        "cloudformation:DescribeStackResources",
-        "cloudformation:GetTemplate",
-        "cloudformation:ListStackResources",
+        "cloudformation:CreateChangeSet", "cloudformation:DeleteChangeSet",
+        "cloudformation:DescribeChangeSet", "cloudformation:ExecuteChangeSet",
+        "cloudformation:DescribeStacks", "cloudformation:DescribeStackEvents",
+        "cloudformation:DescribeStackResource", "cloudformation:DescribeStackResources",
+        "cloudformation:GetTemplate", "cloudformation:ListStackResources",
         "cloudformation:ListChangeSets"
       ],
       "Resource": [
@@ -40,16 +32,11 @@
       "Sid": "ManageNamedScheduledDigestStack",
       "Effect": "Allow",
       "Action": [
-        "cloudformation:CreateChangeSet",
-        "cloudformation:DeleteChangeSet",
-        "cloudformation:DescribeChangeSet",
-        "cloudformation:ExecuteChangeSet",
-        "cloudformation:DescribeStacks",
-        "cloudformation:DescribeStackEvents",
-        "cloudformation:DescribeStackResource",
-        "cloudformation:DescribeStackResources",
-        "cloudformation:GetTemplate",
-        "cloudformation:ListStackResources",
+        "cloudformation:CreateChangeSet", "cloudformation:DeleteChangeSet",
+        "cloudformation:DescribeChangeSet", "cloudformation:ExecuteChangeSet",
+        "cloudformation:DescribeStacks", "cloudformation:DescribeStackEvents",
+        "cloudformation:DescribeStackResource", "cloudformation:DescribeStackResources",
+        "cloudformation:GetTemplate", "cloudformation:ListStackResources",
         "cloudformation:ListChangeSets"
       ],
       "Resource": [
@@ -67,11 +54,7 @@
       "Effect": "Allow",
       "Action": "iam:PassRole",
       "Resource": "arn:aws:iam::697091778129:role/TeacherPlanningPlatformPilotCloudFormationExecution",
-      "Condition": {
-        "StringEquals": {
-          "iam:PassedToService": "cloudformation.amazonaws.com"
-        }
-      }
+      "Condition": {"StringEquals": {"iam:PassedToService": "cloudformation.amazonaws.com"}}
     },
     {
       "Sid": "ReadCloudFormationExecutionRole",
@@ -89,40 +72,27 @@
       "Sid": "PushAndInspectExactPilotRepository",
       "Effect": "Allow",
       "Action": [
-        "ecr:BatchCheckLayerAvailability",
-        "ecr:BatchGetImage",
-        "ecr:CompleteLayerUpload",
-        "ecr:DescribeImages",
-        "ecr:DescribeRepositories",
-        "ecr:GetDownloadUrlForLayer",
-        "ecr:InitiateLayerUpload",
-        "ecr:ListImages",
-        "ecr:PutImage",
-        "ecr:UploadLayerPart"
+        "ecr:BatchCheckLayerAvailability", "ecr:BatchGetImage", "ecr:CompleteLayerUpload",
+        "ecr:DescribeImages", "ecr:DescribeRepositories", "ecr:GetDownloadUrlForLayer",
+        "ecr:InitiateLayerUpload", "ecr:ListImages", "ecr:PutImage", "ecr:UploadLayerPart"
       ],
       "Resource": "arn:aws:ecr:us-east-2:697091778129:repository/teacher-planning-platform-pilot"
     },
     {
       "Sid": "ReadPilotEcsState",
       "Effect": "Allow",
-      "Action": [
-        "ecs:DescribeServices",
-        "ecs:DescribeTaskDefinition",
-        "ecs:DescribeTasks",
-        "ecs:ListTasks"
-      ],
+      "Action": ["ecs:DescribeServices", "ecs:DescribeTaskDefinition", "ecs:DescribeTasks", "ecs:ListTasks"],
       "Resource": "*",
-      "Condition": {
-        "StringEquals": {
-          "aws:RequestedRegion": "us-east-2"
-        }
-      }
+      "Condition": {"StringEquals": {"aws:RequestedRegion": "us-east-2"}}
     },
     {
-      "Sid": "ReadScheduledDigestSchedule",
+      "Sid": "ReadFridayNotificationSchedules",
       "Effect": "Allow",
       "Action": "scheduler:GetSchedule",
-      "Resource": "arn:aws:scheduler:us-east-2:697091778129:schedule/default/tpp-pilot-admin-weekly-digest"
+      "Resource": [
+        "arn:aws:scheduler:us-east-2:697091778129:schedule/default/tpp-pilot-teacher-friday-reminder",
+        "arn:aws:scheduler:us-east-2:697091778129:schedule/default/tpp-pilot-admin-weekly-digest"
+      ]
     },
     {
       "Sid": "ReadPilotLoadBalancerState",
@@ -133,25 +103,14 @@
         "elasticloadbalancing:DescribeTargetHealth"
       ],
       "Resource": "*",
-      "Condition": {
-        "StringEquals": {
-          "aws:RequestedRegion": "us-east-2"
-        }
-      }
+      "Condition": {"StringEquals": {"aws:RequestedRegion": "us-east-2"}}
     },
     {
       "Sid": "ManagePilotCertificateRequest",
       "Effect": "Allow",
-      "Action": [
-        "acm:ListCertificates",
-        "acm:RequestCertificate"
-      ],
+      "Action": ["acm:ListCertificates", "acm:RequestCertificate"],
       "Resource": "*",
-      "Condition": {
-        "StringEquals": {
-          "aws:RequestedRegion": "us-east-2"
-        }
-      }
+      "Condition": {"StringEquals": {"aws:RequestedRegion": "us-east-2"}}
     },
     {
       "Sid": "ReadPilotCertificates",
@@ -162,16 +121,9 @@
     {
       "Sid": "ReadPilotApplicationLogs",
       "Effect": "Allow",
-      "Action": [
-        "logs:DescribeLogGroups",
-        "logs:DescribeLogStreams"
-      ],
+      "Action": ["logs:DescribeLogGroups", "logs:DescribeLogStreams"],
       "Resource": "*",
-      "Condition": {
-        "StringEquals": {
-          "aws:RequestedRegion": "us-east-2"
-        }
-      }
+      "Condition": {"StringEquals": {"aws:RequestedRegion": "us-east-2"}}
     }
   ]
 }
