@@ -5,16 +5,31 @@ API = ROOT / "backend" / "app" / "friday_status_api.py"
 ROUTER = ROOT / "backend" / "app" / "ai_reflection_api.py"
 FRONTEND = ROOT / "frontend" / "src" / "FridayStatusExperience.tsx"
 MAIN = ROOT / "frontend" / "src" / "main.tsx"
-STATUS_MIGRATION = ROOT / "supabase" / "migrations" / "20260815011000_friday_submission_status.sql"
-DELIVERY_MIGRATION = ROOT / "supabase" / "migrations" / "20260815013000_scheduled_friday_notifications.sql"
-DECISION = ROOT / "docs" / "governance" / "FRIDAY_STATUS_NOTIFICATION_DECISION_2026-08-15.md"
+STATUS_MIGRATION = (
+    ROOT
+    / "supabase"
+    / "migrations"
+    / "20260815011000_friday_submission_status.sql"
+)
+DELIVERY_MIGRATION = (
+    ROOT
+    / "supabase"
+    / "migrations"
+    / "20260815013000_scheduled_friday_notifications.sql"
+)
+DECISION = (
+    ROOT
+    / "docs"
+    / "governance"
+    / "FRIDAY_STATUS_NOTIFICATION_DECISION_2026-08-15.md"
+)
 
 
 def test_friday_status_api_is_authenticated_and_registered() -> None:
     api = API.read_text(encoding="utf-8")
     router = ROUTER.read_text(encoding="utf-8")
-    assert 'Depends(require_teacher)' in api
-    assert 'Depends(require_school_reporting_admin)' in api
+    assert "Depends(require_teacher)" in api
+    assert "Depends(require_school_reporting_admin)" in api
     assert '"rpc/teacher_friday_submission_status"' in api
     assert '"rpc/admin_friday_submission_status"' in api
     assert "friday_status_router" in router
