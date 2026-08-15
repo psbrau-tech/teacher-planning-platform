@@ -25,12 +25,6 @@
    * handout. This is print-only and does not change authenticated screen layout.
    */
   body:not(.tpp-printing-artifact):has(.plc-facilitation-handout)
-    *:not(:has(.plc-facilitation-handout))
-    :not(.plc-facilitation-handout):not(.plc-facilitation-handout *) {
-    display: none !important;
-  }
-
-  body:not(.tpp-printing-artifact):has(.plc-facilitation-handout)
     *:not(:has(.plc-facilitation-handout)):not(.plc-facilitation-handout):not(.plc-facilitation-handout *) {
     display: none !important;
   }
