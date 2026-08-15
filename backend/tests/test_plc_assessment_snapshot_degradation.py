@@ -4,7 +4,7 @@ ROOT = Path(__file__).resolve().parents[2]
 EXPERIENCE = ROOT / "frontend" / "src" / "PlcFacilitationArtifactExperience.tsx"
 
 
-def test_optional_assessment_network_failure_cannot_block_reflection_handout() -> None:
+def test_optional_assessment_network_failure_cannot_block_reflection_summary() -> None:
     source = EXPERIENCE.read_text(encoding="utf-8")
 
     assert "Promise.allSettled" in source
@@ -27,4 +27,4 @@ def test_reflection_summary_remains_required_while_assessment_is_optional() -> N
         'if (assessmentResult.status === "fulfilled" && assessmentResult.value.ok)'
         in source
     )
-    assert "The School Reflection Summary and meeting guide are ready" in source
+    assert "The School Reflection Summary is ready" in source
