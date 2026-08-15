@@ -32,6 +32,9 @@ type NotificationUsage = {
   period_end: string;
   admin_weekly_digests_sent: number;
   admin_digest_senders: number;
+  scheduled_admin_weekly_digests_sent: number;
+  scheduled_digest_recipient_admins: number;
+  scheduled_digest_schools: number;
 };
 
 type PeriodKind = "current_week" | "last_4_weeks" | "release_to_date" | "custom";
@@ -194,6 +197,14 @@ export function OwnerReflectionIntelligenceAnalytics() {
     return () => { active = false; };
   }, [isPlatformAdmin, period.end, period.start, portalTarget, session?.access_token]);
 
+  const manualDigestCount = notificationUsage
+    ? Math.max(
+        0,
+        notificationUsage.admin_weekly_digests_sent
+          - notificationUsage.scheduled_admin_weekly_digests_sent,
+      )
+    : 0;
+
   const signals = useMemo(() => {
     if (!reflectionUsage || !notificationUsage) return [] as string[];
     const items: string[] = [];
@@ -214,11 +225,16 @@ export function OwnerReflectionIntelligenceAnalytics() {
     }
     if (notificationUsage.admin_weekly_digests_sent) {
       items.push(
-        `${notificationUsage.admin_weekly_digests_sent} minimized weekly admin digest${notificationUsage.admin_weekly_digests_sent === 1 ? " has" : "s have"} been sent by ${notificationUsage.admin_digest_senders} administrator${notificationUsage.admin_digest_senders === 1 ? "" : "s"}.`,
+        `${notificationUsage.admin_weekly_digests_sent} minimized weekly admin digest${notificationUsage.admin_weekly_digests_sent === 1 ? " has" : "s have"} been delivered: ${manualDigestCount} manually triggered and ${notificationUsage.scheduled_admin_weekly_digests_sent} scheduled.`,
+      );
+    }
+    if (notificationUsage.scheduled_admin_weekly_digests_sent) {
+      items.push(
+        `Scheduled delivery reached ${notificationUsage.scheduled_digest_recipient_admins} administrator${notificationUsage.scheduled_digest_recipient_admins === 1 ? "" : "s"} across ${notificationUsage.scheduled_digest_schools} school${notificationUsage.scheduled_digest_schools === 1 ? "" : "s"}.`,
       );
     }
     return items;
-  }, [notificationUsage, reflectionUsage]);
+  }, [manualDigestCount, notificationUsage, reflectionUsage]);
 
   if (!portalTarget || !session || !isPlatformAdmin) return null;
 
@@ -300,8 +316,13 @@ export function OwnerReflectionIntelligenceAnalytics() {
             />
             <Metric
               value={notificationUsage.admin_weekly_digests_sent}
-              label="admin weekly digests sent"
-              detail={`${notificationUsage.admin_digest_senders} distinct admin senders`}
+              label="admin weekly digests delivered"
+              detail={`${manualDigestCount} manual · ${notificationUsage.scheduled_admin_weekly_digests_sent} scheduled`}
+            />
+            <Metric
+              value={notificationUsage.scheduled_admin_weekly_digests_sent}
+              label="scheduled admin digests"
+              detail={`${notificationUsage.scheduled_digest_recipient_admins} admins · ${notificationUsage.scheduled_digest_schools} schools`}
             />
           </div>
 
