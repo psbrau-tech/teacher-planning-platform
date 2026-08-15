@@ -21,7 +21,7 @@ def test_operations_docs_describe_current_interactive_runtime_secret_set() -> No
         assert "supabase service-role" in source
 
     assert "openai remains reserved for a future reviewed feature" not in secrets
-    assert "interactive web task must not" in deployment
+    assert "interactive task must not contain" in deployment
     assert "interactive web task" in secrets
 
 
@@ -30,11 +30,18 @@ def test_operations_docs_match_exact_sha_and_target_scoped_migration_workflows()
     preflight = normalized(PREFLIGHT)
     secrets = normalized(SECRETS)
 
-    for source in (deployment, preflight, secrets):
+    for source in (deployment, secrets):
         assert "expected_main_sha" in source
         assert "target_migration_head" in source
         assert "dry_run_only=true" in source
         assert "apply_target_confirmed" in source
+
+    assert "exact accepted `main` sha" in preflight
+    assert "target_migration_head" in preflight
+    assert "dry_run_only=true" in preflight
+    assert "apply_target_confirmed" in preflight
+
+    for source in (deployment, preflight, secrets):
         assert "through" in source and "target" in source
 
     assert "20260815001500" in deployment
@@ -58,5 +65,6 @@ def test_operations_docs_do_not_equate_repository_inventory_with_live_db_state()
     preflight = normalized(PREFLIGHT)
 
     assert "repository source state and live database state are separate evidence" in deployment
-    assert "does not prove that a particular migration is applied" in preflight
+    assert "does **not** prove" in preflight
+    assert "live pilot database" in preflight
     assert "later intentionally deferred source migration" in deployment
