@@ -137,6 +137,12 @@ When ALSDE or the Alabama State Board of Education adopts, amends, replaces, or 
 
 A controlled manual reconciliation path remains available at any time.
 
+### Pull-request source verification
+
+Live authoritative-source CI is an integration check for the code path that fetches and parses that source; it is not a substitute for the governed reconciliation schedule above. The Arts live-source check therefore runs when a pull request changes the Alabama Arts parser, shared source-ingestion transport, or backend dependency contract that can alter live parsing behavior. It does not re-fetch unchanged standards documents for unrelated product changes.
+
+The check remains fail-closed whenever it is required: source unavailability, invalid source content, or parser failure fails that standards-changing pull request. A controlled manual live-source verification remains available through the same workflow at any time.
+
 ### Failure and history guarantees
 
 If a catalog or source is unavailable, the failure is recorded and the last approved snapshot remains active. Existing approved standards remain usable for weekly planning.
