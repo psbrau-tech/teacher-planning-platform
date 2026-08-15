@@ -116,8 +116,9 @@ def test_admin_separates_upcoming_lesson_plan_and_completed_packet() -> None:
     assert "completed_packet_revision" in panel
     assert "Upcoming lesson plan" in panel
     assert "Completed weekly packet" in panel
-    assert "View lesson plan" in panel
-    assert "View completed packet" in panel
+    assert 'completedLabel="Lesson plan"' in panel
+    assert 'completedLabel="Completed packet"' in panel
+    assert "View {completedLabel.toLowerCase()}" in panel
 
 
 def test_admin_bulk_review_supports_multiple_teachers_and_both_submission_types() -> None:
