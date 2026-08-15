@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +24,7 @@ NOTIFICATION_API = ROOT / "backend" / "app" / "notifications_api.py"
 
 
 def test_worker_uses_school_local_monday() -> None:
-    sunday_utc = datetime(2026, 8, 17, 2, 30, tzinfo=timezone.utc)
+    sunday_utc = datetime(2026, 8, 17, 2, 30, tzinfo=UTC)
     assert worker.week_start_for_timezone("America/Chicago", sunday_utc).isoformat() == (
         "2026-08-10"
     )
