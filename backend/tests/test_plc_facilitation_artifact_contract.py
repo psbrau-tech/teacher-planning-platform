@@ -3,6 +3,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 EXPERIENCE = ROOT / "frontend" / "src" / "PlcFacilitationArtifactExperience.tsx"
 STYLE = ROOT / "frontend" / "src" / "plc-facilitation-artifact.css"
+CONSISTENCY_STYLE = ROOT / "frontend" / "src" / "ui-consistency.css"
 PRINT_STYLE = ROOT / "frontend" / "src" / "print-artifact.css"
 MAIN = ROOT / "frontend" / "src" / "main.tsx"
 DECISION = (
@@ -42,7 +43,7 @@ def test_plc_artifact_adds_only_governed_aggregate_assessment_snapshot() -> None
     assert "student_name" not in source
 
 
-def test_assessment_snapshot_is_optional_and_does_not_block_meeting_guide() -> None:
+def test_assessment_snapshot_is_optional_and_does_not_block_school_summary() -> None:
     source = EXPERIENCE.read_text(encoding="utf-8")
 
     assert "Promise.allSettled" in source
@@ -55,9 +56,15 @@ def test_assessment_snapshot_is_optional_and_does_not_block_meeting_guide() -> N
     assert "setBrief(await briefResponse.json() as SchoolBrief)" in source
 
 
-def test_plc_meeting_guide_embeds_school_reflection_summary_before_facilitation() -> None:
+def test_school_reflection_summary_is_visible_before_plc_meeting_guide() -> None:
     source = EXPERIENCE.read_text(encoding="utf-8")
 
+    assert "School Reflection Summary → PLC Meeting Guide" in source
+    assert "Generate School Reflection Summary" in source
+    assert "plc-screen-summary-block" in source
+    assert "Step 1 · Understand the week" in source
+    assert "plc-screen-guide-block" in source
+    assert "Step 2 · Use the evidence" in source
     assert "function SchoolReflectionSummary" in source
     assert 'aria-label="School Reflection Summary"' in source
     assert "What teachers are collectively reporting this week" in source
@@ -68,8 +75,19 @@ def test_plc_meeting_guide_embeds_school_reflection_summary_before_facilitation(
     assert 'title="Possible actions"' in source
     assert 'title="Support needs"' in source
     assert "items.map((item)" in source
-    assert "The School Reflection Summary below is the evidence base for this meeting" in source
-    assert "the guide is not a generic agenda" in source
+
+
+def test_printed_plc_meeting_guide_carries_same_school_summary() -> None:
+    source = EXPERIENCE.read_text(encoding="utf-8")
+    consistency = CONSISTENCY_STYLE.read_text(encoding="utf-8")
+
+    assert "plc-print-embedded-summary" in source
+    assert "<SchoolReflectionSummary brief={brief} />" in source
+    assert "The School Reflection Summary is the evidence base for this meeting" in source
+    assert ".plc-print-embedded-summary" in consistency
+    assert "display: none" in consistency
+    assert "@media print" in consistency
+    assert "display: block" in consistency
 
 
 def test_plc_meeting_guide_has_fixed_facilitation_protocol_and_action_workspace() -> None:
@@ -89,8 +107,7 @@ def test_plc_meeting_guide_has_fixed_facilitation_protocol_and_action_workspace(
     assert "Evidence we will bring back:" in source
     assert "Support or resource needed:" in source
     assert "Revisit date:" in source
-    assert "Generate PLC meeting guide" in source
-    assert "Print PLC meeting guide" in source
+    assert "Print PLC Meeting Guide" in source
 
 
 def test_plc_artifact_preserves_professional_learning_and_data_boundaries() -> None:
