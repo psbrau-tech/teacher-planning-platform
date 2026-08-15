@@ -3,8 +3,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 EXPERIENCE = ROOT / "frontend" / "src" / "ReflectionIntelligenceExperience.tsx"
 STYLES = ROOT / "frontend" / "src" / "reflection-intelligence.css"
-PRINT_HELPER = ROOT / "frontend" / "src" / "printArtifact.ts"
-PRINT_STYLES = ROOT / "frontend" / "src" / "print-artifact.css"
 MAIN = ROOT / "frontend" / "src" / "main.tsx"
 
 
@@ -23,29 +21,35 @@ def test_teacher_recap_requires_explicit_boundary_confirmation() -> None:
     assert "IEP/504" in source
 
 
-def test_school_plc_brief_remains_aggregate_and_non_evaluative() -> None:
-    source = EXPERIENCE.read_text(encoding="utf-8")
-    assert "Instructional insight, not evaluation" in source
-    assert "No teacher quality score" in source
-    assert "anonymous teacher source references" in source
-    assert "at least two distinct teachers" in source
-    assert "Supported by {item.source_refs.length} anonymous teacher sources" in source
-
-
-def test_plc_handout_is_transient_print_markup() -> None:
+def test_teacher_reflection_insights_are_scoped_to_friday_step_four() -> None:
     source = EXPERIENCE.read_text(encoding="utf-8")
     styles = STYLES.read_text(encoding="utf-8")
-    helper = PRINT_HELPER.read_text(encoding="utf-8")
-    print_styles = PRINT_STYLES.read_text(encoding="utf-8")
-    assert "reflection-intelligence-handout" in source
-    assert "Print PLC handout" in source
-    assert 'printArtifact(".reflection-intelligence-handout")' in source
-    assert "cloneNode(true)" in helper
-    assert "tpp-print-portal" in helper
-    assert "body.tpp-printing-artifact > *:not(.tpp-print-portal)" in print_styles
-    assert "@media print" in styles
-    assert "visibility: hidden" in styles
-    assert "AI-synthesized from teacher-authored submitted reflections" in source
+
+    assert "findFridayValidationPanel" in source
+    assert '"Friday closeout"' in source
+    assert "data-ri-friday-step-host" in source
+    assert "data-ri-step-marker-host" in source
+    assert "Step 4 · Optional" in source
+    assert "Review your reflection insights" in source
+    assert "Reflection insights are optional" in source
+    assert "Step 5 Continue" in source
+    assert "ri-renumbered-continue-marker" in source
+    assert "ri-renumbered-continue-card" in source
+    assert ".ri-launcher" not in styles
+    assert "position: fixed" not in styles.split(".ri-panel", 1)[0]
+
+
+def test_teacher_reflection_insights_remain_private_and_non_evaluative() -> None:
+    source = EXPERIENCE.read_text(encoding="utf-8")
+
+    assert "Your private reflection insights" in source
+    assert "Instructional insight, not evaluation" in source
+    assert "No teacher quality score" in source
+    assert "only your submitted teacher-authored professional reflections" in source
+    assert 'scope: "private-teacher"' in source
+    assert 'evaluation: "none"' in source
+    assert "/api/v1/reflection-intelligence/teacher/" in source
+    assert "/api/v1/reflection-intelligence/school/" not in source
 
 
 def test_reflection_intelligence_exposes_no_teacher_comparison_controls() -> None:
