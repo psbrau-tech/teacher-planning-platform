@@ -38,7 +38,10 @@ def _client(identity: AuthenticatedTeacher, settings: Settings) -> SupabaseRestC
 
 def _rows(payload: object) -> list[dict[str, Any]]:
     if not isinstance(payload, list):
-        raise HTTPException(status_code=503, detail="Friday submission status returned invalid data")
+        raise HTTPException(
+            status_code=503,
+            detail="Friday submission status returned invalid data",
+        )
     return [cast(dict[str, Any], row) for row in payload if isinstance(row, dict)]
 
 
@@ -74,7 +77,10 @@ def teacher_friday_status(
     try:
         return [TeacherFridayStatusRow.model_validate(row) for row in _rows(payload)]
     except ValidationError as error:
-        raise HTTPException(status_code=503, detail="Friday submission status is invalid") from error
+        raise HTTPException(
+            status_code=503,
+            detail="Friday submission status is invalid",
+        ) from error
 
 
 @router.get("/admin", response_model=list[AdminFridayStatusRow])
@@ -100,4 +106,7 @@ def admin_friday_status(
     try:
         return [AdminFridayStatusRow.model_validate(row) for row in _rows(payload)]
     except ValidationError as error:
-        raise HTTPException(status_code=503, detail="Friday submission status is invalid") from error
+        raise HTTPException(
+            status_code=503,
+            detail="Friday submission status is invalid",
+        ) from error
