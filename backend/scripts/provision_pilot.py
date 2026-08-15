@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, time
 from pathlib import Path
@@ -28,9 +27,7 @@ NOTIFICATION_KEYS = frozenset(
         "admin_digest_local_time",
     }
 )
-ACCESS_KEYS = frozenset(
-    {"email", "display_name", "school", "roles", "is_home", "is_active"}
-)
+ACCESS_KEYS = frozenset({"email", "display_name", "school", "roles", "is_active"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,7 +51,6 @@ class AccessRecord:
     display_name: str
     school_name: str
     roles: tuple[str, ...]
-    is_home: bool
     is_active: bool
 
 
@@ -175,7 +171,6 @@ def _parse_access_record(
     display_name_value = payload.get("display_name")
     roles_value = payload.get("roles")
     active_value = payload.get("is_active", True)
-    home_value = True if legacy_school is not None else payload.get("is_home", True)
     school_value = legacy_school if legacy_school is not None else payload.get("school")
 
     if not isinstance(email_value, str) or not email_value.strip():
@@ -201,45 +196,21 @@ def _parse_access_record(
         )
     if not isinstance(active_value, bool):
         raise ValueError(f"pilot access row {index} is_active must be boolean")
-    if not isinstance(home_value, bool):
-        raise ValueError(f"pilot access row {index} is_home must be boolean")
 
     return AccessRecord(
         email=email,
         display_name=display_name_value.strip(),
         school_name=school_value,
         roles=roles,
-        is_home=home_value,
         is_active=active_value,
     )
-
-
-def _validate_access_memberships(records: tuple[AccessRecord, ...]) -> None:
-    seen_memberships: set[tuple[str, str]] = set()
-    active_by_email: dict[str, list[AccessRecord]] = defaultdict(list)
-    for index, record in enumerate(records, start=1):
-        membership = (record.email, record.school_name)
-        if membership in seen_memberships:
-            raise ValueError(
-                f"pilot access row {index} duplicates an email/school membership"
-            )
-        seen_memberships.add(membership)
-        if record.is_active:
-            active_by_email[record.email].append(record)
-
-    for email, memberships in active_by_email.items():
-        home_count = sum(1 for membership in memberships if membership.is_home)
-        if home_count != 1:
-            raise ValueError(
-                f"active professional account {email} requires exactly one home school"
-            )
 
 
 def _load_config(path: Path) -> PilotConfig:
     payload = json.loads(path.read_text(encoding="utf-8"))
 
     # Backward compatibility keeps the currently deployed AHS secret valid until the operator
-    # intentionally replaces it with the new multi-school shape.
+    # intentionally replaces it with the explicit multi-school shape.
     if isinstance(payload, list):
         if not payload:
             raise ValueError("pilot access JSON must be a non-empty array")
@@ -259,37 +230,43 @@ def _load_config(path: Path) -> PilotConfig:
             )
             for index, item in enumerate(payload, start=1)
         )
-        _validate_access_memberships(access)
-        return PilotConfig(schools=schools, access=access)
+    elif isinstance(payload, dict):
+        config = cast(dict[str, Any], payload)
+        unknown = set(config) - CONFIG_KEYS
+        if unknown:
+            raise ValueError(
+                f"pilot access config contains unsupported fields: {sorted(unknown)}"
+            )
 
-    if not isinstance(payload, dict):
-        raise ValueError("pilot access JSON must be a legacy array or multi-school object")
-    config = cast(dict[str, Any], payload)
-    unknown = set(config) - CONFIG_KEYS
-    if unknown:
-        raise ValueError(f"pilot access config contains unsupported fields: {sorted(unknown)}")
+        raw_schools = config.get("schools")
+        raw_access = config.get("access")
+        if not isinstance(raw_schools, list) or not raw_schools:
+            raise ValueError("multi-school pilot config requires a non-empty schools array")
+        if not isinstance(raw_access, list) or not raw_access:
+            raise ValueError("multi-school pilot config requires a non-empty access array")
 
-    raw_schools = config.get("schools")
-    raw_access = config.get("access")
-    if not isinstance(raw_schools, list) or not raw_schools:
-        raise ValueError("multi-school pilot config requires a non-empty schools array")
-    if not isinstance(raw_access, list) or not raw_access:
-        raise ValueError("multi-school pilot config requires a non-empty access array")
-
-    schools = tuple(_parse_school(item, index) for index, item in enumerate(raw_schools, 1))
-    school_names = [school.name for school in schools]
-    if len(set(school_names)) != len(school_names):
-        raise ValueError("multi-school pilot config contains duplicate school names")
-
-    access = tuple(
-        _parse_access_record(
-            item,
-            index,
-            school_names=frozenset(school_names),
+        schools = tuple(
+            _parse_school(item, index) for index, item in enumerate(raw_schools, 1)
         )
-        for index, item in enumerate(raw_access, start=1)
-    )
-    _validate_access_memberships(access)
+        school_names = [school.name for school in schools]
+        if len(set(school_names)) != len(school_names):
+            raise ValueError("multi-school pilot config contains duplicate school names")
+        access = tuple(
+            _parse_access_record(
+                item,
+                index,
+                school_names=frozenset(school_names),
+            )
+            for index, item in enumerate(raw_access, start=1)
+        )
+    else:
+        raise ValueError("pilot access JSON must be a legacy array or multi-school object")
+
+    seen_emails: set[str] = set()
+    for index, record in enumerate(access, start=1):
+        if record.email in seen_emails:
+            raise ValueError(f"pilot access row {index} duplicates an email")
+        seen_emails.add(record.email)
     return PilotConfig(schools=schools, access=access)
 
 
@@ -350,13 +327,13 @@ def provision(
         raise ValueError("academic year end must be on or after its start")
     config = _load_config(access_path)
     owner_email = platform_owner_email.strip().lower()
-    owner_memberships = [
-        record for record in config.access if record.email == owner_email and record.is_active
-    ]
-    if not owner_memberships:
+    owner = next(
+        (record for record in config.access if record.email == owner_email and record.is_active),
+        None,
+    )
+    if owner is None:
         raise ValueError("the configured platform owner is missing from the pilot access list")
-    owner_roles = {role for record in owner_memberships for role in record.roles}
-    if not {"platform_admin", "teacher"}.issubset(owner_roles):
+    if not {"platform_admin", "teacher"}.issubset(owner.roles):
         raise ValueError(
             "the configured platform owner must have concurrent platform_admin and teacher roles"
         )
@@ -450,38 +427,24 @@ def provision(
                             """
                             update private.pilot_access_allowlist
                             set is_active = false,
-                                is_home = false,
                                 updated_at = now()
                             where school_id = %s::uuid
                             """,
                             (school_id,),
                         )
 
-                # Clear home flags first so a governed home-school reassignment cannot violate
-                # the one-active-home unique index while the replacement rows are being applied.
-                for email in sorted({record.email for record in config.access}):
-                    cursor.execute(
-                        """
-                        update private.pilot_access_allowlist
-                        set is_home = false,
-                            updated_at = now()
-                        where email = %s
-                        """,
-                        (email,),
-                    )
-
                 for record in config.access:
                     cursor.execute(
                         """
                         insert into private.pilot_access_allowlist (
-                          email, school_id, display_name, roles, is_home, is_active, updated_at
+                          email, school_id, display_name, roles, is_active
                         ) values (
-                          %s, %s::uuid, %s, %s::public.app_role[], %s, %s, now()
+                          %s, %s::uuid, %s, %s::public.app_role[], %s
                         )
-                        on conflict (email, school_id) do update set
+                        on conflict (email) do update set
+                          school_id = excluded.school_id,
                           display_name = excluded.display_name,
                           roles = excluded.roles,
-                          is_home = excluded.is_home,
                           is_active = excluded.is_active,
                           updated_at = now()
                         """,
@@ -490,7 +453,6 @@ def provision(
                             school_ids[record.school_name],
                             record.display_name,
                             list(record.roles),
-                            record.is_home,
                             record.is_active,
                         ),
                     )
@@ -547,7 +509,7 @@ def main() -> None:
         replace_access=arguments.replace_access,
     )
     print(f"Pilot provisioning complete: {school_count} configured schools.")
-    print(f"Governed access complete: {active_count} active school memberships.")
+    print(f"Governed access complete: {active_count} active professional accounts.")
     print(f"Existing authenticated users currently hold {role_count} governed role records.")
 
 
