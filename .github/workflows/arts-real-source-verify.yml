@@ -25,10 +25,13 @@ jobs:
           python - <<'PY'
           from collections import Counter
           from hashlib import sha256
+          from ipaddress import ip_address
+          import json
           from pathlib import Path
           import subprocess
           from tempfile import TemporaryDirectory
           from time import sleep
+          from urllib.parse import quote
 
           from app.standards_alabama_arts import (
               _course_key,
@@ -48,10 +51,109 @@ jobs:
               "AS_20250108_2024-Alabama-Course-of-Study-Arts-Education_V1.0.pdf"
           )
 
-          # Prefer the application's normal transport. GitHub-hosted runners can experience
-          # resolver-specific failures for an otherwise reachable public source, so retry only
-          # the bounded source-unavailable condition. Invalid content and parser failures still
-          # fail closed immediately.
+          def doh_payload(resolver_host: str, resolver_ip: str, endpoint: str) -> dict:
+              completed = subprocess.run(
+                  [
+                      "curl",
+                      "--fail",
+                      "--silent",
+                      "--show-error",
+                      "--resolve",
+                      f"{resolver_host}:443:{resolver_ip}",
+                      "--connect-timeout",
+                      "20",
+                      "--max-time",
+                      "30",
+                      "--header",
+                      "accept: application/dns-json",
+                      endpoint,
+                  ],
+                  check=True,
+                  capture_output=True,
+                  text=True,
+              )
+              payload = json.loads(completed.stdout)
+              if not isinstance(payload, dict):
+                  raise RuntimeError("DNS-over-HTTPS returned an invalid response")
+              return payload
+
+          def resolve_ipv4(hostname: str, seen: set[str] | None = None) -> list[str]:
+              normalized = hostname.rstrip(".").lower()
+              visited = set() if seen is None else set(seen)
+              if normalized in visited:
+                  raise RuntimeError(f"DNS CNAME loop while resolving {normalized}")
+              visited.add(normalized)
+
+              resolver_specs = (
+                  (
+                      "cloudflare",
+                      "cloudflare-dns.com",
+                      "1.1.1.1",
+                      f"https://cloudflare-dns.com/dns-query?name={quote(normalized)}&type=A",
+                  ),
+                  (
+                      "google",
+                      "dns.google",
+                      "8.8.8.8",
+                      f"https://dns.google/resolve?name={quote(normalized)}&type=A",
+                  ),
+              )
+              last_error: Exception | None = None
+              for resolver_name, resolver_host, resolver_ip, endpoint in resolver_specs:
+                  try:
+                      payload = doh_payload(resolver_host, resolver_ip, endpoint)
+                  except (subprocess.CalledProcessError, json.JSONDecodeError, RuntimeError) as error:
+                      last_error = error
+                      print(f"{resolver_name} DoH lookup failed for {normalized}: {error}")
+                      continue
+
+                  status = payload.get("Status")
+                  print(f"doh_resolver={resolver_name} host={normalized} status={status}")
+                  if status != 0:
+                      last_error = RuntimeError(
+                          f"{resolver_name} DoH returned DNS status {status} for {normalized}"
+                      )
+                      continue
+
+                  answers = payload.get("Answer") or []
+                  ipv4 = []
+                  cnames = []
+                  for answer in answers:
+                      if not isinstance(answer, dict):
+                          continue
+                      record_type = answer.get("type")
+                      data = answer.get("data")
+                      if not isinstance(data, str):
+                          continue
+                      if record_type == 1:
+                          try:
+                              parsed_ip = ip_address(data)
+                          except ValueError:
+                              continue
+                          if parsed_ip.version == 4:
+                              ipv4.append(str(parsed_ip))
+                      elif record_type == 5:
+                          cnames.append(data.rstrip("."))
+
+                  if ipv4:
+                      print(
+                          f"doh_resolver={resolver_name} host={normalized} "
+                          f"ipv4={','.join(ipv4)}"
+                      )
+                      return ipv4
+                  for cname in cnames:
+                      try:
+                          return resolve_ipv4(cname, visited)
+                      except RuntimeError as error:
+                          last_error = error
+
+              if last_error is not None:
+                  raise RuntimeError(f"Could not resolve {normalized} through validated DoH") from last_error
+              raise RuntimeError(f"Could not resolve {normalized} through validated DoH")
+
+          # Prefer the application's normal source transport. Retry only the bounded
+          # source-unavailable condition; invalid content and parser failures still fail
+          # closed immediately.
           fetched = None
           transport = "system-dns"
           for attempt in range(1, 5):
@@ -70,36 +172,44 @@ jobs:
                       sleep(wait_seconds)
 
           if fetched is None:
-              # Keep the source authoritative while bypassing only the runner's failing system
-              # DNS path. curl resolves the official Alabama hostname through DNS-over-HTTPS,
-              # bootstrapped to Cloudflare by IP, while normal TLS certificate verification
-              # remains enabled for both the DoH server and the Alabama HTTPS endpoint.
-              print("system DNS could not resolve the authoritative source; trying TLS-verified DoH")
-              transport = "cloudflare-doh"
+              # Bypass only the failing runner resolver, not the authoritative source.
+              # Public DoH resolves the official hostname; curl then connects to that IP while
+              # preserving the official Host/SNI name and normal TLS certificate validation.
+              print("system DNS could not resolve the authoritative source; trying explicit DoH")
+              transport = "explicit-doh-resolve"
+              try:
+                  source_ips = resolve_ipv4("www.alabamaachieves.org")
+                  root_ips = resolve_ipv4("alabamaachieves.org")
+              except RuntimeError as error:
+                  raise StandardsIngestError(
+                      "Authoritative standards source is unavailable"
+                  ) from error
+
               with TemporaryDirectory() as temp_dir:
                   source_path = Path(temp_dir) / "alabama-arts.pdf"
+                  curl_command = [
+                      "curl",
+                      "--fail",
+                      "--silent",
+                      "--show-error",
+                      "--location",
+                      "--resolve",
+                      f"www.alabamaachieves.org:443:{source_ips[0]}",
+                      "--resolve",
+                      f"alabamaachieves.org:443:{root_ips[0]}",
+                      "--connect-timeout",
+                      "30",
+                      "--max-time",
+                      "120",
+                      "--output",
+                      str(source_path),
+                      "--write-out",
+                      "%{url_effective}",
+                      url,
+                  ]
                   try:
                       completed = subprocess.run(
-                          [
-                              "curl",
-                              "--fail",
-                              "--silent",
-                              "--show-error",
-                              "--location",
-                              "--doh-url",
-                              "https://cloudflare-dns.com/dns-query",
-                              "--resolve",
-                              "cloudflare-dns.com:443:1.1.1.1",
-                              "--connect-timeout",
-                              "30",
-                              "--max-time",
-                              "120",
-                              "--output",
-                              str(source_path),
-                              "--write-out",
-                              "%{url_effective}",
-                              url,
-                          ],
+                          curl_command,
                           check=True,
                           capture_output=True,
                           text=True,
