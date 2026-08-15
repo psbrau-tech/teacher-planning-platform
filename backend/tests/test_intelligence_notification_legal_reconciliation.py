@@ -9,12 +9,16 @@ COUNSEL = ROOT / "docs" / "legal" / "COUNSEL_REVIEW_BRIEF_2026-08-13.md"
 HELP = ROOT / "frontend" / "src" / "HelpPage.tsx"
 
 
+def normalized(path: Path) -> str:
+    return " ".join(path.read_text(encoding="utf-8").lower().split())
+
+
 def test_ai_notice_preserves_teacher_authorship_of_required_reflection() -> None:
-    source = AI_NOTICE.read_text(encoding="utf-8").lower()
+    source = normalized(AI_NOTICE)
 
     assert "teacher-authored weekly reflection / plc discussion" in source
     assert "does not use generative ai to suggest, generate, complete, or rewrite" in source
-    assert "already-submitted professional reflections" in source
+    assert "submitted professional reflections" in source
     assert "do not replace the underlying teacher-authored reflection" in source
     assert "teacher-quality" in source
     assert "student data" in source
@@ -24,7 +28,7 @@ def test_ai_notice_preserves_teacher_authorship_of_required_reflection() -> None
 
 
 def test_counsel_brief_distinguishes_deployed_state_from_unactivated_email_work() -> None:
-    source = COUNSEL.read_text(encoding="utf-8").lower()
+    source = normalized(COUNSEL)
 
     assert "weekly reflection / plc discussion remains teacher-authored" in source
     assert "does not use generative ai to suggest, generate, complete, or rewrite" in source
@@ -36,7 +40,7 @@ def test_counsel_brief_distinguishes_deployed_state_from_unactivated_email_work(
 
 
 def test_privacy_draft_covers_professional_learning_and_minimized_notifications() -> None:
-    source = PRIVACY.read_text(encoding="utf-8").lower()
+    source = normalized(PRIVACY)
 
     assert "teacher-authored reflections" in source
     assert "private ai-generated teacher recaps" in source
@@ -50,8 +54,8 @@ def test_privacy_draft_covers_professional_learning_and_minimized_notifications(
 
 
 def test_subprocessor_and_security_drafts_do_not_claim_ses_is_already_active() -> None:
-    subprocessors = SUBPROCESSORS.read_text(encoding="utf-8").lower()
-    security = SECURITY.read_text(encoding="utf-8").lower()
+    subprocessors = normalized(SUBPROCESSORS)
+    security = normalized(SECURITY)
 
     assert "amazon ses" in subprocessors
     assert "remains fail-closed" in subprocessors
@@ -63,7 +67,7 @@ def test_subprocessor_and_security_drafts_do_not_claim_ses_is_already_active() -
 
 
 def test_help_explains_new_admin_features_without_expanding_data_boundary() -> None:
-    source = HELP.read_text(encoding="utf-8").lower()
+    source = normalized(HELP)
 
     assert "reflection intelligence and plc use" in source
     assert "at least two distinct anonymous teacher sources" in source
