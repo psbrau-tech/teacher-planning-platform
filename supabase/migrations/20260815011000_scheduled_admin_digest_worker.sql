@@ -73,6 +73,7 @@ begin
     from public.profile_roles pr
     join public.profiles p
       on p.id = pr.profile_id
+      and p.school_id = pr.school_id
       and p.is_active
       and nullif(btrim(coalesce(p.email, '')), '') is not null
     where pr.role = 'school_admin'::public.app_role
@@ -87,23 +88,23 @@ begin
     from public.teaching_assignments ta
     join public.profiles teacher
       on teacher.id = ta.teacher_id
+      and teacher.school_id = ta.school_id
       and teacher.is_active
     join public.profile_roles teacher_role
       on teacher_role.profile_id = teacher.id
       and teacher_role.school_id = ta.school_id
       and teacher_role.role = 'teacher'::public.app_role
-    left join lateral (
-      select w.id
-      from public.weekly_plan_snapshots w
-      where w.teaching_assignment_id = ta.id
-        and w.week_start = target_week_start
-      order by w.revision desc, w.updated_at desc
-      limit 1
-    ) snapshot on true
+    -- Read immutable submissions directly by assignment + week. Do not anchor these
+    -- counts to the newest mutable weekly_plan_snapshot: a teacher may create a newer
+    -- working snapshot after submitting an earlier revision, and that must not make an
+    -- already-submitted lesson plan or completed packet disappear from the digest.
     left join lateral (
       select wps.revision
       from public.weekly_plan_submissions wps
-      where wps.weekly_plan_snapshot_id = snapshot.id
+      where wps.teaching_assignment_id = ta.id
+        and wps.school_id = ta.school_id
+        and wps.teacher_id = ta.teacher_id
+        and wps.week_start = target_week_start
         and wps.submission_kind = 'lesson_plan'
       order by wps.revision desc, wps.submitted_at desc
       limit 1
@@ -111,7 +112,10 @@ begin
     left join lateral (
       select wps.revision
       from public.weekly_plan_submissions wps
-      where wps.weekly_plan_snapshot_id = snapshot.id
+      where wps.teaching_assignment_id = ta.id
+        and wps.school_id = ta.school_id
+        and wps.teacher_id = ta.teacher_id
+        and wps.week_start = target_week_start
         and wps.submission_kind = 'completed_packet'
       order by wps.revision desc, wps.submitted_at desc
       limit 1
