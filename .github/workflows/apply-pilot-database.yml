@@ -7,10 +7,23 @@ on:
         description: Reason for applying the reviewed pilot migrations
         required: true
         type: string
+      expected_main_sha:
+        description: Exact accepted main commit SHA for this migration run
+        required: true
+        type: string
+      target_migration_head:
+        description: Numeric migration version through which this run may operate
+        required: true
+        type: string
       dry_run_only:
-        description: List pending migrations without applying them
+        description: List pending migrations through the target without applying them
         required: true
         default: true
+        type: boolean
+      apply_target_confirmed:
+        description: I approve applying pending migrations only through the exact target head
+        required: true
+        default: false
         type: boolean
 
 permissions:
@@ -23,7 +36,7 @@ concurrency:
 
 jobs:
   migrate:
-    name: Validate and apply Supabase migrations
+    name: Validate and apply Supabase migrations through exact target
     runs-on: ubuntu-latest
     environment: tpp-pilot
     env:
@@ -55,8 +68,30 @@ jobs:
             echo "SUPABASE_CLI_VERSION must be an exact stable semantic version." >&2
             exit 1
           fi
+          if [[ "${{ inputs.dry_run_only }}" != "true" \
+            && "${{ inputs.apply_target_confirmed }}" != "true" ]]; then
+            echo "Database mutation is blocked until the exact migration target is approved." >&2
+            exit 1
+          fi
 
       - uses: actions/checkout@v4
+
+      - name: Enforce exact main commit and migration target
+        id: candidate
+        shell: bash
+        env:
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          EXPECTED_MIGRATION_HEAD: ${{ inputs.target_migration_head }}
+          REQUIRE_MIGRATION_APPLIED_CONFIRMATION: 'false'
+        run: bash scripts/verify_exact_release_candidate.sh
+
+      - name: Stage only migrations through approved target
+        id: migration_scope
+        shell: bash
+        run: |
+          bash scripts/stage_migrations_through.sh \
+            "${{ inputs.target_migration_head }}" \
+            "$RUNNER_TEMP/tpp-deferred-migrations"
 
       - uses: actions/setup-node@v4
         with:
@@ -94,7 +129,7 @@ jobs:
             exit 1
           fi
 
-      - name: Validate migration history and preview pending changes
+      - name: Validate migration history and preview target changes
         env:
           DATABASE_URL: ${{ steps.database.outputs.database_url }}
         shell: bash
@@ -104,7 +139,7 @@ jobs:
           "${cli[@]}" migration list --db-url "$DATABASE_URL"
           "${cli[@]}" db push --db-url "$DATABASE_URL" --dry-run --include-all
 
-      - name: Apply reviewed migrations
+      - name: Apply reviewed migrations through exact target
         if: ${{ !inputs.dry_run_only }}
         env:
           DATABASE_URL: ${{ steps.database.outputs.database_url }}
@@ -120,22 +155,26 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          migration_count="$(find supabase/migrations -maxdepth 1 -type f -name '*.sql' | wc -l | tr -d ' ')"
+          staged_count="$(find supabase/migrations -maxdepth 1 -type f -name '*.sql' | wc -l | tr -d ' ')"
           {
             echo "## TPP pilot database migration"
             echo "- Reason: ${{ inputs.reason }}"
             echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- Expected main SHA: \`${{ inputs.expected_main_sha }}\`"
+            echo "- Target migration head: \`${{ inputs.target_migration_head }}\`"
+            echo "- Target migration file: \`${{ steps.candidate.outputs.migration_file }}\`"
             echo "- Dry run only: \`${{ inputs.dry_run_only }}\`"
+            echo "- Exact target approved for mutation: \`${{ inputs.apply_target_confirmed }}\`"
             echo "- Region governance: \`$AWS_REGION\`"
             echo "- Supabase CLI: \`$SUPABASE_CLI_VERSION\`"
-            echo "- Repository migration count: \`$migration_count\`"
-            echo "- Migration source: \`supabase/migrations\`"
-            echo "- Out-of-order handling: reviewed repository migrations are included explicitly"
+            echo "- Staged migration count: \`$staged_count\`"
+            echo "- Deferred later migrations: \`${{ steps.migration_scope.outputs.deferred_count }}\`"
+            echo "- Migration source: \`supabase/migrations\` staged through the approved head"
             echo "- Data boundary: teacher and curriculum data only; no student data"
             if [[ "${{ inputs.dry_run_only }}" == "true" ]]; then
               echo "- No database mutation was authorized by this run."
             else
-              echo "- Reviewed pending migrations were applied in timestamp order."
-              echo "- A final dry run was required to confirm no repository migration remained pending."
+              echo "- Reviewed pending migrations were applied only through the approved target."
+              echo "- A final dry run confirmed no migration through that target remained pending."
             fi
           } >> "$GITHUB_STEP_SUMMARY"

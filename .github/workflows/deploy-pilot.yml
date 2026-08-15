@@ -7,6 +7,19 @@ on:
         description: Reason for this controlled pilot deployment
         required: true
         type: string
+      expected_main_sha:
+        description: Exact accepted main commit SHA to deploy
+        required: true
+        type: string
+      expected_migration_head:
+        description: Exact migration version confirmed applied for this application release
+        required: true
+        type: string
+      migration_head_applied_confirmed:
+        description: I confirmed this exact migration head is applied in the pilot database
+        required: true
+        default: false
+        type: boolean
       help_review_confirmed:
         description: I reviewed Help against this exact release candidate and it is current
         required: true
@@ -42,7 +55,7 @@ jobs:
       SUPABASE_ANON_KEY_SECRET_ID: ${{ vars.TPP_SUPABASE_ANON_KEY_SECRET_ID || 'tpp/pilot/supabase-anon-key' }}
       OPENAI_API_KEY_SECRET_ID: ${{ vars.TPP_OPENAI_API_KEY_SECRET_ID || 'tpp/pilot/openai-api-key' }}
     steps:
-      - name: Enforce exact-candidate Help review gate
+      - name: Enforce release confirmations
         shell: bash
         run: |
           set -euo pipefail
@@ -50,7 +63,10 @@ jobs:
             echo "Pilot deployment is blocked until Help is reviewed against this exact release candidate." >&2
             exit 1
           fi
-          echo "Help review gate confirmed for $GITHUB_SHA."
+          if [[ "${{ inputs.migration_head_applied_confirmed }}" != "true" ]]; then
+            echo "Pilot deployment is blocked until the exact migration head is confirmed applied." >&2
+            exit 1
+          fi
 
       - name: Validate controlled deployment configuration
         shell: bash
@@ -89,6 +105,16 @@ jobs:
           fi
 
       - uses: actions/checkout@v4
+
+      - name: Enforce exact main commit and confirmed migration head
+        id: candidate
+        shell: bash
+        env:
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          EXPECTED_MIGRATION_HEAD: ${{ inputs.expected_migration_head }}
+          REQUIRE_MIGRATION_APPLIED_CONFIRMATION: 'true'
+          MIGRATION_APPLIED_CONFIRMED: ${{ inputs.migration_head_applied_confirmed }}
+        run: bash scripts/verify_exact_release_candidate.sh
 
       - name: Configure AWS credentials through GitHub OIDC
         uses: aws-actions/configure-aws-credentials@v4
@@ -336,6 +362,9 @@ jobs:
             echo "## TPP pilot deployment"
             echo "- Reason: ${{ inputs.reason }}"
             echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- Expected main SHA: \`${{ inputs.expected_main_sha }}\`"
+            echo "- Confirmed migration head: \`${{ inputs.expected_migration_head }}\`"
+            echo "- Migration file: \`${{ steps.candidate.outputs.migration_file }}\`"
             echo "- Help reviewed against exact candidate: \`${{ inputs.help_review_confirmed }}\`"
             echo "- Build configuration fingerprint: \`${{ steps.image.outputs.build_config_fingerprint }}\`"
             echo "- Image: \`${{ steps.image.outputs.immutable_image }}\`"
