@@ -36,7 +36,9 @@ The workflow is read-only. It does not retrieve secret values, write to Supabase
     - Google OAuth client ID
     - Google OAuth client secret
 11. The CloudFormation template passes AWS validation.
-12. The repository contains the complete timestamped Supabase migration set.
+12. The repository contains the complete timestamped Supabase migration inventory.
+
+Preflight validates source/configuration readiness; it does **not** prove that a particular migration is applied to the live pilot database. Live migration history is separate release evidence from **Apply TPP Pilot Database Migrations**.
 
 ## Running the workflow
 
@@ -76,33 +78,48 @@ Create the missing secret or correct the corresponding optional secret-ID overri
 
 ### CloudFormation failure
 
-Treat this as a release defect. Do not proceed to bootstrap until the template validates in CI and in the preflight workflow.
+Treat this as a release defect. Do not proceed to bootstrap or deployment until the template validates in CI and in the preflight workflow.
 
 ### Migration inventory change
 
-Any merged branch that adds a migration requires a new protected migration preview and application, even when earlier migration runs were successful. The current release adds a forward migration that aligns aggregate school reporting with active governed `profile_roles`.
+Any merged branch that adds a migration requires a new protected migration review. Do not infer the live database head from the repository's latest filename.
 
-**Apply TPP Pilot Database Migrations** uses a pinned Supabase CLI version rather than the moving `latest` channel. The workflow always performs a dry-run preview; an approved apply run performs a final dry run afterward to confirm that no repository migration remains pending.
+**Apply TPP Pilot Database Migrations** is target-scoped and uses a pinned Supabase CLI version rather than the moving `latest` channel. Each run requires:
+
+- the exact accepted `main` SHA;
+- one exact `target_migration_head` that exists in the repository;
+- dry-run preview by default; and
+- a separate `apply_target_confirmed=true` acknowledgement before mutation.
+
+The workflow temporarily removes migrations later than the approved target from the runner's Supabase migration directory. Its preview, apply, migration list, and final dry-run therefore concern only migrations through that target. A later source migration may remain intentionally deferred when the release runbook permits it.
+
+For the August 14 professional-learning/application release, `20260815001500` is the planned target boundary and `20260815011000_scheduled_admin_digest_worker.sql` remains deferred until automatic delivery is separately prepared.
 
 ## Controlled sequence
 
-1. Merge the accepted release code.
-2. Run **Apply TPP Pilot Database Migrations** with `dry_run_only=true` and review the exact pending list.
-3. Run an approved apply with `dry_run_only=false` only after the preview is accepted.
-4. Run the read-only preflight.
-5. Provision the governed staff access list.
-6. Run the preflight again before bootstrap if any AWS or GitHub environment value changed.
-7. Bootstrap the isolated AWS pilot stack and first exact image.
-8. Complete ACM, TLS, DNS, OAuth, deployment verification, and browser acceptance gates.
+1. Merge every intended release change and record the exact resulting `main` SHA.
+2. Select the exact migration target for the release; do not default automatically to the repository's newest migration when a later feature is intentionally deferred.
+3. Run **Apply TPP Pilot Database Migrations** from `main` with the exact SHA/head, `dry_run_only=true`, and `apply_target_confirmed=false`; review the target-scoped pending list.
+4. Run an approved apply with the **same** SHA/head, `dry_run_only=false`, and `apply_target_confirmed=true` only after the preview is accepted.
+5. Retain the migration-list/final-dry-run evidence showing no migration remains pending through the selected target.
+6. Run the read-only preflight.
+7. Provision the governed staff access list if provisioning changes are part of the release.
+8. Run the preflight again before infrastructure mutation if any AWS or GitHub environment value changed.
+9. For an existing pilot, use **Deploy TPP Pilot** with the exact accepted `main` SHA, the exact applied migration head, `migration_head_applied_confirmed=true`, and the exact-candidate Help review confirmation.
+10. Complete deployment verification and release-specific browser/API acceptance.
+
+For a brand-new stack, bootstrap/TLS/DNS/OAuth steps still follow the controlled pilot deployment guide after migration, preflight, and provisioning gates pass.
 
 ## Retry boundaries
 
 - Preflight can be rerun safely because it is read-only.
+- The migration workflow defaults to dry-run; a mutating retry must use the same reviewed exact SHA/head unless a new release candidate is deliberately accepted.
 - Provisioning is transaction-safe and can update the same approved records.
 - Bootstrap can resume the same accepted commit after a partial failure, but it will not replace an existing service with a different commit.
 - **Deploy TPP Pilot** is the only workflow for application upgrades after bootstrap.
 - Repeated deployment of the same commit reuses its immutable ECR digest and does not force an unnecessary task-definition revision.
 - TLS attachment preserves and verifies the active exact image.
+- SES sender activation and scheduled-worker activation are separate controlled workflows; neither is implied by a normal application deployment.
 
 ## Data boundary
 
