@@ -53,18 +53,27 @@ def test_teacher_friday_status_ui_is_professional_operational_only() -> None:
         assert token not in lowered
 
 
-def test_administration_combines_submission_follow_up_into_weekly_report() -> None:
+def test_administration_combines_requirement_status_and_weekly_pdf_review() -> None:
     source = ADMIN_SUBMISSIONS.read_text(encoding="utf-8")
     styles = UI_STYLES.read_text(encoding="utf-8")
-    assert "Weekly submissions" in source
+
+    assert "Weekly submission status & review" in source
     assert "Select teachers" in source
     assert "Upcoming lesson plan" in source
     assert "Completed weekly packet" in source
     assert 'aria-label="Weekly submission status"' in source
-    assert ".submission-table .submission-artifact .status" in styles
+    assert "/api/v1/administration/submissions?week_start=" in source
+    assert "/api/v1/friday-status/admin?week_start=" in source
+    assert "previousWeek = addDays(weekStart, -7)" in source
+    assert "next_week_required" in source
+    assert "current_week_required" in source
+    assert "Not required" in source
+    assert "Needs submission" in source
+    assert ".submission-status.submitted" in styles
     assert "background: #e9f6ef" in styles
-    assert ".submission-table td > .badge" in styles
+    assert ".submission-status.attention" in styles
     assert "background: #fff3d5" in styles
+    assert ".submission-status.not-required" in styles
 
 
 def test_normal_ui_uses_teacher_status_and_no_manual_email_action() -> None:
