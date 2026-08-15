@@ -16,6 +16,18 @@ type Identity = {
   roles: string[];
 };
 
+type AssessmentTypeCount = { key: string; label: string; count: number };
+
+type WeeklyAssessmentTrend = {
+  week_start: string;
+  submitted_course_weeks: number;
+  distinct_teachers: number;
+  daily_assessment_entries: number;
+  cfu_entries: number;
+  evidence_entries: number;
+  assessment_types: AssessmentTypeCount[];
+};
+
 type AssessmentAnalytics = {
   period_start: string;
   period_end: string;
@@ -24,8 +36,9 @@ type AssessmentAnalytics = {
   daily_assessment_entries: number;
   cfu_entries: number;
   evidence_entries: number;
-  assessment_types: Array<{ key: string; label: string; count: number }>;
+  assessment_types: AssessmentTypeCount[];
   weekday_entries: Array<{ weekday: string; count: number }>;
+  weekly_trends: WeeklyAssessmentTrend[];
   source_scope: "immutable-submitted-lesson-plans";
   classification_method: "deterministic-keyword-v1";
   interpretation: "planned-formative-assessment-signals-only";
@@ -52,6 +65,16 @@ function addDays(iso: string, days: number): string {
   const date = new Date(`${iso}T12:00:00`);
   date.setDate(date.getDate() + days);
   return localIsoDate(date);
+}
+
+function weekLabel(iso: string): string {
+  const value = new Date(`${iso}T12:00:00`);
+  if (Number.isNaN(value.getTime())) return iso;
+  return value.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function assessmentCount(trend: WeeklyAssessmentTrend, key: string): number {
+  return trend.assessment_types.find((item) => item.key === key)?.count ?? 0;
 }
 
 async function readError(response: Response): Promise<string> {
@@ -98,6 +121,18 @@ export function DailyAssessmentAnalyticsExperience() {
       label: "Current week",
     };
   }, [currentMonday, customEnd, customStart, periodKind]);
+
+  const trendTypeColumns = useMemo(() => {
+    const exitTickets: AssessmentTypeCount = {
+      key: "exit_ticket",
+      label: "Exit tickets / slips",
+      count: analytics?.assessment_types.find((item) => item.key === "exit_ticket")?.count ?? 0,
+    };
+    const otherTopTypes = (analytics?.assessment_types ?? [])
+      .filter((item) => item.key !== "exit_ticket")
+      .slice(0, 4);
+    return [exitTickets, ...otherTopTypes];
+  }, [analytics]);
 
   useEffect(() => {
     if (!assessmentSupabase) return;
@@ -276,11 +311,63 @@ export function DailyAssessmentAnalyticsExperience() {
             </article>
           </div>
 
+          <article className="card assessment-weekly-trend-card">
+            <div className="assessment-trend-heading">
+              <div>
+                <h4>Week-over-week planned assessment trend</h4>
+                <p>
+                  Track exit tickets/slips and the most common additional assessment types across
+                  submitted plan weeks. Counts remain anonymous school-level planning signals.
+                </p>
+              </div>
+            </div>
+            {analytics.weekly_trends.length ? (
+              <div className="assessment-trend-scroll" tabIndex={0}>
+                <table className="assessment-type-table assessment-trend-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Week of</th>
+                      <th scope="col">Course-weeks</th>
+                      <th scope="col">Teachers represented</th>
+                      <th scope="col">Daily entries</th>
+                      {trendTypeColumns.map((item) => (
+                        <th scope="col" key={item.key}>{item.label}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {analytics.weekly_trends.map((trend) => (
+                      <tr key={trend.week_start}>
+                        <th scope="row">{weekLabel(trend.week_start)}</th>
+                        <td>{trend.submitted_course_weeks}</td>
+                        <td>{trend.distinct_teachers}</td>
+                        <td>{trend.daily_assessment_entries}</td>
+                        {trendTypeColumns.map((item) => (
+                          <td key={`${trend.week_start}-${item.key}`}>
+                            {assessmentCount(trend, item.key)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p>No submitted lesson-plan weeks are represented in this period.</p>
+            )}
+            <p className="assessment-source-note">
+              Read trend counts alongside submitted course-week and anonymous teacher coverage. TPP
+              does not normalize these counts into teacher comparisons or assume every course meets
+              five days per week, so a lower weekly count may reflect different coverage or schedules.
+            </p>
+          </article>
+
           <div className="guidance-card compact-guidance assessment-interpretation">
             <strong>How to use this in coaching and PLCs</strong>
             <p>
-              Use the mix to ask instructional questions—for example, whether teachers want more
-              low-prep exit-ticket options or whether one assessment format is dominating planning.
+              Use the mix and weekly trend to ask instructional questions—for example, whether
+              teachers want more low-prep exit-ticket options, whether a strategy is becoming more
+              common across submitted plans, or whether one assessment format is dominating planning.
               “Other / not yet classified” is intentional: TPP keeps unfamiliar wording visible as a
               count rather than guessing what the teacher meant. No lesson-plan text is sent to AI for
               this classification.
