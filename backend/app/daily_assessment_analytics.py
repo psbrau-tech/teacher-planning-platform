@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
 DAY_SUFFIXES = (
@@ -167,6 +168,18 @@ def _text(payload: dict[str, Any], key: str) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
+def _week_start(row: dict[str, Any]) -> date | None:
+    value = row.get("week_start")
+    if isinstance(value, date):
+        return value
+    if not isinstance(value, str):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
 def analyze_daily_assessment_sources(rows: list[dict[str, Any]]) -> dict[str, Any]:
     type_counts = {key: 0 for key in ASSESSMENT_TYPE_LABELS}
     weekday_counts = {label: 0 for _, label in DAY_SUFFIXES}
@@ -209,3 +222,26 @@ def analyze_daily_assessment_sources(rows: list[dict[str, Any]]) -> dict[str, An
         "type_counts": type_counts,
         "weekday_counts": weekday_counts,
     }
+
+
+def analyze_daily_assessment_weekly_trends(
+    rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Aggregate the same governed assessment signals by submitted plan week.
+
+    Weekly trends intentionally remain raw counts. TPP does not calculate a teacher comparison,
+    frequency target, or student-outcome rate from these planning signals. Invalid/missing week
+    identities are excluded from the trend series rather than inferred.
+    """
+    grouped: dict[date, list[dict[str, Any]]] = {}
+    for row in rows:
+        week_start = _week_start(row)
+        if week_start is None:
+            continue
+        grouped.setdefault(week_start, []).append(row)
+
+    trends: list[dict[str, Any]] = []
+    for week_start in sorted(grouped):
+        analysis = analyze_daily_assessment_sources(grouped[week_start])
+        trends.append({"week_start": week_start, **analysis})
+    return trends

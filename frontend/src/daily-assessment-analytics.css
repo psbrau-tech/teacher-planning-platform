@@ -36,7 +36,8 @@
 }
 
 .assessment-period-control select:focus-visible,
-.assessment-period-control input:focus-visible {
+.assessment-period-control input:focus-visible,
+.assessment-trend-scroll:focus-visible {
   outline: 3px solid #1468a0;
   outline-offset: 3px;
 }
@@ -75,7 +76,8 @@
   gap: 0.9rem;
 }
 
-.assessment-analytics-grid .card h4 {
+.assessment-analytics-grid .card h4,
+.assessment-weekly-trend-card h4 {
   margin-top: 0;
 }
 
@@ -109,6 +111,40 @@
   color: #667085;
   font-size: 0.88rem;
   line-height: 1.4;
+}
+
+.assessment-weekly-trend-card {
+  margin-top: 0.9rem;
+}
+
+.assessment-trend-heading p {
+  margin: 0 0 0.65rem;
+  color: #667085;
+  line-height: 1.45;
+}
+
+.assessment-trend-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid #e4e7ec;
+  border-radius: 0.45rem;
+}
+
+.assessment-trend-table {
+  min-width: 54rem;
+}
+
+.assessment-trend-table th:first-child {
+  min-width: 7rem;
+}
+
+.assessment-trend-table tbody th {
+  white-space: nowrap;
+}
+
+.assessment-trend-table td,
+.assessment-trend-table thead th:not(:first-child) {
+  text-align: right;
 }
 
 .assessment-interpretation {

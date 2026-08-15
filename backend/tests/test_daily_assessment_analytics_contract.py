@@ -2,6 +2,7 @@ from pathlib import Path
 
 from app.daily_assessment_analytics import (
     analyze_daily_assessment_sources,
+    analyze_daily_assessment_weekly_trends,
     classify_daily_assessment,
 )
 
@@ -15,6 +16,12 @@ MIGRATION = (
 API = ROOT / "backend" / "app" / "daily_assessment_api.py"
 EXPERIENCE = ROOT / "frontend" / "src" / "DailyAssessmentAnalyticsExperience.tsx"
 MAIN = ROOT / "frontend" / "src" / "main.tsx"
+DECISION = (
+    ROOT
+    / "docs"
+    / "governance"
+    / "DAILY_FORMATIVE_ASSESSMENT_ANALYTICS_DECISION_2026-08-14.md"
+)
 
 
 def test_exit_slips_and_common_daily_checks_are_recognized() -> None:
@@ -84,6 +91,49 @@ def test_source_analysis_counts_days_not_raw_text_fragments() -> None:
     assert analysis["weekday_counts"]["Friday"] == 2
 
 
+def test_weekly_trends_reuse_same_classifier_and_preserve_weekly_coverage() -> None:
+    rows = [
+        {
+            "anonymous_teacher_ref": 1,
+            "week_start": "2026-08-03",
+            "daily_assessment_data": {
+                "cfu_mon": "Exit ticket",
+                "cfu_tue": "Quick write",
+            },
+        },
+        {
+            "anonymous_teacher_ref": 2,
+            "week_start": "2026-08-03",
+            "daily_assessment_data": {"cfu_fri": "Exit slip"},
+        },
+        {
+            "anonymous_teacher_ref": 1,
+            "week_start": "2026-08-10",
+            "daily_assessment_data": {"cfu_wed": "Cold-call questioning"},
+        },
+        {
+            "anonymous_teacher_ref": 99,
+            "week_start": "not-a-date",
+            "daily_assessment_data": {"cfu_mon": "Exit ticket"},
+        },
+    ]
+
+    trends = analyze_daily_assessment_weekly_trends(rows)
+
+    assert [item["week_start"].isoformat() for item in trends] == [
+        "2026-08-03",
+        "2026-08-10",
+    ]
+    assert trends[0]["submitted_course_weeks"] == 2
+    assert trends[0]["distinct_teachers"] == 2
+    assert trends[0]["daily_assessment_entries"] == 3
+    assert trends[0]["type_counts"]["exit_ticket"] == 2
+    assert trends[0]["type_counts"]["quick_write"] == 1
+    assert trends[1]["submitted_course_weeks"] == 1
+    assert trends[1]["distinct_teachers"] == 1
+    assert trends[1]["type_counts"]["questioning_discussion"] == 1
+
+
 def test_database_source_uses_only_immutable_submitted_lesson_plans() -> None:
     source = MIGRATION.read_text(encoding="utf-8")
 
@@ -109,26 +159,41 @@ def test_database_source_returns_only_daily_cfu_and_evidence_fields() -> None:
     assert "course_name" not in source
 
 
-def test_api_returns_aggregate_counts_without_raw_plan_text() -> None:
+def test_api_returns_aggregate_counts_and_weekly_trends_without_raw_plan_text() -> None:
     source = API.read_text(encoding="utf-8")
     assert 'source_scope: str = "immutable-submitted-lesson-plans"' in source
     assert 'classification_method: str = "deterministic-keyword-v1"' in source
     assert 'interpretation: str = "planned-formative-assessment-signals-only"' in source
     assert 'evaluation: str = "none"' in source
+    assert "weekly_trends: list[WeeklyAssessmentTrendRead]" in source
+    assert "analyze_daily_assessment_weekly_trends(source_rows)" in source
     assert "daily_assessment_data" not in source
     assert "teacher_name" not in source
     assert "course_name" not in source
 
 
-def test_frontend_frames_assessment_mix_as_planning_not_performance() -> None:
+def test_frontend_frames_assessment_mix_and_trends_as_planning_not_performance() -> None:
     source = EXPERIENCE.read_text(encoding="utf-8").lower()
     assert "planned daily formative-assessment mix" in source
-    assert "exit tickets" in source
+    assert "week-over-week planned assessment trend" in source
+    assert "exit tickets / slips" in source
+    assert "submitted course-week and anonymous teacher coverage" in source
+    assert "does not normalize these counts into teacher comparisons" in source
     assert "not a teacher-performance measure" in source
     assert "assessment was actually administered" in source
     assert "students mastered the content" in source
     assert "no lesson-plan text is sent to ai" in source
     assert "other / not yet classified" in source
+
+
+def test_weekly_trend_governance_rejects_compliance_rate_interpretation() -> None:
+    source = DECISION.read_text(encoding="utf-8").lower()
+
+    assert "raw school-level planning counts" in source
+    assert "does not assume every course meets five days per week" in source
+    assert "exit tickets/slips remain visible" in source
+    assert "compliance rate" in source
+    assert "no new assessment-content retention store" in source
 
 
 def test_daily_assessment_analytics_is_mounted() -> None:

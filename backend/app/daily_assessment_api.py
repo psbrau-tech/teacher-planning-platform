@@ -11,6 +11,7 @@ from .daily_assessment_analytics import (
     ASSESSMENT_TYPE_LABELS,
     DAY_SUFFIXES,
     analyze_daily_assessment_sources,
+    analyze_daily_assessment_weekly_trends,
 )
 from .settings import Settings, get_settings
 from .supabase_rest import SupabaseRestClient, SupabaseRestError
@@ -29,6 +30,16 @@ class WeekdayAssessmentCount(BaseModel):
     count: int
 
 
+class WeeklyAssessmentTrendRead(BaseModel):
+    week_start: date
+    submitted_course_weeks: int
+    distinct_teachers: int
+    daily_assessment_entries: int
+    cfu_entries: int
+    evidence_entries: int
+    assessment_types: list[AssessmentTypeCount]
+
+
 class DailyAssessmentAnalyticsRead(BaseModel):
     period_start: date
     period_end: date
@@ -39,6 +50,7 @@ class DailyAssessmentAnalyticsRead(BaseModel):
     evidence_entries: int
     assessment_types: list[AssessmentTypeCount]
     weekday_entries: list[WeekdayAssessmentCount]
+    weekly_trends: list[WeeklyAssessmentTrendRead]
     source_scope: str = "immutable-submitted-lesson-plans"
     classification_method: str = "deterministic-keyword-v1"
     interpretation: str = "planned-formative-assessment-signals-only"
@@ -92,6 +104,17 @@ def _source_rows(
     return _records(payload)
 
 
+def _type_counts(type_counts: dict[str, int]) -> list[AssessmentTypeCount]:
+    return [
+        AssessmentTypeCount(key=key, label=ASSESSMENT_TYPE_LABELS[key], count=count)
+        for key, count in sorted(
+            type_counts.items(),
+            key=lambda item: (-item[1], ASSESSMENT_TYPE_LABELS[item[0]]),
+        )
+        if count > 0
+    ]
+
+
 @router.get("/school", response_model=DailyAssessmentAnalyticsRead)
 def school_daily_assessment_analytics(
     identity: Annotated[AuthenticatedTeacher, Depends(require_school_reporting_admin)],
@@ -110,28 +133,32 @@ def school_daily_assessment_analytics(
     if period_end - period_start > timedelta(days=366):
         raise HTTPException(status_code=422, detail="Assessment analytics are limited to 367 days")
 
-    analysis = analyze_daily_assessment_sources(
-        _source_rows(
-            _client(identity, settings),
-            period_start=period_start,
-            period_end=period_end,
-            school_id=identity.school_id,
-        )
+    source_rows = _source_rows(
+        _client(identity, settings),
+        period_start=period_start,
+        period_end=period_end,
+        school_id=identity.school_id,
     )
+    analysis = analyze_daily_assessment_sources(source_rows)
+    weekly_analysis = analyze_daily_assessment_weekly_trends(source_rows)
     type_counts = cast(dict[str, int], analysis["type_counts"])
     weekday_counts = cast(dict[str, int], analysis["weekday_counts"])
 
-    assessment_types = [
-        AssessmentTypeCount(key=key, label=ASSESSMENT_TYPE_LABELS[key], count=count)
-        for key, count in sorted(
-            type_counts.items(),
-            key=lambda item: (-item[1], ASSESSMENT_TYPE_LABELS[item[0]]),
-        )
-        if count > 0
-    ]
     weekday_entries = [
         WeekdayAssessmentCount(weekday=label, count=weekday_counts.get(label, 0))
         for _, label in DAY_SUFFIXES
+    ]
+    weekly_trends = [
+        WeeklyAssessmentTrendRead(
+            week_start=cast(date, item["week_start"]),
+            submitted_course_weeks=cast(int, item["submitted_course_weeks"]),
+            distinct_teachers=cast(int, item["distinct_teachers"]),
+            daily_assessment_entries=cast(int, item["daily_assessment_entries"]),
+            cfu_entries=cast(int, item["cfu_entries"]),
+            evidence_entries=cast(int, item["evidence_entries"]),
+            assessment_types=_type_counts(cast(dict[str, int], item["type_counts"])),
+        )
+        for item in weekly_analysis
     ]
 
     return DailyAssessmentAnalyticsRead(
@@ -142,6 +169,7 @@ def school_daily_assessment_analytics(
         daily_assessment_entries=cast(int, analysis["daily_assessment_entries"]),
         cfu_entries=cast(int, analysis["cfu_entries"]),
         evidence_entries=cast(int, analysis["evidence_entries"]),
-        assessment_types=assessment_types,
+        assessment_types=_type_counts(type_counts),
         weekday_entries=weekday_entries,
+        weekly_trends=weekly_trends,
     )
