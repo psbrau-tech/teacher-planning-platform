@@ -5,6 +5,8 @@ from typing import Literal
 from pydantic import Field, HttpUrl
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+APPROVED_SES_FROM_EMAIL = "notifications@planner.guidedscholar.ai"
+
 
 class Settings(BaseSettings):
     """Runtime configuration loaded from the environment or AWS-injected secrets."""
@@ -35,8 +37,9 @@ class Settings(BaseSettings):
     google_oauth_client_id: str | None = Field(default=None, repr=False)
     google_oauth_client_secret: str | None = Field(default=None, repr=False)
 
-    # Email notifications are opt-in runtime infrastructure. A blank sender keeps delivery
-    # fail-closed until the verified SES identity and deployment configuration are approved.
+    # Email notifications are opt-in runtime infrastructure. The approved sender identity is
+    # notifications@planner.guidedscholar.ai, but a blank runtime value intentionally keeps
+    # delivery fail-closed until SES verification and IAM wiring are complete.
     ses_from_email: str = ""
     ses_region: str = "us-east-2"
 

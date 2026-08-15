@@ -5,12 +5,14 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 
 from .auth import AuthenticatedTeacher, require_teacher
+from .daily_assessment_api import router as daily_assessment_router
 from .notifications_api import router as notifications_router
 from .reflection_intelligence_api import router as reflection_intelligence_router
 
 # Keep the historical AI-reflection assistance route fail-closed while registering the separate
-# Reflection Intelligence and notification surfaces. Reflection Intelligence analyzes explicitly
-# submitted teacher-authored reflections; it never creates or rewrites the 12 required responses.
+# Reflection Intelligence, assessment analytics, and notification surfaces. Reflection
+# Intelligence analyzes explicitly submitted teacher-authored reflections; it never creates or
+# rewrites the 12 required responses.
 router = APIRouter()
 reflection_assistance_router = APIRouter(prefix="/api/v1/ai", tags=["ai-reflection"])
 
@@ -34,4 +36,5 @@ def suggest_weekly_reflection_disabled(
 
 router.include_router(reflection_assistance_router)
 router.include_router(reflection_intelligence_router)
+router.include_router(daily_assessment_router)
 router.include_router(notifications_router)
