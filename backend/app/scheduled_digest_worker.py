@@ -22,7 +22,9 @@ class ScheduledDigestWorkerError(RuntimeError):
 
 def _service_client(settings: Settings) -> SupabaseRestClient:
     if settings.supabase_url is None or not settings.supabase_service_role_key:
-        raise ScheduledDigestWorkerError("Scheduled notification database access is not configured")
+        raise ScheduledDigestWorkerError(
+            "Scheduled notification database access is not configured"
+        )
     service_key = settings.supabase_service_role_key
     return SupabaseRestClient(
         base_url=str(settings.supabase_url).rstrip("/"),
@@ -73,7 +75,9 @@ def _claim(
             payload={"target_week_start": week_start.isoformat()},
         )
     except SupabaseRestError as error:
-        raise ScheduledDigestWorkerError("Scheduled notification candidates are unavailable") from error
+        raise ScheduledDigestWorkerError(
+            "Scheduled notification candidates are unavailable"
+        ) from error
     return _records(payload)
 
 
@@ -122,7 +126,11 @@ def _complete_delivery(
         ) from error
 
 
-def _admin_metrics(row: dict[str, Any], *, week_start: date) -> FridayAdminDigestMetrics:
+def _admin_metrics(
+    row: dict[str, Any],
+    *,
+    week_start: date,
+) -> FridayAdminDigestMetrics:
     return FridayAdminDigestMetrics(
         week_start=week_start,
         next_week_start=week_start + timedelta(days=7),
@@ -134,18 +142,25 @@ def _admin_metrics(row: dict[str, Any], *, week_start: date) -> FridayAdminDiges
         next_teachers_complete=_positive_int(row, "next_teachers_complete"),
         next_plans_expected=_positive_int(row, "next_plans_expected"),
         next_plans_submitted=_positive_int(row, "next_plans_submitted"),
-        teachers_with_completed_packets=_positive_int(row, "teachers_with_completed_packets"),
+        teachers_with_completed_packets=_positive_int(
+            row,
+            "teachers_with_completed_packets",
+        ),
     )
 
 
 def _teacher_items(row: dict[str, Any]) -> tuple[FridayTeacherReminderItem, ...]:
     raw_items = row.get("outstanding_items")
     if not isinstance(raw_items, list) or not raw_items:
-        raise ScheduledDigestWorkerError("Teacher reminder has invalid outstanding-item data")
+        raise ScheduledDigestWorkerError(
+            "Teacher reminder has invalid outstanding-item data"
+        )
     items: list[FridayTeacherReminderItem] = []
     for raw in raw_items:
         if not isinstance(raw, dict):
-            raise ScheduledDigestWorkerError("Teacher reminder has invalid outstanding-item data")
+            raise ScheduledDigestWorkerError(
+                "Teacher reminder has invalid outstanding-item data"
+            )
         course_name = raw.get("course_name")
         current_missing = raw.get("missing_current_closeout")
         next_missing = raw.get("missing_next_plan")
@@ -156,7 +171,9 @@ def _teacher_items(row: dict[str, Any]) -> tuple[FridayTeacherReminderItem, ...]
             or not isinstance(next_missing, bool)
             or not (current_missing or next_missing)
         ):
-            raise ScheduledDigestWorkerError("Teacher reminder has invalid outstanding-item data")
+            raise ScheduledDigestWorkerError(
+                "Teacher reminder has invalid outstanding-item data"
+            )
         items.append(
             FridayTeacherReminderItem(
                 course_name=course_name.strip(),
@@ -169,10 +186,14 @@ def _teacher_items(row: dict[str, Any]) -> tuple[FridayTeacherReminderItem, ...]
 
 def _assert_approved_sender(settings: Settings) -> None:
     if settings.ses_from_email.strip().lower() != APPROVED_SES_FROM_EMAIL:
-        raise ScheduledDigestWorkerError("Scheduled notification sender is not the approved TPP address")
+        raise ScheduledDigestWorkerError(
+            "Scheduled notification sender is not the approved TPP address"
+        )
 
 
-def run_teacher_friday_reminders(settings: Settings | None = None) -> dict[str, int | str]:
+def run_teacher_friday_reminders(
+    settings: Settings | None = None,
+) -> dict[str, int | str]:
     """Send one class-specific courtesy reminder only to teachers with outstanding submissions."""
     effective_settings = settings or Settings()
     _assert_approved_sender(effective_settings)
@@ -222,7 +243,9 @@ def run_teacher_friday_reminders(settings: Settings | None = None) -> dict[str, 
     }
 
 
-def run_scheduled_admin_digest(settings: Settings | None = None) -> dict[str, int | str]:
+def run_scheduled_admin_digest(
+    settings: Settings | None = None,
+) -> dict[str, int | str]:
     """Send one automatic aggregate Friday status digest per eligible school administrator."""
     effective_settings = settings or Settings()
     _assert_approved_sender(effective_settings)
