@@ -21,7 +21,7 @@ def test_teacher_recap_requires_explicit_boundary_confirmation() -> None:
     assert "IEP/504" in source
 
 
-def test_teacher_reflection_insights_are_scoped_to_friday_step_four() -> None:
+def test_teacher_reflection_insights_are_scoped_inline_to_friday_step_four() -> None:
     source = EXPERIENCE.read_text(encoding="utf-8")
     styles = STYLES.read_text(encoding="utf-8")
 
@@ -35,14 +35,20 @@ def test_teacher_reflection_insights_are_scoped_to_friday_step_four() -> None:
     assert "Step 5 Continue" in source
     assert "ri-renumbered-continue-marker" in source
     assert "ri-renumbered-continue-card" in source
-    assert ".ri-launcher" not in styles
-    assert "position: fixed" not in styles.split(".ri-panel", 1)[0]
+    assert "ri-inline-body" in source
+    assert "Generate my private recap" in source
+    assert "ri-results" in source
+    assert "<aside" not in source
+    assert 'className="ri-panel"' not in source
+    assert "setOpen(" not in source
+    assert ".ri-panel" not in styles
+    assert "position: fixed" not in styles
 
 
 def test_teacher_reflection_insights_remain_private_and_non_evaluative() -> None:
     source = EXPERIENCE.read_text(encoding="utf-8")
 
-    assert "Your private reflection insights" in source
+    assert "Review your reflection insights" in source
     assert "Instructional insight, not evaluation" in source
     assert "No teacher quality score" in source
     assert "only your submitted teacher-authored professional reflections" in source
