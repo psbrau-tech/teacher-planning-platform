@@ -17,11 +17,13 @@
 
 ### Mutating workflows
 
-- `.github/workflows/apply-pilot-database.yml` — reviewed Supabase migration preview/application with an exact pinned CLI version and post-apply dry-run verification
+- `.github/workflows/apply-pilot-database.yml` — target-scoped Supabase migration preview/application with exact `main` SHA, exact migration head, pinned CLI version, explicit apply confirmation, later-migration deferral, and post-apply target dry-run verification
 - `.github/workflows/provision-pilot-access.yml` — transaction-safe school, academic-year, and staff-access provisioning
 - `.github/workflows/bootstrap-pilot.yml` — isolated AWS foundation, first exact-image deployment, health verification, and ACM request; safe to retry only for the same accepted commit
 - `.github/workflows/enable-pilot-tls.yml` — issued-certificate attachment with listener, redirect, target-health, and image-preservation verification
-- `.github/workflows/deploy-pilot.yml` — subsequent exact-digest ECS deployments with prior-task-definition rollback evidence and no-op verification when the exact image is already active
+- `.github/workflows/deploy-pilot.yml` — subsequent exact-digest ECS deployments requiring the exact accepted `main` SHA, the confirmed applied migration head, Help review, prior-task-definition rollback evidence, and no-op verification when the exact image is already active
+- `.github/workflows/enable-ses-notifications.yml` — separate manual activation of the approved SES sender after identity/sending/privacy gates; does not send a test email
+- `.github/workflows/enable-scheduled-admin-digest.yml` — separate isolated scheduled-worker activation after database, SES, IAM, privacy, and exact schedule approval; not part of a normal application deployment
 
 ### Read-only workflows
 
@@ -31,17 +33,21 @@
 ### Application and infrastructure
 
 - `Dockerfile` — combined React/FastAPI production image with non-root runtime and application health check
-- `infra/pilot-stack.yml` — isolated TPP pilot CloudFormation stack
+- `infra/pilot-stack.yml` — isolated TPP pilot CloudFormation stack, including fail-closed SES parameters
+- `infra/scheduled-admin-digest-stack.yml` — separate optional scheduled-worker stack; it is not created by normal application deployment
 - `backend/scripts/preflight_pilot.py` — local and workflow validation of staff access and academic-year inputs without connecting to Supabase
 - `scripts/build_or_reuse_pilot_image.sh` — shared immutable-ECR helper that reuses a commit-tagged digest after a partial workflow failure rather than attempting to overwrite an immutable tag
+- `scripts/verify_exact_release_candidate.sh` — requires a release workflow to run from `main`, at the exact accepted SHA, against an exact repository migration version
+- `scripts/stage_migrations_through.sh` — makes only migrations through the approved target visible to the Supabase CLI in the ephemeral Actions checkout, leaving later source migrations intentionally deferred
 
 ### Operational documentation
 
-- `docs/PILOT_PREFLIGHT.md` — preflight use, migration rules, retry boundaries, and failure-specific remediation
+- `docs/PILOT_PREFLIGHT.md` — preflight use, target-scoped migration rules, retry boundaries, and failure-specific remediation
 - `docs/PILOT_BROWSER_ACCEPTANCE.md` — owner, administrator, volunteer-teacher, negative-authorization, export, and Friday-validation evidence package
 - `docs/VOLUNTEER_TEACHER_PILOT_GUIDE.md` — controlled teacher exercise and feedback guide
 - `docs/PILOT_ROLLBACK.md` — detailed layered recovery runbook
 - `docs/RELEASE_ROLLBACK_CHECKLIST.md` — concise release and rollback checklist
+- `docs/governance/INTELLIGENCE_NOTIFICATION_CONTROLLED_RELEASE_RUNBOOK_2026-08-14.md` — phased release/activation boundary for Reflection Intelligence, assessment analytics, PLC artifacts, and notifications
 - `docs/ROUTE53_MIGRATION_PREP.md` — coordinated migration preparation while Cloudflare remains authoritative
 - `docs/DNS_RECORD_INVENTORY_TEMPLATE.md` — human-readable DNS inventory worksheet
 - `docs/ROUTE53_RECORD_INVENTORY.csv` — row-level Cloudflare-to-Route 53 comparison template
@@ -50,59 +56,72 @@ All mutating workflows use the protected `tpp-pilot` GitHub environment. The rea
 
 ## Controlled release sequence
 
-1. Review CI, the pull-request diff, and the approved Anniston PDF artifacts.
-2. Approve and merge the release pull request.
-3. Run **Apply TPP Pilot Database Migrations** with `dry_run_only=true` and review the exact pending migration list.
-4. Approve and run migration application with `dry_run_only=false`; the workflow must finish with no migration remaining in its final dry run.
-5. Populate or correct the protected `tpp-pilot` variables and `TPP_PILOT_ACCESS_JSON` secret.
-6. Run **Preflight TPP Pilot Release** with the approved academic-year dates.
-7. Run **Provision TPP Pilot Access** only after preflight passes.
-8. Run the preflight again before infrastructure bootstrap if any protected value changed.
-9. Run **Bootstrap TPP Pilot** to create the isolated stack and deploy the first exact image.
-10. Run **Verify TPP Pilot Deployment** with the deployed commit and public-hostname verification disabled.
-11. Add the returned ACM validation CNAME to Cloudflare.
-12. After ACM reports `ISSUED`, run **Enable TPP Pilot TLS**.
-13. Set the protected GitHub variable `TPP_CERTIFICATE_ARN` to the issued certificate ARN returned by the accepted TLS workflow.
-14. Add the Cloudflare CNAME `planner` to the exact ALB DNS target, initially DNS only.
-15. Complete Supabase Site URL and allowed redirects plus Google OAuth origin and callback configuration.
-16. Run **Verify TPP Pilot Deployment** again with public HTTPS verification enabled.
-17. Complete Platform Owner, administrator, volunteer-teacher, unapproved-school-account, and non-school-account browser acceptance.
-18. Retain the exact image digest, task-definition revision, verification runs, and browser evidence.
+For an already-running pilot application release:
 
-Do not bypass failed validation by weakening checks, broadening access, or moving protected values into repository files.
+1. Review CI, the pull-request diff, applicable Help/legal/governance documents, and any required acceptance artifacts.
+2. Approve and merge every intended release pull request.
+3. Record the exact resulting `main` SHA and choose the exact migration target required for that release.
+4. Run **Apply TPP Pilot Database Migrations** from `main` with that `expected_main_sha`, that `target_migration_head`, `dry_run_only=true`, and `apply_target_confirmed=false`.
+5. Review the exact target-scoped pending list. Later repository migrations may remain deliberately deferred when the release runbook permits it.
+6. If approved, rerun the migration workflow with the same SHA/head, `dry_run_only=false`, and `apply_target_confirmed=true`. The final dry run must show nothing pending **through the approved target**.
+7. Run **Preflight TPP Pilot Release** if protected configuration changed or a fresh preflight is required for the release record.
+8. Run **Deploy TPP Pilot** from `main` with the exact accepted SHA, the exact migration head confirmed applied, `migration_head_applied_confirmed=true`, and the required Help review confirmation.
+9. Verify ECS stability, target health, exact immutable image provenance, and the interactive runtime secret boundary.
+10. Run **Verify TPP Pilot Deployment** for the exact accepted commit and perform the release-specific browser/API acceptance.
+11. Retain the exact image digest, task-definition revision, workflow runs, migration evidence, and acceptance evidence.
+
+For the August 14 professional-learning/application release, the source-controlled runbook permits a target of `20260815001500`; this intentionally leaves `20260815011000_scheduled_admin_digest_worker.sql` deferred. The automatic scheduled-digest database/AWS path is a later, separately approved activation.
+
+For a brand-new pilot stack, the original bootstrap/TLS/DNS/OAuth sequence still applies: provision governed access, run preflight, bootstrap the stack, verify the non-public deployment, complete ACM validation, enable TLS, set the accepted certificate ARN, add the application DNS record, complete Supabase/Google redirect configuration, and then run public verification/browser acceptance.
+
+Do not bypass failed validation by weakening checks, broadening access, moving protected values into repository files, or selecting a later migration merely to make a workflow pass.
 
 ## Deterministic migration boundary
 
-The migration workflow uses an exact Supabase CLI version rather than `latest`. Every apply run first previews the repository migration set, applies only reviewed pending files in timestamp order, lists migration history, and performs a final dry run. Applied migration files are immutable history; any correction must be a new forward migration.
+The migration workflow uses an exact Supabase CLI version rather than `latest`. Every run is bound to the exact accepted `main` SHA and one explicit target migration head. In the ephemeral runner checkout, repository migrations later than that target are moved out of the Supabase CLI migration directory before preview/application. This allows a governed later feature migration to remain source-controlled but intentionally deferred.
 
-This release contains a new migration aligning school aggregate reporting with active governed `profile_roles`. Earlier successful migration runs do not satisfy this later migration; it must receive a new protected preview and application after merge.
+An apply run previews the target-scoped migration set, applies only reviewed pending files through the target in timestamp order, lists migration history, and performs a final target-scoped dry run. Applied migration files are immutable history; any correction must be a new forward migration.
+
+Repository source state and live database state are separate evidence. The release record must retain the actual pilot migration history/head; a Git merge or successful CI run does not prove a migration is applied.
+
+## Interactive runtime credential boundary
+
+The current AI-enabled interactive application task uses exactly these secret mappings:
+
+- `TPP_SUPABASE_URL`;
+- `TPP_SUPABASE_ANON_KEY`; and
+- `TPP_OPENAI_API_KEY`.
+
+The interactive task must not contain `TPP_SUPABASE_SERVICE_ROLE_KEY`, the PostgreSQL database URL, or Google OAuth client credentials. Manual SES delivery, when separately activated, uses a least-privilege AWS task-role permission plus non-secret SES sender/region configuration. The optional scheduled worker is isolated in a separate task and is the only runtime permitted to receive the Supabase service-role key after its additional activation gates are satisfied.
 
 ## Retry and recovery behavior
 
 - **Preflight TPP Pilot Release** is read-only and can be rerun at any time.
+- **Apply TPP Pilot Database Migrations** defaults to dry-run and refuses mutation unless the exact SHA/head are supplied and target application is explicitly confirmed.
 - **Provision TPP Pilot Access** validates the complete access list before connecting and applies its changes in one database transaction.
 - **Bootstrap TPP Pilot** can resume a new or partially completed stack for the same accepted commit. It will not remove an existing service and will refuse to replace an existing service with a different commit.
 - After bootstrap, application changes must use **Deploy TPP Pilot**.
 - Bootstrap and deploy reuse the immutable ECR digest already tagged with the same commit after a partial failure.
 - Deploy avoids registering or activating a new task-definition revision when the same exact image is already active; it verifies the existing deployment instead.
 - **Enable TPP Pilot TLS** preserves and verifies the active exact image and confirms the HTTPS listener, approved certificate, HTTP redirect, and target health.
+- SES sender activation and scheduled-worker activation remain separate from an application deployment and have their own fail-closed checks.
 - Application rollback, database correction, staff-access correction, OAuth restoration, TLS correction, DNS rollback, and future Route 53 delegation rollback remain separate controlled actions.
 
-## Operational acceptance before volunteer access
+## Operational acceptance before volunteer access or a material pilot release
 
 - The read-only deployment verification passes for the exact accepted commit.
-- Public HTTPS `/health` returns HTTP 200 without a certificate warning.
+- Public HTTPS `/health` returns HTTP 200 without a certificate warning when public verification is in scope.
 - ECS desired and running counts match, pending count is zero, and rollout is complete.
 - The active task definition uses an immutable ECR digest associated with the accepted commit.
 - All load-balancer targets are healthy.
 - Application logs exist in the dedicated 30-day CloudWatch log group.
-- No secret-bearing variable appears in plaintext task-definition environment values.
-- All required runtime secrets are mapped through ECS secret references.
-- Supabase migration history matches the repository migration set.
+- No secret-bearing value appears in plaintext task-definition environment values.
+- The exact permitted interactive runtime secrets are mapped through ECS secret references; prohibited privileged credentials are absent.
+- Supabase migration history contains the exact migration target required by the release; any later intentionally deferred source migration is recorded as deferred rather than treated as missing accidentally.
 - The approved access list is active and unapproved accounts receive no application data.
 - Platform Owner retains both `platform_admin` and `teacher` in one session.
 - School Administrator reporting is aggregate and school-scoped.
-- Platform Administrator cost reporting is restricted to the governed Platform Administrator role.
+- Platform Administrator cost/adoption reporting is restricted to the governed Platform Administrator role.
 - No student table, roster, student account, or student-specific field is used.
 
 ## Volunteer-teacher acceptance
@@ -132,12 +151,15 @@ A failed ECS deployment uses the configured deployment circuit breaker. A manual
 The following require human action or explicit approval:
 
 - pull-request merge;
+- selection/approval of the exact migration target for a mutating database run;
 - protected-environment approval for database, provisioning, infrastructure, TLS, deployment, preflight, and verification workflows;
 - staff access-list contents and academic-year dates;
-- ACM validation CNAME creation in Cloudflare;
-- setting the accepted certificate ARN in the protected GitHub environment;
-- the final `planner` application CNAME;
+- ACM/SES validation DNS record creation when required;
+- setting accepted protected environment values such as a certificate ARN;
 - Supabase and Google console changes;
+- SES identity/sending activation and the first live/pilot email acceptance message;
+- creation of the dedicated scheduled-worker service-role secret;
+- approval of the exact automatic weekly schedule before enabling the scheduler;
 - live browser acceptance with approved school accounts;
 - any production rollback;
 - the later coordinated Route 53 nameserver migration.
