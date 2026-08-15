@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     # delivery fail-closed until SES verification and IAM wiring are complete.
     ses_from_email: str = ""
     ses_region: str = "us-east-2"
+    scheduled_digest_timezone: str = "America/Chicago"
 
     allowed_email_domains: str = ""
     allowed_pilot_emails: str = ""
