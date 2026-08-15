@@ -1,20 +1,69 @@
-.ri-launcher {
-  position: fixed;
-  right: 1.25rem;
-  bottom: 1.25rem;
-  z-index: 60;
-  border: 0;
-  border-radius: 999px;
-  padding: 0.8rem 1rem;
-  background: #7b001c;
-  color: #fff;
-  font: inherit;
-  font-weight: 700;
-  box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 20%);
-  cursor: pointer;
+.ri-step-marker-host,
+.ri-friday-step-host {
+  display: contents;
 }
 
-.ri-launcher:focus-visible,
+.setup-stepper.closeout-stepper:has([data-ri-step-marker-host]) {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.ri-renumbered-continue-marker > .step-number,
+.ri-renumbered-continue-card .step-heading > .step-number {
+  position: relative;
+  font-size: 0;
+}
+
+.ri-renumbered-continue-marker > .step-number::after,
+.ri-renumbered-continue-card .step-heading > .step-number::after {
+  content: "5";
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.ri-renumbered-continue-marker > span:last-child > strong {
+  position: relative;
+  font-size: 0;
+}
+
+.ri-renumbered-continue-marker > span:last-child > strong::after {
+  content: "Step 5";
+  color: inherit;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.ri-renumbered-continue-card .step-heading .eyebrow {
+  position: relative;
+  font-size: 0;
+}
+
+.ri-renumbered-continue-card .step-heading .eyebrow::after {
+  content: "Step 5";
+  color: #5d6b82;
+  font-size: 0.75rem;
+  font-weight: 750;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.ri-friday-reflection-step {
+  margin-top: 1rem;
+}
+
+.ri-step-status {
+  color: #1e603f;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.ri-step-note {
+  margin: 0.75rem 0 0;
+  color: #65738a;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
 .ri-panel button:focus-visible,
 .ri-panel input:focus-visible,
 .ri-panel select:focus-visible {
@@ -89,29 +138,6 @@
   line-height: 1.45;
 }
 
-.ri-tabs {
-  display: flex;
-  gap: 0.4rem;
-  margin: 1rem 0;
-  border-bottom: 1px solid #d7dde8;
-}
-
-.ri-tabs button {
-  border: 0;
-  border-bottom: 3px solid transparent;
-  padding: 0.65rem 0.8rem;
-  background: transparent;
-  color: #344054;
-  font: inherit;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.ri-tabs button.active {
-  border-bottom-color: #7b001c;
-  color: #7b001c;
-}
-
 .ri-controls {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
@@ -172,7 +198,6 @@
   cursor: wait;
 }
 
-.ri-guidance,
 .ri-meta {
   color: #475467;
   line-height: 1.45;
@@ -209,45 +234,6 @@
   margin-top: 0.35rem;
 }
 
-.ri-theme-list {
-  display: grid;
-  gap: 0.55rem;
-}
-
-.ri-theme-card {
-  border-left: 0.25rem solid #b88b2d;
-  padding: 0.6rem 0.75rem;
-  background: #fff;
-}
-
-.ri-theme-card p {
-  margin: 0.25rem 0;
-  line-height: 1.45;
-}
-
-.ri-theme-card small {
-  color: #667085;
-}
-
-.ri-handout-header {
-  border-bottom: 2px solid #7b001c;
-  margin-bottom: 1rem;
-  padding-bottom: 0.75rem;
-}
-
-.ri-handout-footer {
-  margin-top: 1.25rem;
-  border-top: 1px solid #d7dde8;
-  padding-top: 0.7rem;
-  color: #667085;
-  font-size: 0.84rem;
-  line-height: 1.4;
-}
-
-.ri-secondary {
-  margin-top: 0.8rem;
-}
-
 .ri-error {
   margin-top: 1rem;
   border-left: 0.35rem solid #b42318;
@@ -257,7 +243,17 @@
   font-weight: 700;
 }
 
-@media (max-width: 40rem) {
+@media (max-width: 67.5rem) {
+  .setup-stepper.closeout-stepper:has([data-ri-step-marker-host]) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 47.5rem) {
+  .setup-stepper.closeout-stepper:has([data-ri-step-marker-host]) {
+    grid-template-columns: 1fr;
+  }
+
   .ri-panel {
     width: 100vw;
     padding: 1rem;
@@ -265,40 +261,5 @@
 
   .ri-panel-header {
     align-items: center;
-  }
-}
-
-@media print {
-  @page {
-    margin: 0.55in;
-  }
-
-  body * {
-    visibility: hidden !important;
-  }
-
-  .reflection-intelligence-handout,
-  .reflection-intelligence-handout * {
-    visibility: visible !important;
-  }
-
-  .reflection-intelligence-handout {
-    position: absolute;
-    inset: 0 auto auto 0;
-    width: 100%;
-    margin: 0;
-    border: 0;
-    padding: 0;
-    background: #fff;
-    box-shadow: none;
-    color: #000;
-  }
-
-  .ri-theme-card {
-    break-inside: avoid;
-  }
-
-  .ri-result-section {
-    break-inside: avoid-page;
   }
 }
