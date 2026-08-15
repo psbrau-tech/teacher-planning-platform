@@ -47,7 +47,7 @@ It requires explicit confirmation that:
 
 The workflow then updates only the SES CloudFormation parameters. Existing stack parameter values, immutable application image, runtime secret set, school data boundary, and ECS service configuration must remain otherwise unchanged.
 
-The workflow does **not** send a test email. A separate governed application-level delivery test should occur only after the infrastructure activation is accepted.
+The workflow does not send a test email. A separate governed application-level delivery test should occur only after the infrastructure activation is accepted.
 
 ## Existing deployment workflows
 
