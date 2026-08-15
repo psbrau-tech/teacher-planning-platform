@@ -43,20 +43,19 @@ def test_operations_docs_match_exact_sha_and_target_scoped_migration_workflows()
 
     for source in (deployment, preflight, secrets):
         assert "through" in source and "target" in source
-
-    assert "20260815001500" in deployment
-    assert "20260815011000_scheduled_admin_digest_worker.sql" in deployment
-    assert "20260815001500" in preflight
-    assert "20260815011000_scheduled_admin_digest_worker.sql" in preflight
+        assert "20260815001500" in source
+        assert "20260815011000_friday_submission_status.sql" in source
+        assert "20260815013000_scheduled_friday_notifications.sql" in source
+        assert "deferred" in source
 
 
 def test_operations_docs_keep_scheduled_service_role_out_of_interactive_task() -> None:
     deployment = normalized(DEPLOYMENT)
     secrets = normalized(SECRETS)
 
-    assert "separate scheduled ecs task" in secrets
-    assert "only that isolated worker may receive `tpp_supabase_service_role_key`" in secrets
-    assert "scheduled worker is isolated in a separate task" in deployment
+    assert "separate scheduled one-shot ecs tasks" in secrets
+    assert "only those isolated worker tasks may receive `tpp_supabase_service_role_key`" in secrets
+    assert "isolated in separate one-shot ecs tasks" in deployment
     assert "interactive task must not contain `tpp_supabase_service_role_key`" in deployment
 
 
