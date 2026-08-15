@@ -28,7 +28,14 @@ def test_plc_artifact_is_condensed_and_has_fixed_facilitation_protocol() -> None
 
     assert "items.slice(0, 3)" in source
     assert "40-minute PLC protocol" in source
-    for minutes in ("5 min · Orient", "10 min · Examine", "10 min · Exchange", "10 min · Decide", "5 min · Commit"):
+    protocol_steps = (
+        "5 min · Orient",
+        "10 min · Examine",
+        "10 min · Exchange",
+        "10 min · Decide",
+        "5 min · Commit",
+    )
+    for minutes in protocol_steps:
         assert minutes in source
     assert "Action we will try:" in source
     assert "Evidence we will bring back:" in source
@@ -42,7 +49,9 @@ def test_plc_artifact_preserves_professional_learning_and_data_boundaries() -> N
     assert "anonymous teacher sources" in source
     assert "not teacher-performance measures" in source
     assert "no student data" in source
-    assert "no teacher" in source and "ranking" in source and "personnel evaluation" in source
+    assert "no teacher" in source
+    assert "ranking" in source
+    assert "personnel evaluation" in source
     assert "do not add student-specific information" in source
     assert "tpp does not store these entries" in source
     assert "teacher_name" not in source
