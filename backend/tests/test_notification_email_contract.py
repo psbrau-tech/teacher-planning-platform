@@ -9,13 +9,14 @@ from app.notification_email import (
     send_weekly_admin_digest,
     weekly_admin_digest_text,
 )
-from app.settings import Settings
+from app.settings import APPROVED_SES_FROM_EMAIL, Settings
 
 ROOT = Path(__file__).resolve().parents[2]
 API = ROOT / "backend" / "app" / "notifications_api.py"
 MIGRATION = (
     ROOT / "supabase" / "migrations" / "20260814231500_notification_delivery_events.sql"
 )
+DECISION = ROOT / "docs" / "governance" / "ADMIN_EMAIL_NOTIFICATION_DECISION_2026-08-14.md"
 
 
 def metrics() -> WeeklyAdminDigestMetrics:
@@ -65,9 +66,22 @@ def test_ses_delivery_is_fail_closed_until_sender_is_configured() -> None:
         )
 
 
+def test_ses_delivery_rejects_unapproved_sender_identity() -> None:
+    settings = Settings(
+        ses_from_email="another-sender@planner.guidedscholar.ai",
+        allowed_email_domains="anniston.k12.al.us",
+    )
+    with pytest.raises(SesDeliveryError, match="approved TPP sender"):
+        send_weekly_admin_digest(
+            settings,
+            recipient_email="principal@anniston.k12.al.us",
+            metrics=metrics(),
+        )
+
+
 def test_ses_delivery_rejects_recipient_outside_governed_account_boundary() -> None:
     settings = Settings(
-        ses_from_email="notifications@example.org",
+        ses_from_email=APPROVED_SES_FROM_EMAIL,
         allowed_email_domains="anniston.k12.al.us",
     )
     with pytest.raises(SesDeliveryError, match="outside the governed"):
@@ -76,6 +90,13 @@ def test_ses_delivery_rejects_recipient_outside_governed_account_boundary() -> N
             recipient_email="outside@example.org",
             metrics=metrics(),
         )
+
+
+def test_approved_sender_is_recorded_but_runtime_remains_fail_closed() -> None:
+    source = DECISION.read_text(encoding="utf-8")
+    assert APPROVED_SES_FROM_EMAIL == "notifications@planner.guidedscholar.ai"
+    assert "`notifications@planner.guidedscholar.ai`" in source
+    assert "Recording this address does not activate email delivery" in source
 
 
 def test_notification_api_sends_only_to_requesting_admin_account() -> None:
