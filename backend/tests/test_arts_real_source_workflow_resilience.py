@@ -52,6 +52,19 @@ def test_live_source_verification_still_uses_only_authoritative_source_and_write
     assert "KNOWN_SOURCE_SHA256" not in source
 
 
+def test_scope_does_not_turn_unrelated_standards_changes_into_source_acceptance() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    # The scoped check is specifically the Arts live parser integration contract. Other
+    # standards governance remains covered by normal standards CI and governed maintenance.
+    assert "backend/app/standards_alabama_arts.py" in source
+    assert "backend/app/standards_ingest.py" in source
+    assert "backend/pyproject.toml" in source
+    assert "success-on-error" not in source
+    assert "continue-on-error" not in source
+    assert "|| true" not in source
+
+
 def test_architecture_preserves_snapshot_during_outage_and_scopes_pr_check() -> None:
     source = ARCHITECTURE.read_text(encoding="utf-8")
 
