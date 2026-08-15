@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       reason:
-        description: Reason for provisioning or updating governed pilot schools and access
+        description: Reason for provisioning or updating governed pilot districts, schools, and access
         required: true
         type: string
       academic_year_name:
@@ -21,7 +21,7 @@ on:
         required: true
         type: string
       replace_access:
-        description: Deactivate existing access records for configured schools before applying the approved JSON memberships
+        description: Deactivate existing access records for configured schools before applying the approved JSON accounts
         required: true
         default: false
         type: boolean
@@ -36,7 +36,7 @@ concurrency:
 
 jobs:
   provision:
-    name: Provision governed schools and staff access
+    name: Provision governed districts, schools, and staff access
     runs-on: ubuntu-latest
     environment: tpp-pilot
     env:
@@ -101,7 +101,7 @@ jobs:
       - name: Install provisioning dependency
         run: python -m pip install 'psycopg[binary]>=3.2,<4'
 
-      - name: Materialize approved multi-school configuration securely
+      - name: Materialize approved district and school configuration securely
         shell: bash
         run: |
           set -euo pipefail
@@ -109,7 +109,7 @@ jobs:
           printf '%s' "$PILOT_ACCESS_JSON" > "$RUNNER_TEMP/tpp-pilot-access.json"
           python -m json.tool "$RUNNER_TEMP/tpp-pilot-access.json" >/dev/null
 
-      - name: Provision pilot schools, settings, and access
+      - name: Provision pilot districts, schools, settings, and access
         env:
           DATABASE_URL: ${{ steps.database.outputs.database_url }}
         shell: bash
@@ -140,8 +140,8 @@ jobs:
             echo "## TPP pilot provisioning"
             echo "- Reason: ${{ inputs.reason }}"
             echo "- Commit: \`$GITHUB_SHA\`"
-            echo "- District: Anniston City Schools"
-            echo "- School membership, IANA timezone, and notification settings source: protected \`TPP_PILOT_ACCESS_JSON\`"
+            echo "- District, school, IANA timezone, notification settings, and professional account source: protected \`TPP_PILOT_ACCESS_JSON\`"
+            echo "- District-admin scope source: assigned school's governed \`district_id\`"
             echo "- Academic year: \`${{ inputs.academic_year_name }}\`"
             echo "- Governed dates: \`${{ inputs.starts_on }}\` through \`${{ inputs.ends_on }}\`"
             echo "- Replace configured-school access mode: \`${{ inputs.replace_access }}\`"
