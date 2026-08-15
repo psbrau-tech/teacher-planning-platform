@@ -87,6 +87,75 @@
   line-height: 1.4;
 }
 
+.plc-assessment-snapshot {
+  margin-bottom: 0.85rem;
+  border: 1px solid #b9d5cb;
+  border-radius: 0.5rem;
+  padding: 0.65rem;
+  background: #f4faf8;
+  break-inside: avoid;
+}
+
+.plc-assessment-snapshot-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: end;
+  margin-bottom: 0.45rem;
+}
+
+.plc-assessment-snapshot-heading .eyebrow {
+  margin-bottom: 0.05rem;
+}
+
+.plc-assessment-snapshot-heading h5 {
+  margin: 0;
+  color: #164f42;
+  font-size: 0.95rem;
+}
+
+.plc-assessment-snapshot-heading small {
+  max-width: 16rem;
+  color: #667085;
+  text-align: right;
+}
+
+.plc-assessment-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.plc-assessment-metrics > div {
+  display: grid;
+  gap: 0.1rem;
+  border-left: 0.2rem solid #4f8f7c;
+  padding: 0.3rem 0.4rem;
+  background: #fff;
+}
+
+.plc-assessment-metrics strong {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.plc-assessment-metrics span {
+  color: #475467;
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+
+.plc-assessment-type-summary,
+.plc-assessment-snapshot-note {
+  margin: 0.45rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.plc-assessment-snapshot-note {
+  color: #667085;
+}
+
 .plc-artifact-columns {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -181,6 +250,20 @@
   .plc-artifact-columns {
     grid-template-columns: 1fr;
   }
+
+  .plc-assessment-snapshot-heading {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .plc-assessment-snapshot-heading small {
+    max-width: none;
+    text-align: left;
+  }
+
+  .plc-assessment-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media print {
@@ -207,46 +290,71 @@
     border-radius: 0;
     padding: 0;
     color: #000;
-    font-size: 9.5pt;
-    line-height: 1.25;
+    font-size: 9pt;
+    line-height: 1.2;
   }
 
   .plc-artifact-header {
-    margin-bottom: 0.45rem;
-    padding-bottom: 0.4rem;
+    margin-bottom: 0.4rem;
+    padding-bottom: 0.35rem;
   }
 
   .plc-artifact-header h4 {
-    font-size: 14pt;
+    font-size: 13.5pt;
   }
 
   .plc-focus-box,
+  .plc-assessment-snapshot,
   .plc-artifact-section,
   .plc-action-workspace {
     break-inside: avoid;
   }
 
+  .plc-focus-box,
+  .plc-assessment-snapshot {
+    margin-bottom: 0.4rem;
+    padding: 0.4rem;
+  }
+
+  .plc-assessment-snapshot-heading {
+    margin-bottom: 0.25rem;
+  }
+
+  .plc-assessment-metrics {
+    gap: 0.2rem;
+  }
+
+  .plc-assessment-metrics > div {
+    padding: 0.2rem 0.3rem;
+  }
+
+  .plc-assessment-type-summary,
+  .plc-assessment-snapshot-note {
+    margin-top: 0.25rem;
+    font-size: 7.5pt;
+  }
+
   .plc-artifact-columns {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.7rem;
+    gap: 0.6rem;
   }
 
   .plc-artifact-section {
-    margin-bottom: 0.45rem;
+    margin-bottom: 0.4rem;
   }
 
   .plc-theme-list li {
-    padding: 0.25rem 0.35rem;
+    padding: 0.2rem 0.3rem;
   }
 
   .plc-action-workspace {
-    margin-top: 0.45rem;
-    padding: 0.45rem;
+    margin-top: 0.4rem;
+    padding: 0.4rem;
   }
 
   .plc-artifact-footer {
-    margin-top: 0.45rem;
-    padding-top: 0.35rem;
-    font-size: 8pt;
+    margin-top: 0.4rem;
+    padding-top: 0.3rem;
+    font-size: 7.5pt;
   }
 }
