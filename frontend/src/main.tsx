@@ -6,6 +6,7 @@ import { DailyAssessmentAnalyticsExperience } from "./DailyAssessmentAnalyticsEx
 import { OwnerActiveTimeBreakout } from "./OwnerActiveTimeBreakout";
 import { OwnerReflectionIntelligenceAnalytics } from "./OwnerReflectionIntelligenceAnalytics";
 import { PilotFeedbackExperience } from "./PilotFeedbackExperience";
+import { PlcFacilitationArtifactExperience } from "./PlcFacilitationArtifactExperience";
 import { ProductUsageObserver } from "./ProductUsageObserver";
 import { ReflectionIntelligenceExperience } from "./ReflectionIntelligenceExperience";
 import { TeacherPlanningShell } from "./TeacherPlanningShell";
@@ -20,6 +21,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <OwnerActiveTimeBreakout />
     <OwnerReflectionIntelligenceAnalytics />
     <DailyAssessmentAnalyticsExperience />
+    <PlcFacilitationArtifactExperience />
     <ReflectionIntelligenceExperience />
     <AdminWeeklyDigestAction />
   </React.StrictMode>,
