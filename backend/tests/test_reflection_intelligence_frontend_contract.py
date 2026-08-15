@@ -54,12 +54,16 @@ def test_teacher_reflection_insights_remain_private_and_non_evaluative() -> None
 
 def test_reflection_intelligence_exposes_no_teacher_comparison_controls() -> None:
     source = EXPERIENCE.read_text(encoding="utf-8").lower()
-    forbidden = (
-        "teacher score",
-        "teacher rating",
+    forbidden_controls = (
+        "teacher score:",
+        "teacher rating:",
         "rank teachers",
         "compare teachers",
-        "performance score",
+        "performance score:",
     )
-    for phrase in forbidden:
+    for phrase in forbidden_controls:
         assert phrase not in source
+
+    # Negative boundary language is expected and must remain visible.
+    assert "not a teacher-performance score" in source
+    assert "no teacher quality score" in source
