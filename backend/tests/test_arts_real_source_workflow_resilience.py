@@ -15,19 +15,27 @@ def test_real_source_verification_retries_only_bounded_source_unavailability() -
     assert "raise" in source
 
 
-def test_real_source_verification_has_tls_verified_doh_fallback_without_bypass() -> None:
+def test_real_source_verification_has_tls_verified_explicit_doh_without_bypass() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 
-    assert '"--doh-url"' in source
-    assert '"https://cloudflare-dns.com/dns-query"' in source
-    assert '"cloudflare-dns.com:443:1.1.1.1"' in source
+    assert "def doh_payload" in source
+    assert "def resolve_ipv4" in source
+    assert '"https://cloudflare-dns.com/dns-query?name=' in source
+    assert '"cloudflare-dns.com"' in source
+    assert '"1.1.1.1"' in source
+    assert '"https://dns.google/resolve?name=' in source
+    assert '"dns.google"' in source
+    assert '"8.8.8.8"' in source
+    assert '"accept: application/dns-json"' in source
+    assert 'f"www.alabamaachieves.org:443:{source_ips[0]}"' in source
+    assert 'f"alabamaachieves.org:443:{root_ips[0]}"' in source
     assert '"--fail"' in source
     assert '"--location"' in source
     assert '"--insecure"' not in source
     assert '"--doh-insecure"' not in source
     assert "content.startswith(b\"%PDF\")" in source
     assert "MAX_SOURCE_BYTES" in source
-    assert 'transport = "cloudflare-doh"' in source
+    assert 'transport = "explicit-doh-resolve"' in source
 
 
 def test_real_source_verification_still_uses_authoritative_source_and_writes_nothing() -> None:
