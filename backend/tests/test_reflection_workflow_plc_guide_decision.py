@@ -31,4 +31,4 @@ def test_plc_meeting_guide_decision_requires_embedded_school_summary() -> None:
     assert "must embed the school reflection summary" in decision
     assert "rather than operating as a generic agenda" in decision
     assert "action workspace remains non-persistent" in decision
-    assert "The PLC Meeting Guide embeds that School Reflection Summary" in help_source
+    assert "The PLC Meeting Guide follows and carries that School Reflection Summary" in help_source
