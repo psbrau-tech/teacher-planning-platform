@@ -31,7 +31,7 @@ def test_pilot_deployment_requires_exact_candidate_help_review_acknowledgement()
     workflow = DEPLOY.read_text(encoding="utf-8")
     assert "help_review_confirmed:" in workflow
     assert "I reviewed Help against this exact release candidate and it is current" in workflow
-    assert "Enforce exact-candidate Help review gate" in workflow
+    assert "Enforce release confirmations" in workflow
     assert "inputs.help_review_confirmed" in workflow
     assert (
         "Pilot deployment is blocked until Help is reviewed against this exact release candidate"
