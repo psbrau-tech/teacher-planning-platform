@@ -103,7 +103,10 @@ def school_daily_assessment_analytics(
     if identity.school_id is None:
         raise HTTPException(status_code=503, detail="Governed school context is unavailable")
     if period_end < period_start:
-        raise HTTPException(status_code=422, detail="Reporting period end must be on or after start")
+        raise HTTPException(
+            status_code=422,
+            detail="Reporting period end must be on or after start",
+        )
     if period_end - period_start > timedelta(days=366):
         raise HTTPException(status_code=422, detail="Assessment analytics are limited to 367 days")
 
