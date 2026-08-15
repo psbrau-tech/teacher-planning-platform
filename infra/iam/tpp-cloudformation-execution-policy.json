@@ -36,11 +36,7 @@
         "ec2:Describe*"
       ],
       "Resource": "*",
-      "Condition": {
-        "StringEquals": {
-          "aws:RequestedRegion": "us-east-2"
-        }
-      }
+      "Condition": {"StringEquals": {"aws:RequestedRegion": "us-east-2"}}
     },
     {
       "Sid": "RegionalLoadBalancerInfrastructure",
@@ -68,11 +64,7 @@
         "elasticloadbalancing:Describe*"
       ],
       "Resource": "*",
-      "Condition": {
-        "StringEquals": {
-          "aws:RequestedRegion": "us-east-2"
-        }
-      }
+      "Condition": {"StringEquals": {"aws:RequestedRegion": "us-east-2"}}
     },
     {
       "Sid": "RegionalEcsInfrastructure",
@@ -93,11 +85,7 @@
         "ecs:List*"
       ],
       "Resource": "*",
-      "Condition": {
-        "StringEquals": {
-          "aws:RequestedRegion": "us-east-2"
-        }
-      }
+      "Condition": {"StringEquals": {"aws:RequestedRegion": "us-east-2"}}
     },
     {
       "Sid": "PilotEcrRepository",
@@ -125,11 +113,7 @@
       "Effect": "Allow",
       "Action": "logs:DescribeLogGroups",
       "Resource": "*",
-      "Condition": {
-        "StringEquals": {
-          "aws:RequestedRegion": "us-east-2"
-        }
-      }
+      "Condition": {"StringEquals": {"aws:RequestedRegion": "us-east-2"}}
     },
     {
       "Sid": "PilotLogGroups",
@@ -154,20 +138,10 @@
       "Sid": "ManageExactPilotTaskRoles",
       "Effect": "Allow",
       "Action": [
-        "iam:CreateRole",
-        "iam:DeleteRole",
-        "iam:GetRole",
-        "iam:UpdateAssumeRolePolicy",
-        "iam:TagRole",
-        "iam:UntagRole",
-        "iam:PutRolePolicy",
-        "iam:GetRolePolicy",
-        "iam:DeleteRolePolicy",
-        "iam:ListRolePolicies",
-        "iam:AttachRolePolicy",
-        "iam:DetachRolePolicy",
-        "iam:ListAttachedRolePolicies",
-        "iam:ListInstanceProfilesForRole",
+        "iam:CreateRole", "iam:DeleteRole", "iam:GetRole", "iam:UpdateAssumeRolePolicy",
+        "iam:TagRole", "iam:UntagRole", "iam:PutRolePolicy", "iam:GetRolePolicy",
+        "iam:DeleteRolePolicy", "iam:ListRolePolicies", "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy", "iam:ListAttachedRolePolicies", "iam:ListInstanceProfilesForRole",
         "iam:ListRoleTags"
       ],
       "Resource": [
@@ -179,20 +153,10 @@
       "Sid": "ManageExactScheduledDigestRoles",
       "Effect": "Allow",
       "Action": [
-        "iam:CreateRole",
-        "iam:DeleteRole",
-        "iam:GetRole",
-        "iam:UpdateAssumeRolePolicy",
-        "iam:TagRole",
-        "iam:UntagRole",
-        "iam:PutRolePolicy",
-        "iam:GetRolePolicy",
-        "iam:DeleteRolePolicy",
-        "iam:ListRolePolicies",
-        "iam:AttachRolePolicy",
-        "iam:DetachRolePolicy",
-        "iam:ListAttachedRolePolicies",
-        "iam:ListInstanceProfilesForRole",
+        "iam:CreateRole", "iam:DeleteRole", "iam:GetRole", "iam:UpdateAssumeRolePolicy",
+        "iam:TagRole", "iam:UntagRole", "iam:PutRolePolicy", "iam:GetRolePolicy",
+        "iam:DeleteRolePolicy", "iam:ListRolePolicies", "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy", "iam:ListAttachedRolePolicies", "iam:ListInstanceProfilesForRole",
         "iam:ListRoleTags"
       ],
       "Resource": [
@@ -209,11 +173,7 @@
         "arn:aws:iam::697091778129:role/tpp-pilot-task",
         "arn:aws:iam::697091778129:role/tpp-pilot-task-execution"
       ],
-      "Condition": {
-        "StringEquals": {
-          "iam:PassedToService": "ecs-tasks.amazonaws.com"
-        }
-      }
+      "Condition": {"StringEquals": {"iam:PassedToService": "ecs-tasks.amazonaws.com"}}
     },
     {
       "Sid": "PassExactScheduledDigestTaskRolesToEcs",
@@ -223,36 +183,27 @@
         "arn:aws:iam::697091778129:role/tpp-pilot-scheduled-digest-task",
         "arn:aws:iam::697091778129:role/tpp-pilot-scheduled-digest-task-execution"
       ],
-      "Condition": {
-        "StringEquals": {
-          "iam:PassedToService": "ecs-tasks.amazonaws.com"
-        }
-      }
+      "Condition": {"StringEquals": {"iam:PassedToService": "ecs-tasks.amazonaws.com"}}
     },
     {
       "Sid": "PassExactScheduledDigestRoleToScheduler",
       "Effect": "Allow",
       "Action": "iam:PassRole",
       "Resource": "arn:aws:iam::697091778129:role/tpp-pilot-scheduled-digest-scheduler",
-      "Condition": {
-        "StringEquals": {
-          "iam:PassedToService": "scheduler.amazonaws.com"
-        }
-      }
+      "Condition": {"StringEquals": {"iam:PassedToService": "scheduler.amazonaws.com"}}
     },
     {
-      "Sid": "ManageExactScheduledDigestSchedule",
+      "Sid": "ManageExactScheduledDigestSchedules",
       "Effect": "Allow",
       "Action": [
-        "scheduler:CreateSchedule",
-        "scheduler:UpdateSchedule",
-        "scheduler:DeleteSchedule",
-        "scheduler:GetSchedule",
-        "scheduler:TagResource",
-        "scheduler:UntagResource",
+        "scheduler:CreateSchedule", "scheduler:UpdateSchedule", "scheduler:DeleteSchedule",
+        "scheduler:GetSchedule", "scheduler:TagResource", "scheduler:UntagResource",
         "scheduler:ListTagsForResource"
       ],
-      "Resource": "arn:aws:scheduler:us-east-2:697091778129:schedule/default/tpp-pilot-admin-weekly-digest"
+      "Resource": [
+        "arn:aws:scheduler:us-east-2:697091778129:schedule/default/tpp-pilot-teacher-friday-reminder",
+        "arn:aws:scheduler:us-east-2:697091778129:schedule/default/tpp-pilot-admin-weekly-digest"
+      ]
     },
     {
       "Sid": "CreateRequiredServiceLinkedRoles",
@@ -261,20 +212,14 @@
       "Resource": "*",
       "Condition": {
         "StringEquals": {
-          "iam:AWSServiceName": [
-            "ecs.amazonaws.com",
-            "elasticloadbalancing.amazonaws.com"
-          ]
+          "iam:AWSServiceName": ["ecs.amazonaws.com", "elasticloadbalancing.amazonaws.com"]
         }
       }
     },
     {
       "Sid": "ReadManagedTaskExecutionPolicy",
       "Effect": "Allow",
-      "Action": [
-        "iam:GetPolicy",
-        "iam:GetPolicyVersion"
-      ],
+      "Action": ["iam:GetPolicy", "iam:GetPolicyVersion"],
       "Resource": "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
     },
     {
