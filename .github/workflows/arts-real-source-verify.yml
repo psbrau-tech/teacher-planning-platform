@@ -51,6 +51,11 @@ jobs:
               "AS_20250108_2024-Alabama-Course-of-Study-Arts-Education_V1.0.pdf"
           )
 
+          RESOLVERS = (
+              ("cloudflare", "cloudflare-dns.com", "1.1.1.1", "https://cloudflare-dns.com/dns-query"),
+              ("google", "dns.google", "8.8.8.8", "https://dns.google/resolve"),
+          )
+
           def doh_payload(resolver_host: str, resolver_ip: str, endpoint: str) -> dict:
               completed = subprocess.run(
                   [
@@ -77,6 +82,46 @@ jobs:
                   raise RuntimeError("DNS-over-HTTPS returned an invalid response")
               return payload
 
+          def resolver_endpoint(
+              base_url: str,
+              hostname: str,
+              record_type: str,
+              checking_disabled: bool,
+          ) -> str:
+              cd_value = "1" if checking_disabled else "0"
+              return (
+                  f"{base_url}?name={quote(hostname.rstrip('.').lower())}"
+                  f"&type={quote(record_type)}&cd={cd_value}"
+              )
+
+          def log_dns_diagnostic(hostname: str, record_type: str) -> None:
+              for resolver_name, resolver_host, resolver_ip, base_url in RESOLVERS:
+                  endpoint = resolver_endpoint(
+                      base_url,
+                      hostname,
+                      record_type,
+                      checking_disabled=True,
+                  )
+                  try:
+                      payload = doh_payload(resolver_host, resolver_ip, endpoint)
+                  except (subprocess.CalledProcessError, json.JSONDecodeError, RuntimeError) as error:
+                      print(
+                          f"dns_diagnostic resolver={resolver_name} host={hostname} "
+                          f"type={record_type} transport_error={error}"
+                      )
+                      continue
+                  status = payload.get("Status")
+                  answer = payload.get("Answer") or []
+                  authority = payload.get("Authority") or []
+                  comment = payload.get("Comment")
+                  print(
+                      f"dns_diagnostic resolver={resolver_name} host={hostname} "
+                      f"type={record_type} cd=1 status={status} "
+                      f"answer={json.dumps(answer, sort_keys=True)} "
+                      f"authority={json.dumps(authority, sort_keys=True)} "
+                      f"comment={json.dumps(comment, sort_keys=True)}"
+                  )
+
           def resolve_ipv4(
               hostname: str,
               *,
@@ -90,22 +135,14 @@ jobs:
               visited.add(normalized)
               cd_value = "1" if checking_disabled else "0"
 
-              resolver_specs = (
-                  (
-                      "cloudflare",
-                      "cloudflare-dns.com",
-                      "1.1.1.1",
-                      f"https://cloudflare-dns.com/dns-query?name={quote(normalized)}&type=A&cd={cd_value}",
-                  ),
-                  (
-                      "google",
-                      "dns.google",
-                      "8.8.8.8",
-                      f"https://dns.google/resolve?name={quote(normalized)}&type=A&cd={cd_value}",
-                  ),
-              )
               last_error: Exception | None = None
-              for resolver_name, resolver_host, resolver_ip, endpoint in resolver_specs:
+              for resolver_name, resolver_host, resolver_ip, base_url in RESOLVERS:
+                  endpoint = resolver_endpoint(
+                      base_url,
+                      normalized,
+                      "A",
+                      checking_disabled=checking_disabled,
+                  )
                   try:
                       payload = doh_payload(resolver_host, resolver_ip, endpoint)
                   except (subprocess.CalledProcessError, json.JSONDecodeError, RuntimeError) as error:
@@ -217,6 +254,13 @@ jobs:
                       )
                   except RuntimeError as diagnostic_error:
                       print(f"dnssec_diagnostic=cd1-also-failed error={diagnostic_error}")
+                      for diagnostic_name, diagnostic_type in (
+                          ("alabamaachieves.org", "NS"),
+                          ("alabamaachieves.org", "DS"),
+                          ("alabamaachieves.org", "DNSKEY"),
+                          ("org", "NS"),
+                      ):
+                          log_dns_diagnostic(diagnostic_name, diagnostic_type)
                   raise StandardsIngestError(
                       "Authoritative standards source is unavailable"
                   ) from validation_error
