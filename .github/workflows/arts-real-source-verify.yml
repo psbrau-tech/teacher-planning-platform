@@ -50,6 +50,20 @@ jobs:
               "https://www.alabamaachieves.org/wp-content/uploads/2025/01/"
               "AS_20250108_2024-Alabama-Course-of-Study-Arts-Education_V1.0.pdf"
           )
+          # These hashes come from the last successful governed live-source verification.
+          # They are used only when public DNS cannot reach the authoritative name servers.
+          # The recovery path still downloads the live official HTTPS URL, keeps hostname/TLS
+          # certificate verification enabled, and rejects any byte or normalized-content change.
+          KNOWN_SOURCE_SHA256 = (
+              "add310883b958ebb8a617d9b405a596aeda3488d75ddf24f2aef1bf463995498"
+          )
+          KNOWN_NORMALIZED_SHA256 = (
+              "9cb3249ec617c4253c6812c1a8822a8c19dbbf2ab0a33869b0506105216b5fc8"
+          )
+          # Routing hint only, never an authenticity signal. A stale or incorrect endpoint cannot
+          # pass unless it presents valid TLS for the official hostname and serves the exact
+          # previously governed source bytes.
+          RECOVERY_SOURCE_IP = "157.149.4.100"
 
           RESOLVERS = (
               ("cloudflare", "cloudflare-dns.com", "1.1.1.1", "https://cloudflare-dns.com/dns-query"),
@@ -82,86 +96,33 @@ jobs:
                   raise RuntimeError("DNS-over-HTTPS returned an invalid response")
               return payload
 
-          def resolver_endpoint(
-              base_url: str,
-              hostname: str,
-              record_type: str,
-              checking_disabled: bool,
-          ) -> str:
-              cd_value = "1" if checking_disabled else "0"
-              return (
-                  f"{base_url}?name={quote(hostname.rstrip('.').lower())}"
-                  f"&type={quote(record_type)}&cd={cd_value}"
-              )
-
-          def log_dns_diagnostic(hostname: str, record_type: str) -> None:
-              for resolver_name, resolver_host, resolver_ip, base_url in RESOLVERS:
-                  endpoint = resolver_endpoint(
-                      base_url,
-                      hostname,
-                      record_type,
-                      checking_disabled=True,
-                  )
-                  try:
-                      payload = doh_payload(resolver_host, resolver_ip, endpoint)
-                  except (subprocess.CalledProcessError, json.JSONDecodeError, RuntimeError) as error:
-                      print(
-                          f"dns_diagnostic resolver={resolver_name} host={hostname} "
-                          f"type={record_type} transport_error={error}"
-                      )
-                      continue
-                  status = payload.get("Status")
-                  answer = payload.get("Answer") or []
-                  authority = payload.get("Authority") or []
-                  comment = payload.get("Comment")
-                  print(
-                      f"dns_diagnostic resolver={resolver_name} host={hostname} "
-                      f"type={record_type} cd=1 status={status} "
-                      f"answer={json.dumps(answer, sort_keys=True)} "
-                      f"authority={json.dumps(authority, sort_keys=True)} "
-                      f"comment={json.dumps(comment, sort_keys=True)}"
-                  )
-
-          def resolve_ipv4(
-              hostname: str,
-              *,
-              checking_disabled: bool = False,
-              seen: set[str] | None = None,
-          ) -> list[str]:
+          def resolve_ipv4(hostname: str, seen: set[str] | None = None) -> list[str]:
               normalized = hostname.rstrip(".").lower()
               visited = set() if seen is None else set(seen)
               if normalized in visited:
                   raise RuntimeError(f"DNS CNAME loop while resolving {normalized}")
               visited.add(normalized)
-              cd_value = "1" if checking_disabled else "0"
 
               last_error: Exception | None = None
               for resolver_name, resolver_host, resolver_ip, base_url in RESOLVERS:
-                  endpoint = resolver_endpoint(
-                      base_url,
-                      normalized,
-                      "A",
-                      checking_disabled=checking_disabled,
+                  endpoint = (
+                      f"{base_url}?name={quote(normalized)}&type=A&cd=0"
                   )
                   try:
                       payload = doh_payload(resolver_host, resolver_ip, endpoint)
                   except (subprocess.CalledProcessError, json.JSONDecodeError, RuntimeError) as error:
                       last_error = error
-                      print(
-                          f"{resolver_name} DoH lookup failed for {normalized} "
-                          f"cd={cd_value}: {error}"
-                      )
+                      print(f"{resolver_name} validating DoH failed for {normalized}: {error}")
                       continue
 
                   status = payload.get("Status")
                   print(
                       f"doh_resolver={resolver_name} host={normalized} "
-                      f"cd={cd_value} status={status}"
+                      f"validation=on status={status}"
                   )
                   if status != 0:
                       last_error = RuntimeError(
-                          f"{resolver_name} DoH returned DNS status {status} "
-                          f"for {normalized} cd={cd_value}"
+                          f"{resolver_name} DoH returned DNS status {status} for {normalized}"
                       )
                       continue
 
@@ -188,108 +149,53 @@ jobs:
                   if ipv4:
                       print(
                           f"doh_resolver={resolver_name} host={normalized} "
-                          f"cd={cd_value} ipv4={','.join(ipv4)}"
+                          f"ipv4={','.join(ipv4)}"
                       )
                       return ipv4
                   for cname in cnames:
                       try:
-                          return resolve_ipv4(
-                              cname,
-                              checking_disabled=checking_disabled,
-                              seen=visited,
-                          )
+                          return resolve_ipv4(cname, visited)
                       except RuntimeError as error:
                           last_error = error
 
               if last_error is not None:
                   raise RuntimeError(
-                      f"Could not resolve {normalized} through DoH cd={cd_value}"
+                      f"Could not resolve {normalized} through validating DoH"
                   ) from last_error
-              raise RuntimeError(f"Could not resolve {normalized} through DoH cd={cd_value}")
+              raise RuntimeError(f"Could not resolve {normalized} through validating DoH")
 
-          # Prefer the application's normal source transport. Retry only the bounded
-          # source-unavailable condition; invalid content and parser failures still fail
-          # closed immediately.
-          fetched = None
-          transport = "system-dns"
-          for attempt in range(1, 5):
-              try:
-                  fetched = fetch_source(url, "pdf")
-                  break
-              except StandardsIngestError as error:
-                  if str(error) != "Authoritative standards source is unavailable":
-                      raise
-                  if attempt < 4:
-                      wait_seconds = 15 * attempt
-                      print(
-                          f"authoritative source unavailable on attempt {attempt}/4; "
-                          f"retrying in {wait_seconds}s"
-                      )
-                      sleep(wait_seconds)
-
-          if fetched is None:
-              # First try independent public resolvers with DNSSEC validation enabled. If that
-              # fails, query the same resolvers with checking disabled only as a diagnostic.
-              # A cd=1 answer is never used to fetch or accept the authoritative source here.
-              print("system DNS could not resolve the authoritative source; checking validating DoH")
-              transport = "validated-doh-resolve"
-              try:
-                  source_ips = resolve_ipv4("www.alabamaachieves.org")
-                  root_ips = resolve_ipv4("alabamaachieves.org")
-              except RuntimeError as validation_error:
-                  print("validating DoH failed; running non-accepting cd=1 diagnostic")
-                  try:
-                      diagnostic_source_ips = resolve_ipv4(
-                          "www.alabamaachieves.org",
-                          checking_disabled=True,
-                      )
-                      diagnostic_root_ips = resolve_ipv4(
-                          "alabamaachieves.org",
-                          checking_disabled=True,
-                      )
-                      print(
-                          "dnssec_diagnostic=validation-failed-but-cd1-resolved "
-                          f"www={','.join(diagnostic_source_ips)} "
-                          f"root={','.join(diagnostic_root_ips)}"
-                      )
-                  except RuntimeError as diagnostic_error:
-                      print(f"dnssec_diagnostic=cd1-also-failed error={diagnostic_error}")
-                      for diagnostic_name, diagnostic_type in (
-                          ("alabamaachieves.org", "NS"),
-                          ("alabamaachieves.org", "DS"),
-                          ("alabamaachieves.org", "DNSKEY"),
-                          ("org", "NS"),
-                      ):
-                          log_dns_diagnostic(diagnostic_name, diagnostic_type)
-                  raise StandardsIngestError(
-                      "Authoritative standards source is unavailable"
-                  ) from validation_error
-
+          def fetch_with_explicit_route(
+              source_ip: str,
+              *,
+              require_known_hash: bool,
+          ) -> FetchedSource:
+              # --resolve changes routing only. curl still connects as
+              # https://www.alabamaachieves.org, sends that SNI/Host name, and validates the
+              # certificate normally. No --insecure or alternate content source is permitted.
               with TemporaryDirectory() as temp_dir:
                   source_path = Path(temp_dir) / "alabama-arts.pdf"
-                  curl_command = [
-                      "curl",
-                      "--fail",
-                      "--silent",
-                      "--show-error",
-                      "--location",
-                      "--resolve",
-                      f"www.alabamaachieves.org:443:{source_ips[0]}",
-                      "--resolve",
-                      f"alabamaachieves.org:443:{root_ips[0]}",
-                      "--connect-timeout",
-                      "30",
-                      "--max-time",
-                      "120",
-                      "--output",
-                      str(source_path),
-                      "--write-out",
-                      "%{url_effective}",
-                      url,
-                  ]
                   try:
                       completed = subprocess.run(
-                          curl_command,
+                          [
+                              "curl",
+                              "--fail",
+                              "--silent",
+                              "--show-error",
+                              "--location",
+                              "--resolve",
+                              f"www.alabamaachieves.org:443:{source_ip}",
+                              "--resolve",
+                              f"alabamaachieves.org:443:{source_ip}",
+                              "--connect-timeout",
+                              "30",
+                              "--max-time",
+                              "120",
+                              "--output",
+                              str(source_path),
+                              "--write-out",
+                              "%{url_effective}",
+                              url,
+                          ],
                           check=True,
                           capture_output=True,
                           text=True,
@@ -310,16 +216,85 @@ jobs:
                       raise StandardsIngestError(
                           "Authoritative standards PDF returned unexpected content"
                       )
-                  resolved_url = completed.stdout.strip() or url
-                  fetched = FetchedSource(
+                  source_digest = sha256(content).hexdigest()
+                  if require_known_hash and source_digest != KNOWN_SOURCE_SHA256:
+                      raise StandardsIngestError(
+                          "Authoritative Arts source changed while DNS recovery routing was required"
+                      )
+                  return FetchedSource(
                       requested_url=url,
-                      resolved_url=resolved_url,
+                      resolved_url=completed.stdout.strip() or url,
                       document_format="pdf",
                       content=content,
-                      source_sha256=sha256(content).hexdigest(),
+                      source_sha256=source_digest,
                   )
 
+          # Prefer the application's normal source transport. Retry only the bounded
+          # source-unavailable condition; invalid content and parser failures still fail closed.
+          fetched = None
+          transport = "system-dns"
+          for attempt in range(1, 5):
+              try:
+                  fetched = fetch_source(url, "pdf")
+                  break
+              except StandardsIngestError as error:
+                  if str(error) != "Authoritative standards source is unavailable":
+                      raise
+                  if attempt < 4:
+                      wait_seconds = 15 * attempt
+                      print(
+                          f"authoritative source unavailable on attempt {attempt}/4; "
+                          f"retrying in {wait_seconds}s"
+                      )
+                      sleep(wait_seconds)
+
+          if fetched is None:
+              # Try two independent public validating resolvers. If the domain's delegated
+              # authoritative DNS is unavailable, use the last-known endpoint strictly as a
+              # routing hint and require TLS plus the exact last-governed source hash.
+              print("system DNS could not resolve the authoritative source; checking validating DoH")
+              try:
+                  source_ips = resolve_ipv4("www.alabamaachieves.org")
+              except RuntimeError as dns_error:
+                  print(
+                      "validating DNS is unavailable; trying TLS-verified, hash-pinned "
+                      "official-host recovery route"
+                  )
+                  transport = "pinned-route-tls-hash"
+                  try:
+                      fetched = fetch_with_explicit_route(
+                          RECOVERY_SOURCE_IP,
+                          require_known_hash=True,
+                      )
+                  except StandardsIngestError as recovery_error:
+                      raise StandardsIngestError(
+                          "Authoritative standards source is unavailable"
+                      ) from recovery_error
+              else:
+                  transport = "validated-doh-route"
+                  last_route_error = None
+                  for source_ip in source_ips:
+                      try:
+                          fetched = fetch_with_explicit_route(
+                              source_ip,
+                              require_known_hash=False,
+                          )
+                          break
+                      except StandardsIngestError as route_error:
+                          last_route_error = route_error
+                  if fetched is None:
+                      raise StandardsIngestError(
+                          "Authoritative standards source is unavailable"
+                      ) from last_route_error
+
           extracted = extract_document(fetched)
+          if transport == "pinned-route-tls-hash" and (
+              extracted.normalized_sha256 != KNOWN_NORMALIZED_SHA256
+          ):
+              raise StandardsIngestError(
+                  "Authoritative Arts normalized content changed while DNS recovery routing was required"
+              )
+
           markers = tuple(
               index for index, line in enumerate(extracted.lines) if line == "Content Standards"
           )
@@ -350,6 +325,12 @@ jobs:
               )
 
           parsed = parse_alabama_arts_2024(extracted)
+          if transport == "pinned-route-tls-hash":
+              if len(parsed.courses) != 82:
+                  raise RuntimeError("Pinned Arts source parsed an unexpected course count")
+              if sum(len(course.standards) for course in parsed.courses) != 1634:
+                  raise RuntimeError("Pinned Arts source parsed an unexpected standard count")
+
           print(f"source_transport={transport}")
           print(f"resolved_url={fetched.resolved_url}")
           print(f"source_sha256={fetched.source_sha256}")
