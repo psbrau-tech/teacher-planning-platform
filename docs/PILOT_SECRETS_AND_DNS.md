@@ -9,7 +9,7 @@ This is the controlled setup checklist for `planner.guidedscholar.ai` while auth
 - Never place keys, connection strings, or staff access lists in source files, screenshots, issues, pull-request comments, workflow summaries, or chat messages.
 - GitHub Actions authenticates to AWS through OIDC. Long-lived AWS access keys are prohibited.
 - The running ECS container uses a read-only root filesystem with a dedicated writable `/tmp` volume.
-- A school or account being provisioned does not by itself authorize automatic email.
+- A district, school, or account being provisioned does not by itself authorize automatic email.
 
 ## AWS Secrets Manager
 
@@ -78,9 +78,9 @@ After TLS acceptance, also set:
 
 Optional secret-ID and resource-name overrides are documented in workflow files. Defaults match the approved pilot resource names.
 
-## Required protected secret for multi-school provisioning
+## Required protected secret for district/school provisioning
 
-`TPP_PILOT_ACCESS_JSON` contains the approved school configuration and professional account assignments. It is materialized only in the runner's temporary directory, used inside one database transaction, and deleted in an `always()` cleanup step.
+`TPP_PILOT_ACCESS_JSON` contains the approved district graph, school configuration, notification settings, and professional account assignments. It is materialized only in the runner's temporary directory, used inside one database transaction, and deleted in an `always()` cleanup step.
 
 Do not paste the real value into source control, an issue, a PR, a workflow input, a chat, or a release summary.
 
@@ -88,9 +88,15 @@ The governed shape is:
 
 ```json
 {
+  "districts": [
+    {
+      "name": "Anniston City Schools"
+    }
+  ],
   "schools": [
     {
       "name": "Anniston High School",
+      "district": "Anniston City Schools",
       "timezone": "America/Chicago",
       "notifications": {
         "teacher_reminders_enabled": false,
@@ -101,6 +107,7 @@ The governed shape is:
     },
     {
       "name": "Anniston Middle School",
+      "district": "Anniston City Schools",
       "timezone": "America/Chicago",
       "notifications": {
         "teacher_reminders_enabled": false,
@@ -114,6 +121,7 @@ The governed shape is:
     {
       "email": "platform.owner@anniston.k12.al.us",
       "display_name": "Platform Owner",
+      "district": "Anniston City Schools",
       "school": "Anniston High School",
       "roles": ["platform_admin", "teacher"],
       "is_active": true
@@ -121,8 +129,17 @@ The governed shape is:
     {
       "email": "middle.admin@anniston.k12.al.us",
       "display_name": "Middle School Administrator",
+      "district": "Anniston City Schools",
       "school": "Anniston Middle School",
       "roles": ["school_admin"],
+      "is_active": true
+    },
+    {
+      "email": "district.admin@anniston.k12.al.us",
+      "display_name": "District Administrator",
+      "district": "Anniston City Schools",
+      "school": "Anniston High School",
+      "roles": ["district_admin"],
       "is_active": true
     }
   ]
@@ -131,18 +148,22 @@ The governed shape is:
 
 The example addresses are fictitious. Real professional addresses remain only in the protected secret.
 
-### Multi-school account rules
+### District and school authorization rules
 
+- Every configured district has an explicit name.
+- Every configured school names exactly one configured district.
 - Every configured school requires a valid IANA timezone such as `America/Chicago`.
 - Notification local times must be on a 15-minute boundary.
 - New schools default teacher/admin notification flags to `false` if notification settings are omitted.
-- Every professional email appears once and has one explicit school assignment.
+- Every professional email appears once and names one configured district/school pair.
 - `school_admin` is scoped to the assigned school.
-- Existing `district_admin` and `platform_admin` roles provide intentionally broader scope through the established authorization model; do not duplicate the email across schools to simulate broader access.
-- Moving an existing professional account to another school is an explicit authorization change and must be reviewed before provisioning.
+- `district_admin` scope is derived from the assigned school's `district_id`; the existing district-reporting authorization then permits reporting only on schools whose `district_id` matches that district.
+- `platform_admin` remains intentionally platform-scoped through the established authorization model.
+- Do not duplicate an email across schools to simulate broader access.
+- Moving an existing professional account to another school or district is an explicit authorization change and must be reviewed before provisioning.
 - The record for `TPP_PLATFORM_OWNER_EMAIL` must include both `platform_admin` and `teacher`.
 
-The provisioning script temporarily remains backward-compatible with the legacy AHS-only array shape. That compatibility path assigns Anniston High School / `America/Chicago` and keeps automatic notification settings **disabled**, so an old secret cannot accidentally turn email on.
+The provisioning script temporarily remains backward-compatible with the legacy AHS-only array shape. That compatibility path assigns Anniston High School to Anniston City Schools, uses `America/Chicago`, and keeps automatic notification settings **disabled**, so an old secret cannot accidentally turn email on.
 
 ## Controlled workflow order
 
@@ -154,8 +175,8 @@ The provisioning script temporarily remains backward-compatible with the legacy 
    - `20260815220500_harden_school_local_notification_windows.sql`
 4. Run **Apply TPP Pilot Database Migrations** from `main` with exact `expected_main_sha`, exact `target_migration_head`, `dry_run_only=true`, and `apply_target_confirmed=false`; review the target-scoped pending list.
 5. Approve a mutating migration run only after the preview is accepted. Use the same exact SHA/head, `dry_run_only=false`, and `apply_target_confirmed=true`. The final dry run must show nothing pending **through that target**.
-6. Run **Preflight TPP Pilot Release** with the approved academic-year dates when required.
-7. After the multi-school notification schema exists, update the protected `TPP_PILOT_ACCESS_JSON` only with approved school settings/accounts and run **Provision TPP Pilot Access**. This is a human-controlled gate for real staff access and first-time school notification enablement.
+6. Run **Preflight TPP Pilot Release** with the approved academic-year dates when required. The read-only preflight validates the district-to-school graph, each account's district/school assignment, role set, timezone, and notification settings before mutation.
+7. After the multi-school notification schema exists, update the protected `TPP_PILOT_ACCESS_JSON` only with approved district/school settings and professional accounts, then run **Provision TPP Pilot Access**. This is a human-controlled gate for real staff access, district/school reassignment, and first-time school notification enablement.
 8. Run **Deploy TPP Pilot** for application changes using the exact accepted SHA and confirmed applied migration head.
 9. Run **Verify TPP Pilot Deployment** and complete release-specific acceptance.
 10. Prepare SES identity/sending activation separately; normal application deployment does not turn email on.
@@ -196,7 +217,7 @@ These are operational controls; they do not change the no-student-data content b
 - Add the application origin to the Google OAuth web-client configuration where required.
 - Keep the professional school-domain restriction and database allowlist in force.
 
-Authentication is not authorization. A valid Google school account receives no application data unless its lowercase email has an active governed row in `private.pilot_access_allowlist`; the database then creates/synchronizes the profile, its one assigned school, and approved roles.
+Authentication is not authorization. A valid Google school account receives no application data unless its lowercase email has an active governed row in `private.pilot_access_allowlist`; the database then creates/synchronizes the profile, its assigned school, and approved roles. School-to-district scope is determined by the assigned school's `district_id`.
 
 ## Cloudflare and ACM
 
