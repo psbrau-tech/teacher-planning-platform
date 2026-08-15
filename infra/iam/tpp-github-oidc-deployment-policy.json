@@ -37,6 +37,32 @@
       }
     },
     {
+      "Sid": "ManageNamedScheduledDigestStack",
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:CreateChangeSet",
+        "cloudformation:DeleteChangeSet",
+        "cloudformation:DescribeChangeSet",
+        "cloudformation:ExecuteChangeSet",
+        "cloudformation:DescribeStacks",
+        "cloudformation:DescribeStackEvents",
+        "cloudformation:DescribeStackResource",
+        "cloudformation:DescribeStackResources",
+        "cloudformation:GetTemplate",
+        "cloudformation:ListStackResources",
+        "cloudformation:ListChangeSets"
+      ],
+      "Resource": [
+        "arn:aws:cloudformation:us-east-2:697091778129:stack/TeacherPlanningPlatformPilotScheduledDigest/*",
+        "arn:aws:cloudformation:us-east-2:697091778129:changeSet/*/*"
+      ],
+      "Condition": {
+        "StringEqualsIfExists": {
+          "cloudformation:RoleArn": "arn:aws:iam::697091778129:role/TeacherPlanningPlatformPilotCloudFormationExecution"
+        }
+      }
+    },
+    {
       "Sid": "PassExactCloudFormationExecutionRole",
       "Effect": "Allow",
       "Action": "iam:PassRole",
@@ -91,6 +117,12 @@
           "aws:RequestedRegion": "us-east-2"
         }
       }
+    },
+    {
+      "Sid": "ReadScheduledDigestSchedule",
+      "Effect": "Allow",
+      "Action": "scheduler:GetSchedule",
+      "Resource": "arn:aws:scheduler:us-east-2:697091778129:schedule/default/tpp-pilot-admin-weekly-digest"
     },
     {
       "Sid": "ReadPilotLoadBalancerState",

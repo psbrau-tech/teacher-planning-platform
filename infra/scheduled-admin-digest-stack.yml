@@ -1,0 +1,238 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Isolated scheduled TPP school-admin weekly digest worker. Adult professional operational
+  communication only; no student data. This stack is separate from the interactive web task.
+
+Parameters:
+  ClusterArn:
+    Type: String
+    MinLength: 1
+  PublicSubnetIds:
+    Type: CommaDelimitedList
+  TaskSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+  ImageUri:
+    Type: String
+    AllowedPattern: '^.+@sha256:[0-9a-f]{64}$'
+  PublicBaseUrl:
+    Type: String
+    Default: https://planner.guidedscholar.ai
+  AllowedEmailDomains:
+    Type: String
+    Default: anniston.k12.al.us
+  SupabaseUrlSecretArn:
+    Type: String
+    MinLength: 1
+  SupabaseServiceRoleSecretArn:
+    Type: String
+    MinLength: 1
+  SesIdentityArn:
+    Type: String
+    MinLength: 1
+  SesFromEmail:
+    Type: String
+    Default: notifications@planner.guidedscholar.ai
+    AllowedValues:
+      - notifications@planner.guidedscholar.ai
+  ScheduleExpression:
+    Type: String
+    MinLength: 1
+    Description: Approved EventBridge Scheduler cron expression.
+  ScheduleTimezone:
+    Type: String
+    Default: America/Chicago
+    MinLength: 1
+  ScheduleState:
+    Type: String
+    Default: DISABLED
+    AllowedValues:
+      - DISABLED
+      - ENABLED
+    Description: Keep disabled until the activation workflow verifies the staged worker.
+
+Resources:
+  ScheduledDigestLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: /aws/ecs/teacher-planning-platform-pilot-scheduled-digest
+      RetentionInDays: 30
+
+  ScheduledDigestTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: tpp-pilot-scheduled-digest-task-execution
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: ExactScheduledDigestSecrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref SupabaseUrlSecretArn
+                  - !Ref SupabaseServiceRoleSecretArn
+
+  ScheduledDigestTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: tpp-pilot-scheduled-digest-task
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ExactScheduledDigestSesSender
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ses:SendEmail
+                Resource: !Ref SesIdentityArn
+
+  ScheduledDigestTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: teacher-planning-platform-pilot-scheduled-digest
+      Cpu: '256'
+      Memory: '512'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !GetAtt ScheduledDigestTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ScheduledDigestTaskRole.Arn
+      RuntimePlatform:
+        CpuArchitecture: X86_64
+        OperatingSystemFamily: LINUX
+      Volumes:
+        - Name: temp
+      ContainerDefinitions:
+        - Name: scheduled-admin-digest
+          Image: !Ref ImageUri
+          Essential: true
+          Command:
+            - python
+            - -m
+            - app.scheduled_digest_worker
+          Environment:
+            - Name: TPP_ENVIRONMENT
+              Value: pilot-scheduled-worker
+            - Name: TPP_PUBLIC_BASE_URL
+              Value: !Ref PublicBaseUrl
+            - Name: TPP_DATA_BOUNDARY
+              Value: teacher-and-curriculum-only
+            - Name: TPP_ALLOWED_EMAIL_DOMAINS
+              Value: !Ref AllowedEmailDomains
+            - Name: TPP_SES_FROM_EMAIL
+              Value: !Ref SesFromEmail
+            - Name: TPP_SES_REGION
+              Value: !Ref AWS::Region
+            - Name: TPP_SCHEDULED_DIGEST_TIMEZONE
+              Value: !Ref ScheduleTimezone
+          Secrets:
+            - Name: TPP_SUPABASE_URL
+              ValueFrom: !Ref SupabaseUrlSecretArn
+            - Name: TPP_SUPABASE_SERVICE_ROLE_KEY
+              ValueFrom: !Ref SupabaseServiceRoleSecretArn
+          MountPoints:
+            - SourceVolume: temp
+              ContainerPath: /tmp
+              ReadOnly: false
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref ScheduledDigestLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: scheduled-digest
+          ReadonlyRootFilesystem: true
+
+  ScheduledDigestSchedulerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: tpp-pilot-scheduled-digest-scheduler
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: RunExactScheduledDigestTask
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ecs:RunTask
+                Resource: !Ref ScheduledDigestTaskDefinition
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource:
+                  - !GetAtt ScheduledDigestTaskExecutionRole.Arn
+                  - !GetAtt ScheduledDigestTaskRole.Arn
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: ecs-tasks.amazonaws.com
+
+  ScheduledDigestSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: tpp-pilot-admin-weekly-digest
+      Description: >-
+        Runs the isolated content-minimized TPP school-admin weekly digest worker.
+      ScheduleExpression: !Ref ScheduleExpression
+      ScheduleExpressionTimezone: !Ref ScheduleTimezone
+      State: !Ref ScheduleState
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      Target:
+        Arn: !Ref ClusterArn
+        RoleArn: !GetAtt ScheduledDigestSchedulerRole.Arn
+        RetryPolicy:
+          MaximumEventAgeInSeconds: 3600
+          MaximumRetryAttempts: 1
+        EcsParameters:
+          TaskDefinitionArn: !Ref ScheduledDigestTaskDefinition
+          LaunchType: FARGATE
+          PlatformVersion: LATEST
+          TaskCount: 1
+          EnableECSManagedTags: true
+          NetworkConfiguration:
+            AwsvpcConfiguration:
+              AssignPublicIp: ENABLED
+              SecurityGroups:
+                - !Ref TaskSecurityGroupId
+              Subnets: !Ref PublicSubnetIds
+
+Outputs:
+  ScheduleName:
+    Value: !Ref ScheduledDigestSchedule
+  ScheduleTimezone:
+    Value: !Ref ScheduleTimezone
+  ScheduleExpression:
+    Value: !Ref ScheduleExpression
+  ScheduleState:
+    Value: !Ref ScheduleState
+  TaskDefinitionArn:
+    Value: !Ref ScheduledDigestTaskDefinition
+  TaskExecutionRoleArn:
+    Value: !GetAtt ScheduledDigestTaskExecutionRole.Arn
+  TaskRoleArn:
+    Value: !GetAtt ScheduledDigestTaskRole.Arn
+  SchedulerRoleArn:
+    Value: !GetAtt ScheduledDigestSchedulerRole.Arn
+  DataBoundary:
+    Value: teacher-and-curriculum-only
