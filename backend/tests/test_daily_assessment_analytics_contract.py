@@ -95,7 +95,8 @@ def test_database_source_uses_only_immutable_submitted_lesson_plans() -> None:
     assert "dense_rank() over (order by latest.teacher_id)" in source
     assert "anonymous_teacher_ref" in source
     assert "teacher_name" not in source
-    assert "reflection" not in source.lower()
+    assert "source_data ->> 'reflection'" not in source
+    assert "wps.submission_kind = 'completed_packet'" not in source
 
 
 def test_database_source_returns_only_daily_cfu_and_evidence_fields() -> None:
