@@ -23,7 +23,7 @@
 - `.github/workflows/enable-pilot-tls.yml` — issued-certificate attachment with listener, redirect, target-health, and image-preservation verification
 - `.github/workflows/deploy-pilot.yml` — subsequent exact-digest ECS deployments requiring the exact accepted `main` SHA, the confirmed applied migration head, Help review, prior-task-definition rollback evidence, and no-op verification when the exact image is already active
 - `.github/workflows/enable-ses-notifications.yml` — separate manual activation of the approved SES sender after identity/sending/privacy gates; does not send a test email
-- `.github/workflows/enable-scheduled-admin-digest.yml` — separate isolated scheduled-worker activation after database, SES, IAM, privacy, and exact schedule approval; not part of a normal application deployment
+- `.github/workflows/enable-scheduled-admin-digest.yml` — **Enable TPP Friday Notifications**; separate isolated activation of the approved Friday 2:00 PM teacher courtesy reminder and 3:30 PM administrator digest after database, SES, IAM, privacy/Help, service-role-secret, and exact-schedule gates; not part of a normal application deployment
 
 ### Read-only workflows
 
@@ -34,7 +34,7 @@
 
 - `Dockerfile` — combined React/FastAPI production image with non-root runtime and application health check
 - `infra/pilot-stack.yml` — isolated TPP pilot CloudFormation stack, including fail-closed SES parameters
-- `infra/scheduled-admin-digest-stack.yml` — separate optional scheduled-worker stack; it is not created by normal application deployment
+- `infra/scheduled-admin-digest-stack.yml` — separate optional Friday notification-worker stack containing isolated teacher-reminder and administrator-digest tasks/schedules; it is not created by normal application deployment
 - `backend/scripts/preflight_pilot.py` — local and workflow validation of staff access and academic-year inputs without connecting to Supabase
 - `scripts/build_or_reuse_pilot_image.sh` — shared immutable-ECR helper that reuses a commit-tagged digest after a partial workflow failure rather than attempting to overwrite an immutable tag
 - `scripts/verify_exact_release_candidate.sh` — requires a release workflow to run from `main`, at the exact accepted SHA, against an exact repository migration version
@@ -47,7 +47,8 @@
 - `docs/VOLUNTEER_TEACHER_PILOT_GUIDE.md` — controlled teacher exercise and feedback guide
 - `docs/PILOT_ROLLBACK.md` — detailed layered recovery runbook
 - `docs/RELEASE_ROLLBACK_CHECKLIST.md` — concise release and rollback checklist
-- `docs/governance/INTELLIGENCE_NOTIFICATION_CONTROLLED_RELEASE_RUNBOOK_2026-08-14.md` — phased release/activation boundary for Reflection Intelligence, assessment analytics, PLC artifacts, and notifications
+- `docs/governance/INTELLIGENCE_NOTIFICATION_CONTROLLED_RELEASE_RUNBOOK_2026-08-14.md` — phased release/activation boundary for Reflection Intelligence, assessment analytics, PLC artifacts, Friday status, and notifications
+- `docs/governance/FRIDAY_STATUS_NOTIFICATION_DECISION_2026-08-15.md` — approved teacher/admin Friday status and notification product contract
 - `docs/ROUTE53_MIGRATION_PREP.md` — coordinated migration preparation while Cloudflare remains authoritative
 - `docs/DNS_RECORD_INVENTORY_TEMPLATE.md` — human-readable DNS inventory worksheet
 - `docs/ROUTE53_RECORD_INVENTORY.csv` — row-level Cloudflare-to-Route 53 comparison template
@@ -70,7 +71,7 @@ For an already-running pilot application release:
 10. Run **Verify TPP Pilot Deployment** for the exact accepted commit and perform the release-specific browser/API acceptance.
 11. Retain the exact image digest, task-definition revision, workflow runs, migration evidence, and acceptance evidence.
 
-For the August 14 professional-learning/application release, the source-controlled runbook permits a target of `20260815001500`; this intentionally leaves `20260815011000_scheduled_admin_digest_worker.sql` deferred. The automatic scheduled-digest database/AWS path is a later, separately approved activation.
+The accepted professional-learning/application release is live through `20260815001500`. The next Friday-status dashboard/application release uses `20260815011000_friday_submission_status.sql` as its intended migration target. That target adds authenticated professional submission-status sources but does not enable email delivery. `20260815013000_scheduled_friday_notifications.sql` is intentionally later and must remain deferred during the dashboard release. The automatic SES/service-role/Scheduler path is a separate activation sequence.
 
 For a brand-new pilot stack, the original bootstrap/TLS/DNS/OAuth sequence still applies: provision governed access, run preflight, bootstrap the stack, verify the non-public deployment, complete ACM validation, enable TLS, set the accepted certificate ARN, add the application DNS record, complete Supabase/Google redirect configuration, and then run public verification/browser acceptance.
 
@@ -92,7 +93,22 @@ The current AI-enabled interactive application task uses exactly these secret ma
 - `TPP_SUPABASE_ANON_KEY`; and
 - `TPP_OPENAI_API_KEY`.
 
-The interactive task must not contain `TPP_SUPABASE_SERVICE_ROLE_KEY`, the PostgreSQL database URL, or Google OAuth client credentials. Manual SES delivery, when separately activated, uses a least-privilege AWS task-role permission plus non-secret SES sender/region configuration. The optional scheduled worker is isolated in a separate task and is the only runtime permitted to receive the Supabase service-role key after its additional activation gates are satisfied.
+The interactive task must not contain `TPP_SUPABASE_SERVICE_ROLE_KEY`, the PostgreSQL database URL, or Google OAuth client credentials. SES delivery, when separately activated, uses least-privilege AWS task-role permission plus non-secret SES sender/region configuration. The optional Friday notification worker is isolated in separate one-shot ECS tasks and is the only runtime permitted to receive the Supabase service-role key after its additional activation gates are satisfied.
+
+## Friday notification activation boundary
+
+The Anniston Pilot schedule is approved in `America/Chicago`:
+
+- teacher courtesy reminder: Friday at 2:00 PM, `cron(0 14 ? * FRI *)`;
+- school-administrator aggregate digest: Friday at 3:30 PM, `cron(30 15 ? * FRI *)`.
+
+Teachers receive no automatic reminder when all required submissions are complete. A teacher with outstanding work receives one combined reminder naming the exact professional class(es) and whether each is missing the current-week reflection/completed packet, the following-week lesson plan, or both. The administrator email contains aggregate counts and a link only; teacher/class exceptions remain authenticated in TPP.
+
+The normal administrator UI does not expose a routine `Weekly admin email` action. Any retained manual path is controlled operational recovery, not the primary workflow.
+
+Before automatic delivery can be enabled, the scheduled-delivery migration `20260815013000_scheduled_friday_notifications.sql` must be explicitly applied, the approved SES sender must be active, the dedicated Supabase service-role secret must exist at the governed path, live deployment-role policies must match the accepted source, and Help/privacy/subprocessor review must be complete.
+
+The activation workflow stages both schedules as `DISABLED`, verifies the immutable image, exact worker commands, exact two Supabase secrets, schedule expressions, timezone, and interactive service-role exclusion, and only then changes both schedules to `ENABLED`. It does not run either task immediately and sends no immediate/test email.
 
 ## Retry and recovery behavior
 
@@ -104,7 +120,7 @@ The interactive task must not contain `TPP_SUPABASE_SERVICE_ROLE_KEY`, the Postg
 - Bootstrap and deploy reuse the immutable ECR digest already tagged with the same commit after a partial failure.
 - Deploy avoids registering or activating a new task-definition revision when the same exact image is already active; it verifies the existing deployment instead.
 - **Enable TPP Pilot TLS** preserves and verifies the active exact image and confirms the HTTPS listener, approved certificate, HTTP redirect, and target health.
-- SES sender activation and scheduled-worker activation remain separate from an application deployment and have their own fail-closed checks.
+- SES sender activation and Friday-worker activation remain separate from an application deployment and have their own fail-closed checks.
 - Application rollback, database correction, staff-access correction, OAuth restoration, TLS correction, DNS rollback, and future Route 53 delegation rollback remain separate controlled actions.
 
 ## Operational acceptance before volunteer access or a material pilot release
@@ -120,7 +136,7 @@ The interactive task must not contain `TPP_SUPABASE_SERVICE_ROLE_KEY`, the Postg
 - Supabase migration history contains the exact migration target required by the release; any later intentionally deferred source migration is recorded as deferred rather than treated as missing accidentally.
 - The approved access list is active and unapproved accounts receive no application data.
 - Platform Owner retains both `platform_admin` and `teacher` in one session.
-- School Administrator reporting is aggregate and school-scoped.
+- School Administrator reporting is aggregate and school-scoped where the product contract calls for aggregates; authorized Friday operational follow-up may identify teachers/classes but remains within governed reporting scope and is not evaluation.
 - Platform Administrator cost/adoption reporting is restricted to the governed Platform Administrator role.
 - No student table, roster, student account, or student-specific field is used.
 
@@ -140,17 +156,21 @@ The volunteer teacher must independently be able to:
 10. carry missed instruction forward without changing unrelated curricula;
 11. recognize the teacher-and-curriculum-only boundary throughout the workflow.
 
+For the Friday-status release, also verify that the Dashboard reports each required class independently, distinguishes current completed-packet/reflection submission from following-week lesson-plan submission, and does not treat a saved draft as submitted.
+
 ## Rollback
 
 Use `docs/PILOT_ROLLBACK.md` to identify the failing layer before mutation. Application rollback, database correction, staff-access correction, OAuth restoration, TLS correction, application-record rollback, and future Route 53 delegation rollback are separate controlled actions.
 
 A failed ECS deployment uses the configured deployment circuit breaker. A manual application rollback uses the recorded prior task definition and exact image. Application rollback does not reverse database migrations.
 
+If automatic Friday notifications are unsafe, disable both EventBridge Scheduler schedules first so no new worker tasks launch, then remediate the worker/database/SES path.
+
 ## Human-controlled gates
 
 The following require human action or explicit approval:
 
-- pull-request merge;
+- pull-request merge when standing release authorization does not already cover it;
 - selection/approval of the exact migration target for a mutating database run;
 - protected-environment approval for database, provisioning, infrastructure, TLS, deployment, preflight, and verification workflows;
 - staff access-list contents and academic-year dates;
@@ -158,8 +178,9 @@ The following require human action or explicit approval:
 - setting accepted protected environment values such as a certificate ARN;
 - Supabase and Google console changes;
 - SES identity/sending activation and the first live/pilot email acceptance message;
-- creation of the dedicated scheduled-worker service-role secret;
-- approval of the exact automatic weekly schedule before enabling the scheduler;
+- creation/update of the dedicated scheduled-worker service-role secret;
+- live AWS IAM policy changes when no already-approved governed workflow performs them;
+- execution of the Friday notification activation workflow;
 - live browser acceptance with approved school accounts;
 - any production rollback;
 - the later coordinated Route 53 nameserver migration.
