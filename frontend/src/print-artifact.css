@@ -1,0 +1,54 @@
+@media print {
+  body.tpp-printing-artifact > *:not(.tpp-print-portal) {
+    display: none !important;
+  }
+
+  body.tpp-printing-artifact > .tpp-print-portal {
+    display: block !important;
+    position: static !important;
+    width: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .tpp-print-portal,
+  .tpp-print-portal * {
+    visibility: visible !important;
+  }
+
+  /*
+   * The PLC artifact still uses the legacy window.print() path. Its component
+   * stylesheet intentionally hides the surrounding app with visibility, which
+   * leaves those hidden boxes in pagination and can create blank sheets. Collapse
+   * every unrelated branch while preserving the ancestor chain that contains the
+   * handout. This is print-only and does not change authenticated screen layout.
+   */
+  body:not(.tpp-printing-artifact):has(.plc-facilitation-handout)
+    *:not(:has(.plc-facilitation-handout)):not(.plc-facilitation-handout):not(.plc-facilitation-handout *) {
+    display: none !important;
+  }
+
+  /* If no aggregate themes are available, do not reserve a blank left column. */
+  .plc-artifact-columns:has(> div:first-child:empty) {
+    grid-template-columns: 1fr !important;
+  }
+
+  .plc-artifact-columns > div:first-child:empty {
+    display: none !important;
+  }
+
+  .plc-action-workspace {
+    margin-top: 0.25rem !important;
+    padding: 0.3rem !important;
+  }
+
+  .plc-action-workspace > div {
+    min-height: 1.25rem !important;
+  }
+
+  .plc-artifact-footer {
+    margin-top: 0.25rem !important;
+    padding-top: 0.2rem !important;
+  }
+}

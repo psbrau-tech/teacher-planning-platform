@@ -1,5 +1,6 @@
 import { createClient, type Session } from "@supabase/supabase-js";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { printArtifact } from "./printArtifact";
 import "./reflection-intelligence.css";
 
 type Identity = {
@@ -236,7 +237,7 @@ export function ReflectionIntelligenceExperience() {
     } catch {
       // Content-free adoption telemetry may never block the PLC artifact.
     }
-    window.print();
+    printArtifact(".reflection-intelligence-handout");
   }
 
   function closePanel() {
