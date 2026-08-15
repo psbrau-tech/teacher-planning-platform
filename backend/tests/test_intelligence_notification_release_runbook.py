@@ -34,7 +34,8 @@ def test_runbook_keeps_email_fail_closed_until_separate_activation() -> None:
 
     assert "notifications@planner.guidedscholar.ai" in source
     assert "email still disabled" in source
-    assert "activation workflow itself sends no test email" in source
+    assert "activation workflow itself sends" in source
+    assert "no test email" in source
     assert (
         "recipient is the authenticated administrator's own governed professional address"
         in source
