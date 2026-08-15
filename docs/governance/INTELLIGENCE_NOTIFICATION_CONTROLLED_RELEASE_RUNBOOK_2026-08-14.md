@@ -19,49 +19,65 @@ At every phase:
 - The interactive web ECS task must not receive a Supabase service-role credential.
 - Email must never contain student information, reflection text, lesson-plan content, generated instructional insight, or teacher-quality scores.
 - A successful merge, CI run, migration file, or CloudFormation template does not prove a live feature is activated.
+- Adding a school or professional account does not automatically enable scheduled email for that school.
 
 ## Current release sequence
 
-The previously accepted Reflection Intelligence / PLC / formative-assessment application release is live through migration `20260815001500`. Email remains separately governed.
+The accepted Reflection Intelligence / PLC / formative-assessment and Friday-status application release is live through migration `20260815011000_friday_submission_status.sql`. Email remains separately governed and inactive.
 
-The next source-controlled sequence is intentionally split:
+The source-controlled notification sequence is intentionally staged:
 
-1. `20260815011000_friday_submission_status.sql`
-   - teacher class-by-class Friday status;
-   - authorized administration teacher/class status;
-   - immutable submitted records only;
-   - current-week completed packet + following-week lesson plan;
-   - instruction requirement is assignment/schedule/calendar/exception aware;
-   - does **not** create the scheduled delivery ledger and does not require the service-role worker.
-2. `20260815013000_scheduled_friday_notifications.sql`
-   - deferred automatic-delivery ledger and service-role-only candidate RPCs;
+1. `20260815013000_scheduled_friday_notifications.sql`
+   - deferred automatic-delivery ledger and service-role-only candidate foundation;
    - teacher Friday courtesy-reminder candidates;
    - school-admin aggregate Friday digest candidates;
    - at-most-once claims;
-   - remains deferred until SES and scheduler activation are approved.
+   - remains deferred until SES and scheduler activation are being prepared.
+2. `20260815215500_multi_school_notification_controls.sql`
+   - changes pilot access from one-email/one-school to governed email + school membership;
+   - preserves one explicit home school per active professional account while permitting school-scoped roles in more than one school;
+   - adds required school-local notification settings that default to disabled;
+   - makes notification delivery uniqueness school-scoped;
+   - replaces global candidate RPCs with explicit `school_id` scoped claims;
+   - adds the service-role-only school-local dispatch-window selector.
+3. `20260815220500_harden_school_local_notification_windows.sql`
+   - limits configured local notification times to quarter-hour boundaries;
+   - hardens the school-local Friday dispatch calculation;
+   - uses the IANA timezone stored on each school so daylight-saving changes are handled by the timezone database rather than hand-maintained UTC offsets.
 
-Repository source state and live database state are separate evidence. Use the target-scoped database workflow to stage only migrations through the specifically approved target. A later intentionally deferred source migration must not be applied merely because it exists in the repository.
+Repository source state and live database state are separate evidence. Use the target-scoped database workflow to stage only migrations through the specifically approved target. The three notification migrations above must remain unapplied until the notification preparation gate is intentionally opened.
+
+## Multi-school provisioning contract
+
+The pilot provisioning path must treat school as an explicit tenant boundary rather than assuming Anniston High School.
+
+The governed configuration identifies:
+
+- school name;
+- required IANA timezone, for example `America/Chicago`;
+- professional account email and display name;
+- school membership;
+- school-scoped role or roles;
+- one explicit home school for an account that belongs to more than one school;
+- teacher-reminder enablement and local send time; and
+- administrator-digest enablement and local send time.
+
+New schools default to:
+
+- teacher reminders **disabled**;
+- administrator digests **disabled**;
+- teacher reminder local time **2:00 PM**; and
+- administrator digest local time **3:30 PM**.
+
+The provisioning script validates IANA timezone identifiers before database mutation. A legacy Anniston High School access-list shape remains temporarily readable for backward compatibility, but that legacy path provisions notification settings disabled. Automatic email therefore cannot become active merely because the old access secret still exists.
+
+A professional account may hold roles in multiple schools through `profile_roles`. The account retains one governed home school for existing profile/district context. School administrators receive only the school roles explicitly provisioned to them. District/platform roles do not silently create school-admin membership.
 
 ## Phase A — Friday status dashboard release
 
-Before database mutation:
+The Friday status dashboard is already released through migration `20260815011000` and remains independent from email activation.
 
-1. Merge intended source PRs to `main`.
-2. Record the exact `main` commit SHA.
-3. Confirm exact-head CI and governed-source verification are green.
-4. Record the currently deployed immutable image digest, ECS task definition, and live Supabase migration head.
-5. Confirm the existing pilot is healthy.
-6. Confirm Help/governance describes Friday status as professional operational reporting.
-
-Apply only the approved dashboard migration head using the governed workflow. For the first Friday-status release, the intended target is `20260815011000`; `20260815013000_scheduled_friday_notifications.sql` must remain deferred.
-
-After migration application, verify local/remote history matches through the approved target and the final dry run has no pending migration through that staged target.
-
-Deploy the exact accepted application image only after the database target is confirmed applied. Verify immutable image provenance, ECS health, TLS/public health, and that the interactive task still contains only the approved runtime secret set and no Supabase service-role key.
-
-### Friday status browser acceptance
-
-Using permitted adult professional pilot content:
+The accepted behavior is:
 
 - Teacher Dashboard shows each active required class and whether this week's reflection/completed packet is submitted.
 - Teacher Dashboard shows each active required class and whether the following week's lesson plan is submitted.
@@ -85,13 +101,14 @@ Before SES activation:
 - privacy/subprocessor and Help review must match the enabled email data flow;
 - live deployment-role policies must match the accepted source-controlled policies;
 - the approved From address and identity ARN must be recorded;
-- the interactive web task must still exclude the Supabase service-role credential.
+- the interactive web task must still exclude the Supabase service-role credential; and
+- bounce/complaint/suppression handling and the monitored Reply-To behavior must be operationally defined before routine automated sending.
 
 The **Enable TPP SES Notifications** workflow updates the governed SES configuration without sending a test email. The activation workflow itself sends **no test email**.
 
 ## Phase C — Scheduled Friday delivery preparation
 
-Apply `20260815013000_scheduled_friday_notifications.sql` only after automatic delivery is being prepared for activation.
+Apply the notification migration chain through `20260815220500_harden_school_local_notification_windows.sql` only after automatic delivery is being prepared for activation. This intentionally includes the deferred `20260815013000` foundation first.
 
 Create/update the dedicated Secrets Manager secret for the existing Supabase service-role credential under the governed `tpp/pilot/supabase-service-role-key-*` path. Record only the ARN. Never place the value in source, chat, workflow inputs, browser configuration, or ordinary logs.
 
@@ -99,28 +116,54 @@ The scheduled worker receives only `TPP_SUPABASE_URL` and `TPP_SUPABASE_SERVICE_
 
 The delivery ledger persists bounded identifiers/status only. It does not retain recipient email, class/course reminder lists, email body, reflection text, lesson-plan content, student data, generated insight, or SES MessageId.
 
-## Approved schedule
+After the notification-control migrations are applied, run governed provisioning with the approved multi-school configuration before enabling dispatchers. Confirm every configured school has the intended IANA timezone and notification flags. A school whose flags remain disabled must not produce candidates.
 
-The automatic delivery schedule is now approved for the Anniston pilot in `America/Chicago`:
+## Approved school-local delivery behavior
 
-- **Teacher courtesy reminder:** Friday at **2:00 PM local time** — `cron(0 14 ? * FRI *)`.
-- **School-administrator aggregate digest:** Friday at **3:30 PM local time** — `cron(30 15 ? * FRI *)`.
+For the current Anniston pilot, the approved local delivery times remain:
 
-The 90-minute courtesy window is intentional. Teachers with every required submission complete receive no reminder. Teachers with an outstanding item receive one combined email that names the exact professional class/course and whether the missing item is the current-week reflection/completed packet, the following-week lesson plan, or both.
+- **Teacher courtesy reminder:** Friday at **2:00 PM local time**.
+- **School-administrator aggregate digest:** Friday at **3:30 PM local time**.
+
+`America/Chicago` is the initial timezone for Anniston High School and Anniston Middle School, but it is stored independently on each school rather than treated as a platform-wide constant. Future schools must carry their own validated IANA timezone.
+
+The 90-minute courtesy window is intentional. Teachers with every required submission complete receive no reminder. Teachers with an outstanding item receive one combined email for that school that names the exact professional class/course and whether the missing item is the current-week reflection/completed packet, the following-week lesson plan, or both.
 
 The administrator email contains aggregate counts and the authenticated TPP link only. Teacher/class exceptions remain behind authenticated reporting.
 
 Instruction-requirement logic suppresses false missing states when an assignment has no expected meeting in the relevant week based on effective assignment dates, meeting pattern, explicit non-instructional calendar days, and schedule exceptions.
 
-## Phase D — Activate both isolated schedules
+## Dispatcher architecture
+
+AWS EventBridge Scheduler does not encode one fixed school timezone. Instead, the two existing tightly scoped schedules act as dispatchers:
+
+- teacher dispatcher: `tpp-pilot-teacher-friday-reminder`;
+- administrator dispatcher: `tpp-pilot-admin-weekly-digest`;
+- dispatcher expression: `cron(0/15 * ? * * *)`;
+- dispatcher timezone: `UTC`.
+
+Every quarter hour, the isolated worker asks the database which enabled schools are currently inside their configured local Friday delivery window. The database converts the dispatcher timestamp using each school's IANA timezone. The worker then calls the candidate RPC with that exact `school_id` and that school's local Monday `week_start`.
+
+This design provides:
+
+- daylight-saving-safe school-local delivery;
+- no new EventBridge/IAM role set for every added school;
+- school-by-school notification enablement;
+- explicit school-scoped candidate claims;
+- school-scoped at-most-once delivery keys; and
+- fail-closed behavior for newly provisioned schools.
+
+The quarter-hour dispatcher does not mean an email is sent every 15 minutes. Outside a configured school-local delivery window, the selector returns no school and the worker sends nothing.
+
+## Phase D — Activate isolated dispatchers
 
 Run **Enable TPP Friday Notifications** only after every workflow confirmation is true:
 
-- scheduled Friday notification migration applied;
+- scheduled-delivery and multi-school notification-control migrations applied;
 - approved SES notifications active;
-- exact 2:00 PM / 3:30 PM schedule approved;
+- enabled schools have approved IANA timezone and local notification settings;
 - privacy/subprocessor and Help review complete;
-- live governed deployment-role policies updated;
+- live governed deployment-role policies updated; and
 - dedicated Supabase service-role secret exists at the governed path.
 
 The workflow must:
@@ -128,26 +171,29 @@ The workflow must:
 1. verify the main pilot stack and SES state;
 2. resolve the current immutable application image;
 3. verify the interactive web task still lacks the service-role credential;
-4. deploy the isolated Friday worker stack with both schedules `DISABLED`;
+4. deploy the isolated worker stack with both quarter-hour dispatchers `DISABLED`;
 5. verify the teacher task command is exactly `python -m app.scheduled_digest_worker teacher`;
 6. verify the admin task command is exactly `python -m app.scheduled_digest_worker admin`;
 7. verify both isolated tasks receive only the two approved Supabase secrets;
-8. verify teacher schedule `cron(0 14 ? * FRI *)`, admin schedule `cron(30 15 ? * FRI *)`, and `America/Chicago` while disabled; and
-9. change both schedules to `ENABLED` only after those checks pass.
+8. verify both exact schedule names, `cron(0/15 * ? * * *)`, and dispatcher timezone `UTC` while disabled; and
+9. change both dispatchers to `ENABLED` only after those checks pass.
 
 The activation workflow does not call `ecs run-task`, does not invoke the worker immediately, and sends no immediate/test email.
 
 ## First scheduled execution acceptance
 
-At the first approved Friday windows:
+At the first approved Friday windows for an enabled school:
 
-- verify the 2:00 PM teacher task runs once and only teachers with outstanding required submissions are claimed;
-- verify a multi-class teacher receives one email, with the exact missing class(es) and item(s);
+- verify the teacher worker dispatches at the school's configured 2:00 PM local window;
+- verify only teachers with outstanding required submissions are claimed for that school;
+- verify a multi-class teacher receives one email for that school, with the exact missing class(es) and item(s);
 - verify a fully complete teacher receives no reminder;
-- verify the 3:30 PM administrator task runs once and sends the aggregate current-closeout/following-plan summary to eligible active `school_admin` recipients;
+- verify the administrator worker dispatches at the school's configured 3:30 PM local window and sends the aggregate current-closeout/following-plan summary to eligible active `school_admin` recipients for that school;
+- verify an account with school-admin membership in more than one school receives only the independently authorized school digests;
+- verify a newly provisioned school with notification flags disabled receives no automatic email;
 - verify at-most-once claims prevent duplicate automatic sends on retries;
 - verify worker logs do not print recipient addresses, teacher names, course names, message bodies, school identifiers, credentials, or SES MessageIds;
-- verify no teacher names or class-level exception list appears in the administrator email;
+- verify no teacher names or class-level exception list appears in the administrator email; and
 - verify no student data appears anywhere in the workflow.
 
 Manual delivery/recovery, if retained, is controlled operational support and not a normal administrator-facing UI action.
@@ -160,6 +206,7 @@ Keep bounded release evidence:
 - exact immutable image digest and ECS task definition;
 - CI/source-verification run IDs;
 - live migration head;
+- governed school names/timezones and notification enabled/disabled state without copying staff rosters into release evidence;
 - SES identity ARN and sending-status evidence if activated;
 - exact scheduled task definitions and both Scheduler states if activated;
 - service-role secret ARN only, never its value;
@@ -174,6 +221,8 @@ Do not retain customer content, reflection text, lesson-plan text, student data,
 Stop for human action/approval at:
 
 - applying live database migrations;
+- changing the governed multi-school access/notification secret for real professional accounts;
+- enabling notifications for a school for the first time;
 - deploying an application image when the controlled release gate requires manual workflow dispatch;
 - SES identity/DNS verification;
 - SES production-access approval if required;
@@ -191,4 +240,6 @@ If the Friday status application is defective, use the exact-image/database rele
 
 If email configuration is unsafe, stop/disable SES sending configuration before further acceptance.
 
-If automatic delivery is unsafe, disable both EventBridge Scheduler schedules first so no new tasks launch, then remediate the worker/database path. UI hiding is never a scheduler kill switch.
+If automatic delivery is unsafe, disable both EventBridge Scheduler dispatchers first so no new tasks launch, then remediate the worker/database path. UI hiding is never a scheduler kill switch.
+
+If one school's notification configuration is unsafe while the dispatcher infrastructure itself remains sound, disable that school's teacher/admin notification flags through governed provisioning; do not disable unrelated schools unless necessary.
