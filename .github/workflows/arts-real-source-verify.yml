@@ -77,25 +77,31 @@ jobs:
                   raise RuntimeError("DNS-over-HTTPS returned an invalid response")
               return payload
 
-          def resolve_ipv4(hostname: str, seen: set[str] | None = None) -> list[str]:
+          def resolve_ipv4(
+              hostname: str,
+              *,
+              checking_disabled: bool = False,
+              seen: set[str] | None = None,
+          ) -> list[str]:
               normalized = hostname.rstrip(".").lower()
               visited = set() if seen is None else set(seen)
               if normalized in visited:
                   raise RuntimeError(f"DNS CNAME loop while resolving {normalized}")
               visited.add(normalized)
+              cd_value = "1" if checking_disabled else "0"
 
               resolver_specs = (
                   (
                       "cloudflare",
                       "cloudflare-dns.com",
                       "1.1.1.1",
-                      f"https://cloudflare-dns.com/dns-query?name={quote(normalized)}&type=A",
+                      f"https://cloudflare-dns.com/dns-query?name={quote(normalized)}&type=A&cd={cd_value}",
                   ),
                   (
                       "google",
                       "dns.google",
                       "8.8.8.8",
-                      f"https://dns.google/resolve?name={quote(normalized)}&type=A",
+                      f"https://dns.google/resolve?name={quote(normalized)}&type=A&cd={cd_value}",
                   ),
               )
               last_error: Exception | None = None
@@ -104,14 +110,21 @@ jobs:
                       payload = doh_payload(resolver_host, resolver_ip, endpoint)
                   except (subprocess.CalledProcessError, json.JSONDecodeError, RuntimeError) as error:
                       last_error = error
-                      print(f"{resolver_name} DoH lookup failed for {normalized}: {error}")
+                      print(
+                          f"{resolver_name} DoH lookup failed for {normalized} "
+                          f"cd={cd_value}: {error}"
+                      )
                       continue
 
                   status = payload.get("Status")
-                  print(f"doh_resolver={resolver_name} host={normalized} status={status}")
+                  print(
+                      f"doh_resolver={resolver_name} host={normalized} "
+                      f"cd={cd_value} status={status}"
+                  )
                   if status != 0:
                       last_error = RuntimeError(
-                          f"{resolver_name} DoH returned DNS status {status} for {normalized}"
+                          f"{resolver_name} DoH returned DNS status {status} "
+                          f"for {normalized} cd={cd_value}"
                       )
                       continue
 
@@ -138,18 +151,24 @@ jobs:
                   if ipv4:
                       print(
                           f"doh_resolver={resolver_name} host={normalized} "
-                          f"ipv4={','.join(ipv4)}"
+                          f"cd={cd_value} ipv4={','.join(ipv4)}"
                       )
                       return ipv4
                   for cname in cnames:
                       try:
-                          return resolve_ipv4(cname, visited)
+                          return resolve_ipv4(
+                              cname,
+                              checking_disabled=checking_disabled,
+                              seen=visited,
+                          )
                       except RuntimeError as error:
                           last_error = error
 
               if last_error is not None:
-                  raise RuntimeError(f"Could not resolve {normalized} through validated DoH") from last_error
-              raise RuntimeError(f"Could not resolve {normalized} through validated DoH")
+                  raise RuntimeError(
+                      f"Could not resolve {normalized} through DoH cd={cd_value}"
+                  ) from last_error
+              raise RuntimeError(f"Could not resolve {normalized} through DoH cd={cd_value}")
 
           # Prefer the application's normal source transport. Retry only the bounded
           # source-unavailable condition; invalid content and parser failures still fail
@@ -172,18 +191,35 @@ jobs:
                       sleep(wait_seconds)
 
           if fetched is None:
-              # Bypass only the failing runner resolver, not the authoritative source.
-              # Public DoH resolves the official hostname; curl then connects to that IP while
-              # preserving the official Host/SNI name and normal TLS certificate validation.
-              print("system DNS could not resolve the authoritative source; trying explicit DoH")
-              transport = "explicit-doh-resolve"
+              # First try independent public resolvers with DNSSEC validation enabled. If that
+              # fails, query the same resolvers with checking disabled only as a diagnostic.
+              # A cd=1 answer is never used to fetch or accept the authoritative source here.
+              print("system DNS could not resolve the authoritative source; checking validating DoH")
+              transport = "validated-doh-resolve"
               try:
                   source_ips = resolve_ipv4("www.alabamaachieves.org")
                   root_ips = resolve_ipv4("alabamaachieves.org")
-              except RuntimeError as error:
+              except RuntimeError as validation_error:
+                  print("validating DoH failed; running non-accepting cd=1 diagnostic")
+                  try:
+                      diagnostic_source_ips = resolve_ipv4(
+                          "www.alabamaachieves.org",
+                          checking_disabled=True,
+                      )
+                      diagnostic_root_ips = resolve_ipv4(
+                          "alabamaachieves.org",
+                          checking_disabled=True,
+                      )
+                      print(
+                          "dnssec_diagnostic=validation-failed-but-cd1-resolved "
+                          f"www={','.join(diagnostic_source_ips)} "
+                          f"root={','.join(diagnostic_root_ips)}"
+                      )
+                  except RuntimeError as diagnostic_error:
+                      print(f"dnssec_diagnostic=cd1-also-failed error={diagnostic_error}")
                   raise StandardsIngestError(
                       "Authoritative standards source is unavailable"
-                  ) from error
+                  ) from validation_error
 
               with TemporaryDirectory() as temp_dir:
                   source_path = Path(temp_dir) / "alabama-arts.pdf"
