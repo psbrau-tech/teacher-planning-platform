@@ -70,7 +70,7 @@ def test_subprocessor_and_security_drafts_do_not_claim_ses_is_already_active() -
 def test_help_explains_new_admin_features_without_expanding_data_boundary() -> None:
     source = normalized(HELP)
 
-    assert "reflection intelligence and plc use" in source
+    assert "school reflection summary and plc meeting guide" in source
     assert "at least two distinct anonymous teacher sources" in source
     assert "daily formative-assessment analytics" in source
     assert "planned formative-assessment signals" in source

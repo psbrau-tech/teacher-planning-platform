@@ -1,6 +1,6 @@
 import { createClient, type Session } from "@supabase/supabase-js";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { printArtifact } from "./printArtifact";
+import { createPortal } from "react-dom";
 import "./reflection-intelligence.css";
 
 type Identity = {
@@ -25,30 +25,6 @@ type TeacherInsight = {
     carry_forward_ideas: string[];
   };
 };
-
-type SupportedTheme = {
-  theme: string;
-  evidence_summary: string;
-  source_refs: number[];
-};
-
-type SchoolBrief = {
-  week_start: string;
-  source_teacher_count: number;
-  source_submission_count: number;
-  scope: "school-aggregate";
-  evaluation: "none";
-  brief: {
-    common_successes: SupportedTheme[];
-    common_challenges: SupportedTheme[];
-    emerging_themes: SupportedTheme[];
-    discussion_questions: string[];
-    possible_actions: string[];
-    support_needs: string[];
-  };
-};
-
-type View = "teacher" | "school";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ?? "";
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
@@ -87,34 +63,23 @@ function BulletSection({ title, items }: { title: string; items: string[] }) {
   );
 }
 
-function ThemeSection({ title, items }: { title: string; items: SupportedTheme[] }) {
-  if (!items.length) return null;
-  return (
-    <section className="ri-result-section">
-      <h4>{title}</h4>
-      <div className="ri-theme-list">
-        {items.map((item) => (
-          <article className="ri-theme-card" key={`${title}-${item.theme}`}>
-            <strong>{item.theme}</strong>
-            <p>{item.evidence_summary}</p>
-            <small>Supported by {item.source_refs.length} anonymous teacher sources</small>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
+function findFridayValidationPanel(): HTMLElement | null {
+  const panels = Array.from(document.querySelectorAll<HTMLElement>("section.panel"));
+  return panels.find((panel) => (
+    panel.querySelector(".section-heading .eyebrow")?.textContent?.trim() === "Friday closeout"
+  )) ?? null;
 }
 
 export function ReflectionIntelligenceExperience() {
   const [session, setSession] = useState<Session | null>(null);
   const [identity, setIdentity] = useState<Identity | null>(null);
+  const [stepTarget, setStepTarget] = useState<Element | null>(null);
+  const [stepperTarget, setStepperTarget] = useState<Element | null>(null);
   const [open, setOpen] = useState(false);
-  const [view, setView] = useState<View>("teacher");
   const [weekStart, setWeekStart] = useState(mondayFor());
   const [lookbackWeeks, setLookbackWeeks] = useState(12);
   const [boundaryConfirmed, setBoundaryConfirmed] = useState(false);
   const [teacherInsight, setTeacherInsight] = useState<TeacherInsight | null>(null);
-  const [schoolBrief, setSchoolBrief] = useState<SchoolBrief | null>(null);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
   const closeButton = useRef<HTMLButtonElement>(null);
@@ -122,10 +87,6 @@ export function ReflectionIntelligenceExperience() {
 
   const accessToken = session?.access_token ?? "";
   const isTeacher = identity?.roles.includes("teacher") ?? false;
-  const canViewSchool = identity?.roles.some((role) => (
-    role === "school_admin" || role === "district_admin" || role === "platform_admin"
-  )) ?? false;
-  const available = Boolean(accessToken && identity && (isTeacher || canViewSchool));
 
   useEffect(() => {
     if (!reflectionSupabase) return;
@@ -135,7 +96,6 @@ export function ReflectionIntelligenceExperience() {
       setIdentity(null);
       setOpen(false);
       setTeacherInsight(null);
-      setSchoolBrief(null);
     });
     return () => data.subscription.unsubscribe();
   }, []);
@@ -153,9 +113,88 @@ export function ReflectionIntelligenceExperience() {
   }, [accessToken]);
 
   useEffect(() => {
-    if (!identity) return;
-    if (!isTeacher && canViewSchool) setView("school");
-  }, [canViewSchool, identity?.id, isTeacher]);
+    if (!isTeacher) {
+      setStepTarget(null);
+      setStepperTarget(null);
+      setOpen(false);
+      return;
+    }
+
+    const syncTargets = () => {
+      const panel = findFridayValidationPanel();
+      if (!panel) {
+        setStepTarget(null);
+        setStepperTarget(null);
+        setOpen(false);
+        return;
+      }
+
+      const stepper = panel.querySelector<HTMLElement>(".closeout-stepper");
+      if (stepper) {
+        let markerHost = stepper.querySelector<HTMLElement>("[data-ri-step-marker-host]");
+        if (!markerHost) {
+          markerHost = document.createElement("div");
+          markerHost.dataset.riStepMarkerHost = "true";
+          markerHost.className = "ri-step-marker-host";
+          const continueMarker = Array.from(stepper.children).find((element) => (
+            element.querySelector("small")?.textContent?.trim() === "Continue"
+          ));
+          if (continueMarker) stepper.insertBefore(markerHost, continueMarker);
+          else stepper.appendChild(markerHost);
+        }
+        setStepperTarget(markerHost);
+
+        const continueMarker = Array.from(stepper.children).find((element) => (
+          element !== markerHost
+          && element.querySelector("small")?.textContent?.trim() === "Continue"
+        ));
+        if (continueMarker instanceof HTMLElement) {
+          continueMarker.classList.add("ri-renumbered-continue-marker");
+          continueMarker.setAttribute("aria-label", "Step 5 Continue");
+        }
+      }
+
+      const continueCard = Array.from(panel.querySelectorAll<HTMLElement>(".setup-ready-card"))
+        .find((card) => card.querySelector("h2")?.textContent?.trim() === "Continue to next week");
+
+      if (!continueCard) {
+        setStepTarget(null);
+        return;
+      }
+
+      continueCard.classList.add("ri-renumbered-continue-card");
+      continueCard.setAttribute("aria-label", "Step 5 Continue to next week");
+
+      let stepHost = panel.querySelector<HTMLElement>("[data-ri-friday-step-host]");
+      if (!stepHost) {
+        stepHost = document.createElement("div");
+        stepHost.dataset.riFridayStepHost = "true";
+        stepHost.className = "ri-friday-step-host";
+        continueCard.parentElement?.insertBefore(stepHost, continueCard);
+      }
+      setStepTarget(stepHost);
+    };
+
+    syncTargets();
+    const observer = new MutationObserver(syncTargets);
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      observer.disconnect();
+      document.querySelectorAll<HTMLElement>("[data-ri-step-marker-host], [data-ri-friday-step-host]")
+        .forEach((element) => element.remove());
+      document.querySelectorAll<HTMLElement>(".ri-renumbered-continue-marker")
+        .forEach((element) => {
+          element.classList.remove("ri-renumbered-continue-marker");
+          element.removeAttribute("aria-label");
+        });
+      document.querySelectorAll<HTMLElement>(".ri-renumbered-continue-card")
+        .forEach((element) => {
+          element.classList.remove("ri-renumbered-continue-card");
+          element.removeAttribute("aria-label");
+        });
+    };
+  }, [isTeacher]);
 
   useEffect(() => {
     if (!open) return;
@@ -199,7 +238,9 @@ export function ReflectionIntelligenceExperience() {
         `/api/v1/reflection-intelligence/teacher/${encodeURIComponent(weekStart)}?lookback_weeks=${lookbackWeeks}`,
         { method: "POST" },
       );
-      if (!response.ok) throw new Error(await readError(response, "Your private reflection recap could not be generated."));
+      if (!response.ok) {
+        throw new Error(await readError(response, "Your private reflection recap could not be generated."));
+      }
       setTeacherInsight(await response.json() as TeacherInsight);
     } catch (caught) {
       setTeacherInsight(null);
@@ -209,60 +250,67 @@ export function ReflectionIntelligenceExperience() {
     }
   }
 
-  async function generateSchoolBrief() {
-    setWorking(true);
-    setError("");
-    try {
-      const response = await authenticatedFetch(
-        `/api/v1/reflection-intelligence/school/${encodeURIComponent(weekStart)}`,
-        { method: "POST" },
-      );
-      if (!response.ok) throw new Error(await readError(response, "The school PLC brief could not be generated."));
-      setSchoolBrief(await response.json() as SchoolBrief);
-    } catch (caught) {
-      setSchoolBrief(null);
-      setError(caught instanceof Error ? caught.message : "The school PLC brief could not be generated.");
-    } finally {
-      setWorking(false);
-    }
-  }
-
-  async function printHandout() {
-    if (!schoolBrief) return;
-    try {
-      await authenticatedFetch(
-        `/api/v1/reflection-intelligence/school/${encodeURIComponent(weekStart)}/handout-viewed`,
-        { method: "POST" },
-      );
-    } catch {
-      // Content-free adoption telemetry may never block the PLC artifact.
-    }
-    printArtifact(".reflection-intelligence-handout");
-  }
-
   function closePanel() {
     setOpen(false);
     window.requestAnimationFrame(() => triggerButton.current?.focus());
   }
 
-  if (!reflectionSupabase || !available) return null;
+  if (!reflectionSupabase || !accessToken || !identity || !isTeacher) return null;
+
+  const marker = stepperTarget ? createPortal(
+    <div
+      className={`setup-step-marker ${teacherInsight ? "complete" : ""} ${stepTarget && !teacherInsight ? "active" : ""}`}
+      aria-label={`Step 4 Reflection insights${teacherInsight ? " complete" : " optional"}`}
+    >
+      <span className="step-number" aria-hidden="true">{teacherInsight ? "✓" : 4}</span>
+      <span><strong>Step 4</strong><small>Reflection insights</small></span>
+    </div>,
+    stepperTarget,
+  ) : null;
+
+  const fridayStep = stepTarget ? createPortal(
+    <section className="setup-step-card active-step ri-friday-reflection-step">
+      <div className="step-heading">
+        <span className="step-number">4</span>
+        <div>
+          <p className="eyebrow">Step 4 · Optional</p>
+          <h2>Review your reflection insights</h2>
+          <p className="supporting">
+            After your teacher-authored reflection is submitted and the completed packet is reviewed,
+            TPP can privately synthesize patterns from your own submitted reflections. This does not
+            change your reflection and is not a teacher-performance score.
+          </p>
+        </div>
+      </div>
+      <div className="button-row">
+        <button
+          ref={triggerButton}
+          type="button"
+          className="primary"
+          aria-expanded={open}
+          aria-controls="reflection-intelligence-panel"
+          onClick={() => {
+            setOpen(true);
+            setError("");
+          }}
+        >
+          {teacherInsight ? "Review reflection insights again" : "Review reflection insights"}
+        </button>
+        {teacherInsight ? (
+          <span className="ri-step-status" role="status">Private recap generated for this session.</span>
+        ) : null}
+      </div>
+      <p className="ri-step-note">
+        Reflection insights are optional. You may continue to Step 5 without generating a recap.
+      </p>
+    </section>,
+    stepTarget,
+  ) : null;
 
   return (
     <>
-      <button
-        ref={triggerButton}
-        type="button"
-        className="ri-launcher"
-        aria-expanded={open}
-        aria-controls="reflection-intelligence-panel"
-        onClick={() => {
-          setOpen((current) => !current);
-          setError("");
-        }}
-      >
-        Reflection insights
-      </button>
-
+      {marker}
+      {fridayStep}
       {open ? (
         <aside
           id="reflection-intelligence-panel"
@@ -272,7 +320,7 @@ export function ReflectionIntelligenceExperience() {
           <div className="ri-panel-header">
             <div>
               <p className="ri-eyebrow">Reflection Intelligence</p>
-              <h2 id="reflection-intelligence-title">Learn from teacher-authored reflection</h2>
+              <h2 id="reflection-intelligence-title">Your private reflection insights</h2>
             </div>
             <button ref={closeButton} type="button" className="ri-close" onClick={closePanel}>
               Close
@@ -281,31 +329,8 @@ export function ReflectionIntelligenceExperience() {
 
           <div className="ri-boundary" role="note">
             <strong>Instructional insight, not evaluation.</strong>
-            <span> No teacher quality score. No student data. AI synthesizes only submitted teacher-authored professional reflections.</span>
+            <span> No teacher quality score. No student data. AI synthesizes only your submitted teacher-authored professional reflections.</span>
           </div>
-
-          {isTeacher && canViewSchool ? (
-            <div className="ri-tabs" role="tablist" aria-label="Reflection Intelligence views">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={view === "teacher"}
-                className={view === "teacher" ? "active" : ""}
-                onClick={() => { setView("teacher"); setError(""); }}
-              >
-                My recap
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={view === "school"}
-                className={view === "school" ? "active" : ""}
-                onClick={() => { setView("school"); setError(""); }}
-              >
-                School PLC brief
-              </button>
-            </div>
-          ) : null}
 
           <div className="ri-controls">
             <label>
@@ -313,89 +338,44 @@ export function ReflectionIntelligenceExperience() {
               <input type="date" value={weekStart} onChange={(event) => {
                 setWeekStart(event.target.value);
                 setTeacherInsight(null);
-                setSchoolBrief(null);
               }} />
             </label>
-            {view === "teacher" ? (
-              <label>
-                Pattern window
-                <select value={lookbackWeeks} onChange={(event) => setLookbackWeeks(Number(event.target.value))}>
-                  <option value={4}>4 weeks</option>
-                  <option value={8}>8 weeks</option>
-                  <option value={12}>12 weeks</option>
-                </select>
-              </label>
-            ) : null}
+            <label>
+              Pattern window
+              <select value={lookbackWeeks} onChange={(event) => setLookbackWeeks(Number(event.target.value))}>
+                <option value={4}>4 weeks</option>
+                <option value={8}>8 weeks</option>
+                <option value={12}>12 weeks</option>
+              </select>
+            </label>
           </div>
 
-          {view === "teacher" && isTeacher ? (
-            <div role="tabpanel" aria-label="Private teacher reflection recap">
-              <label className="ri-confirmation">
-                <input
-                  type="checkbox"
-                  checked={boundaryConfirmed}
-                  onChange={(event) => setBoundaryConfirmed(event.target.checked)}
-                />
-                <span>
-                  I confirm my submitted reflections use class- or group-level observations only and contain no student names, identifiers, identifiable student work, IEP/504, health, discipline, or other student-specific information.
-                </span>
-              </label>
-              <button type="button" className="ri-primary" disabled={working} onClick={() => void generateTeacherInsight()}>
-                {working ? "Generating private recap…" : "Generate my private recap"}
-              </button>
+          <label className="ri-confirmation">
+            <input
+              type="checkbox"
+              checked={boundaryConfirmed}
+              onChange={(event) => setBoundaryConfirmed(event.target.checked)}
+            />
+            <span>
+              I confirm my submitted reflections use class- or group-level observations only and contain no student names, identifiers, identifiable student work, IEP/504, health, discipline, or other student-specific information.
+            </span>
+          </label>
+          <button type="button" className="ri-primary" disabled={working} onClick={() => void generateTeacherInsight()}>
+            {working ? "Generating private recap…" : "Generate my private recap"}
+          </button>
 
-              {teacherInsight ? (
-                <section className="ri-results" aria-live="polite">
-                  <p className="ri-meta">
-                    Private to you · {teacherInsight.source_submission_count} submitted reflection{teacherInsight.source_submission_count === 1 ? "" : "s"} across {teacherInsight.source_week_count} week{teacherInsight.source_week_count === 1 ? "" : "s"}
-                  </p>
-                  <h3>Week of {weekLabel}</h3>
-                  <p className="ri-recap">{teacherInsight.insight.weekly_recap}</p>
-                  <BulletSection title="Recurring themes" items={teacherInsight.insight.recurring_themes} />
-                  <BulletSection title="Strategies I keep seeing work" items={teacherInsight.insight.strategies_that_work} />
-                  <BulletSection title="Challenges to keep seeing" items={teacherInsight.insight.challenges_to_watch} />
-                  <BulletSection title="Carry-forward ideas" items={teacherInsight.insight.carry_forward_ideas} />
-                </section>
-              ) : null}
-            </div>
-          ) : null}
-
-          {view === "school" && canViewSchool ? (
-            <div role="tabpanel" aria-label="School weekly PLC reflection brief">
-              <p className="ri-guidance">
-                The school brief uses anonymous teacher source references. TPP requires at least two distinct teachers before a common theme can appear.
+          {teacherInsight ? (
+            <section className="ri-results" aria-live="polite">
+              <p className="ri-meta">
+                Private to you · {teacherInsight.source_submission_count} submitted reflection{teacherInsight.source_submission_count === 1 ? "" : "s"} across {teacherInsight.source_week_count} week{teacherInsight.source_week_count === 1 ? "" : "s"}
               </p>
-              <button type="button" className="ri-primary" disabled={working} onClick={() => void generateSchoolBrief()}>
-                {working ? "Generating school brief…" : "Generate school PLC brief"}
-              </button>
-
-              {schoolBrief ? (
-                <section className="ri-results reflection-intelligence-handout" aria-live="polite">
-                  <header className="ri-handout-header">
-                    <p className="ri-eyebrow">Teacher Planning Platform</p>
-                    <h3>Weekly PLC Reflection Brief — Week of {weekLabel}</h3>
-                    <p>
-                      Aggregate professional learning from {schoolBrief.source_teacher_count} anonymous teacher sources. No teacher quality score; no student data.
-                    </p>
-                  </header>
-                  <ThemeSection title="Common successes" items={schoolBrief.brief.common_successes} />
-                  <ThemeSection title="Common challenges" items={schoolBrief.brief.common_challenges} />
-                  <ThemeSection title="Emerging themes" items={schoolBrief.brief.emerging_themes} />
-                  <BulletSection title="PLC discussion questions" items={schoolBrief.brief.discussion_questions} />
-                  <BulletSection title="Possible actions" items={schoolBrief.brief.possible_actions} />
-                  <BulletSection title="Support needs" items={schoolBrief.brief.support_needs} />
-                  <footer className="ri-handout-footer">
-                    AI-synthesized from teacher-authored submitted reflections. Use as a discussion aid; verify context with professional judgment.
-                  </footer>
-                </section>
-              ) : null}
-
-              {schoolBrief ? (
-                <button type="button" className="ri-secondary" onClick={() => void printHandout()}>
-                  Print PLC handout
-                </button>
-              ) : null}
-            </div>
+              <h3>Week of {weekLabel}</h3>
+              <p className="ri-recap">{teacherInsight.insight.weekly_recap}</p>
+              <BulletSection title="Recurring themes" items={teacherInsight.insight.recurring_themes} />
+              <BulletSection title="Strategies I keep seeing work" items={teacherInsight.insight.strategies_that_work} />
+              <BulletSection title="Challenges to keep seeing" items={teacherInsight.insight.challenges_to_watch} />
+              <BulletSection title="Carry-forward ideas" items={teacherInsight.insight.carry_forward_ideas} />
+            </section>
           ) : null}
 
           {error ? <p className="ri-error" role="alert">{error}</p> : null}
