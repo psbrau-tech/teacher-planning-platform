@@ -39,7 +39,7 @@ TPP performs local deterministic recognition for common planned formative-assess
 
 A nonblank daily CFU/evidence entry that does not match the transparent taxonomy is counted as `Other / not yet classified`. TPP does not guess the teacher's intended assessment type.
 
-This first release does not send lesson-plan text to an AI provider for classification.
+This release does not send lesson-plan text to an AI provider for classification.
 
 ## Reporting boundary
 
@@ -48,24 +48,35 @@ Authorized school reporting administrators may see school-level aggregate planni
 - submitted course-weeks represented;
 - distinct teachers represented;
 - number of daily CFU/evidence entries;
-- recognized assessment-type counts; and
-- weekday distribution of daily assessment entries.
+- recognized assessment-type counts;
+- weekday distribution of daily assessment entries; and
+- week-over-week counts for submitted course-weeks, anonymous teacher coverage, daily assessment entries, exit tickets/slips, and the most common additional assessment types.
 
 The analytics response does not return teacher names, teacher IDs, course names, raw lesson-plan text, student data, or teacher-level rankings.
+
+## Weekly trend interpretation
+
+Weekly trends reuse the same submitted-plan source and deterministic taxonomy. No new teacher entry, AI request, database analytics store, or student-result source is introduced.
+
+The trend intentionally reports **raw school-level planning counts** rather than a percentage, compliance rate, or teacher comparison. TPP displays submitted course-week and anonymous-teacher coverage alongside each week so instructional coaches can interpret changes in context.
+
+TPP does not assume every course meets five days per week. A lower count from one week to another may reflect differences in submitted course-weeks, school schedules, class meeting patterns, or the assessment strategies teachers planned. The product must not convert these counts into an expectation that every teacher or course use a particular assessment type at a particular frequency.
+
+Exit tickets/slips remain visible as a trend category even when the recognized count is zero so coaches can track the specific planning signal they requested without treating zero as a performance finding.
 
 ## Interpretation
 
 These metrics describe **planned formative-assessment signals**. They do not prove that an assessment was administered, that students completed it, that students learned from it, or that a teacher is effective.
 
-The feature may support PLC and coaching questions such as whether staff want additional exit-ticket options, whether the school is planning a diverse assessment mix, or whether unfamiliar assessment language should be added to the transparent taxonomy.
+The feature may support PLC and coaching questions such as whether staff want additional exit-ticket options, whether the school is planning a diverse assessment mix, whether a strategy is appearing more often across submitted plans, or whether unfamiliar assessment language should be added to the transparent taxonomy.
 
-The feature may not be used by TPP to create teacher quality scores, teacher rankings, performance ratings, effort/productivity scores, or automated personnel decisions.
+The feature may not be used by TPP to create teacher quality scores, teacher rankings, performance ratings, effort/productivity scores, compliance rates, or automated personnel decisions.
 
 ## Data minimization
 
 The database reporting function returns only anonymous teacher references and the ten daily CFU/evidence fields needed for server-side classification. Raw plan text is not returned by the public API response and is not copied into a new analytics table.
 
-No new assessment-content retention store is created in the first release.
+The weekly trend is computed in the application from that same bounded source and returns aggregate weekly counts only. No new assessment-content retention store is created.
 
 ## Release requirements
 
@@ -77,5 +88,6 @@ Before controlled deployment:
 4. verify API responses contain aggregate counts only;
 5. verify school reporting authorization and school scope;
 6. verify the deterministic taxonomy against representative pilot wording;
-7. review Help/privacy language for the exact release candidate; and
-8. retain exact commit/image/migration evidence for release.
+7. verify weekly trend counts use the same source/taxonomy and preserve coverage context;
+8. review Help/privacy language for the exact release candidate; and
+9. retain exact commit/image/migration evidence for release.
