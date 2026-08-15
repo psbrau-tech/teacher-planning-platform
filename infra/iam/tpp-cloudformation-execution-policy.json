@@ -172,7 +172,30 @@
       ],
       "Resource": [
         "arn:aws:iam::697091778129:role/tpp-pilot-task",
-        "arn:aws:iam::697091778129:role/tpp-pilot-task-execution",
+        "arn:aws:iam::697091778129:role/tpp-pilot-task-execution"
+      ]
+    },
+    {
+      "Sid": "ManageExactScheduledDigestRoles",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:GetRole",
+        "iam:UpdateAssumeRolePolicy",
+        "iam:TagRole",
+        "iam:UntagRole",
+        "iam:PutRolePolicy",
+        "iam:GetRolePolicy",
+        "iam:DeleteRolePolicy",
+        "iam:ListRolePolicies",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListInstanceProfilesForRole",
+        "iam:ListRoleTags"
+      ],
+      "Resource": [
         "arn:aws:iam::697091778129:role/tpp-pilot-scheduled-digest-task",
         "arn:aws:iam::697091778129:role/tpp-pilot-scheduled-digest-task-execution",
         "arn:aws:iam::697091778129:role/tpp-pilot-scheduled-digest-scheduler"
@@ -184,7 +207,19 @@
       "Action": "iam:PassRole",
       "Resource": [
         "arn:aws:iam::697091778129:role/tpp-pilot-task",
-        "arn:aws:iam::697091778129:role/tpp-pilot-task-execution",
+        "arn:aws:iam::697091778129:role/tpp-pilot-task-execution"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "ecs-tasks.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "PassExactScheduledDigestTaskRolesToEcs",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": [
         "arn:aws:iam::697091778129:role/tpp-pilot-scheduled-digest-task",
         "arn:aws:iam::697091778129:role/tpp-pilot-scheduled-digest-task-execution"
       ],
