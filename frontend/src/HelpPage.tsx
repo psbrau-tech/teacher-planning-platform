@@ -70,7 +70,7 @@ export function HelpPage({ roles }: Props) {
             <p>
               <strong>If you build pacing in TPP.</strong> Start with a complete first instructional
               week rather than a single placeholder lesson. Enter enough lessons to cover the
-              class's normal meeting days that first week — from one lesson for a once-weekly class
+              class&apos;s normal meeting days that first week — from one lesson for a once-weekly class
               through five lessons for a daily class. You can add the rest of the semester/year now
               or extend future unscheduled pacing later.
             </p>
@@ -141,14 +141,14 @@ export function HelpPage({ roles }: Props) {
               testing day, rally, closure, or other event means the class will not meet, choose
               <strong> No class / postpone pacing for this day</strong> before rebuilding. A skipped
               meeting does not consume the pacing lesson; TPP keeps curriculum order and resumes on
-              the next available class meeting. TPP then uses the class's saved Curriculum & Pacing,
+              the next available class meeting. TPP then uses the class&apos;s saved Curriculum & Pacing,
               independent progress, schedule, school calendar, schedule exceptions, and
               teacher-selected carry-forward. Review the scheduled lessons and explicitly confirm
-              the week's curriculum before continuing.
+              the week&apos;s curriculum before continuing.
             </p>
             <p>
               <strong>3. Save authoritative standards.</strong> Confirm the governed standards
-              relevant to this week's scheduled curriculum.
+              relevant to this week&apos;s scheduled curriculum.
             </p>
             <p>
               <strong>4. Use planning assistance if helpful.</strong> Review, edit, accept,
@@ -185,12 +185,29 @@ export function HelpPage({ roles }: Props) {
             </p>
             <p>
               <strong>3. Review the Completed Weekly Packet.</strong> Review the immutable packet
-              containing that week's Instructional Planning Framework, Week at a Glance, and
+              containing that week&apos;s Instructional Planning Framework, Week at a Glance, and
               teacher-authored reflection. View, Download, and Print remain available.
             </p>
             <p>
               <strong>4. Continue to the following week.</strong> TPP moves to the next Monday and
-              uses that class's accumulated pacing progress plus your carry-forward decisions.
+              uses that class&apos;s accumulated pacing progress plus your carry-forward decisions.
+            </p>
+            <p>
+              <strong>Friday submission status.</strong> The Dashboard shows each active required
+              class separately. It identifies whether the current week&apos;s teacher-authored
+              reflection/completed packet has been submitted and whether the following week&apos;s
+              lesson plan has been submitted. Saved drafts do not count as submitted. A class with
+              no expected instructional meeting in a relevant week is shown as not required rather
+              than falsely missing.
+            </p>
+            <p>
+              <strong>Friday courtesy reminder.</strong> When separately activated, TPP checks the
+              same submitted status at 2:00 PM Friday in the school&apos;s local timezone. Teachers with
+              everything required submitted receive no email. A teacher with an outstanding item
+              receives one friendly reminder that names the exact class or classes and whether the
+              missing item is this week&apos;s reflection/completed packet, next week&apos;s lesson plan, or
+              both. The email does not contain reflection text, lesson-plan content, student data,
+              generated instructional insight, or teacher-quality/performance scoring.
             </p>
             <p>
               <strong>If you refresh after closeout.</strong> TPP should recognize an already
@@ -239,7 +256,7 @@ export function HelpPage({ roles }: Props) {
             </p>
             <p>
               <strong>I planned next week early.</strong> Previously scheduled lessons are part of
-              that class's progress cursor, so building another week must not duplicate them.
+              that class&apos;s progress cursor, so building another week must not duplicate them.
               Friday validation still records what actually happened and controls carry-forward.
             </p>
             <p>
@@ -256,6 +273,7 @@ export function HelpPage({ roles }: Props) {
           <h3>Administrator workflow</h3>
           <ol className="help-steps">
             <li><strong>Open Administration:</strong> Choose the reporting period needed for the operational summary.</li>
+            <li><strong>Review Friday submission status:</strong> Use the current-week closeout / following-week planning report for teacher- and class-level operational follow-up.</li>
             <li><strong>Review weekly submissions:</strong> Select the Monday-starting week and optionally narrow the list by school, multiple teachers, or course.</li>
             <li><strong>See both records:</strong> Each teacher/course row shows the pre-instruction <strong>Upcoming lesson plan</strong> and the end-of-week <strong>Completed weekly packet</strong> separately.</li>
             <li><strong>Review one record:</strong> Open the lesson-plan submission to see the Instructional Planning Framework + Week at a Glance, or open the completed packet to see those documents plus the teacher reflection.</li>
@@ -266,9 +284,16 @@ export function HelpPage({ roles }: Props) {
             <p>
               The upcoming lesson plan proves the plan was submitted before instruction. The
               completed weekly packet is a separate end-of-week record that attaches the
-              teacher-authored reflection to that same week's plan. The following week's lesson
+              teacher-authored reflection to that same week&apos;s plan. The following week&apos;s lesson
               plan appears under its own Monday-starting week and receives a completed packet only
-              after that week's Friday closeout.
+              after that week&apos;s Friday closeout.
+            </p>
+            <p>
+              <strong>Friday submission status is operational.</strong> The live report shows the
+              current week&apos;s required completed packet/reflection and the following week&apos;s required
+              lesson plan by teacher and class, using immutable submissions rather than draft
+              presence. It is for workflow follow-up, not teacher ranking, instructional-quality
+              inference, effort/productivity scoring, or personnel evaluation.
             </p>
           </div>
 
@@ -309,24 +334,30 @@ export function HelpPage({ roles }: Props) {
           </div>
 
           <div className="help-notes">
-            <h3>Professional operational email</h3>
+            <h3>Friday professional operational email</h3>
             <p>
-              When the separately governed email infrastructure is enabled, an authorized
-              administrator may send a minimized weekly digest to that administrator's own TPP
-              professional account. The approved application From address is
-              <strong> notifications@planner.guidedscholar.ai</strong>.
+              Email delivery is a separately governed infrastructure feature. The normal
+              administrator workflow does not require a manual weekly-email button. When automatic
+              delivery is activated, TPP first sends a courtesy reminder at 2:00 PM Friday only to
+              teachers who still have a required submission missing. At 3:30 PM Friday, eligible
+              school administrators receive the aggregate school status. The Anniston Pilot uses
+              the school-local <strong>America/Chicago</strong> timezone. The approved application
+              From address is <strong>notifications@planner.guidedscholar.ai</strong>.
             </p>
             <p>
-              The first-release digest is limited to school operational counts and a link back to
-              authenticated TPP. It does not include teacher names or teacher-level exception lists,
-              teacher reflection text, AI-generated instructional insight, student information, or
+              The administrator email is limited to aggregate current-week closeout and
+              following-week lesson-plan counts plus a link back to authenticated TPP. It does not
+              include teacher names, class-level exception lists, reflection text, lesson-plan
+              content, AI-generated instructional insight, student information, or
               teacher-quality/performance scores. Named operational follow-up remains inside the
               authenticated application.
             </p>
             <p>
-              A separate automatic weekly school-admin delivery path may be enabled only through a
-              controlled release. Automatic delivery uses the same minimized content boundary and
-              does not authorize new student, reflection, or personnel data in email.
+              Automatic delivery is enabled only through a controlled release after the approved
+              SES sender, scheduled-delivery database migration, isolated service-role worker,
+              least-privilege IAM, Help/privacy review, and exact Friday schedules are verified.
+              A manual send path, if retained, is for controlled operational recovery rather than
+              the normal administrator workflow.
             </p>
           </div>
         </section>
@@ -353,7 +384,7 @@ export function HelpPage({ roles }: Props) {
             <p>
               <strong>Reflection Intelligence adoption</strong> reports product-use counts such as
               private recaps generated, aggregate PLC briefs generated, PLC handout use, and, when
-              activated, minimized manual versus scheduled admin-digest delivery. These are product
+              activated, minimized administrator-digest delivery. These are product
               adoption/operations signals. They contain no reflection text or student data and must
               not be used to rank staff or infer teacher quality, effort, productivity, or
               performance.
