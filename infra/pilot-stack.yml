@@ -36,6 +36,18 @@ Parameters:
   AllowedEmailDomains:
     Type: String
     Default: anniston.k12.al.us
+  SesFromEmail:
+    Type: String
+    Default: ''
+    Description: >-
+      Approved SES From address. Leave blank until the SES identity, privacy review,
+      and controlled deployment are complete.
+  SesIdentityArn:
+    Type: String
+    Default: ''
+    Description: >-
+      Verified SES email or domain identity ARN used only to scope ses:SendEmail.
+      Leave blank while notifications are disabled.
   DesiredCount:
     Type: Number
     Default: 1
@@ -63,6 +75,9 @@ Parameters:
 Conditions:
   CreateService: !Equals [!Ref DeployService, 'true']
   UseCertificate: !Not [!Equals [!Ref CertificateArn, '']]
+  UseSesNotifications: !And
+    - !Not [!Equals [!Ref SesFromEmail, '']]
+    - !Not [!Equals [!Ref SesIdentityArn, '']]
 
 Resources:
   Vpc:
@@ -330,6 +345,20 @@ Resources:
               Service: ecs-tasks.amazonaws.com
             Action: sts:AssumeRole
 
+  SesSendPolicy:
+    Type: AWS::IAM::Policy
+    Condition: UseSesNotifications
+    Properties:
+      PolicyName: TppApprovedSesSender
+      Roles:
+        - !Ref TaskRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: ses:SendEmail
+            Resource: !Ref SesIdentityArn
+
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Condition: CreateService
@@ -364,6 +393,10 @@ Resources:
               Value: teacher-and-curriculum-only
             - Name: TPP_ALLOWED_EMAIL_DOMAINS
               Value: !Ref AllowedEmailDomains
+            - Name: TPP_SES_FROM_EMAIL
+              Value: !Ref SesFromEmail
+            - Name: TPP_SES_REGION
+              Value: !Ref AWS::Region
           Secrets:
             - Name: TPP_SUPABASE_URL
               ValueFrom: !Ref SupabaseUrlSecretArn
@@ -462,5 +495,9 @@ Outputs:
     Value: !Sub http://${ApplicationLoadBalancer.DNSName}
   PilotHostname:
     Value: planner.guidedscholar.ai
+  SesNotificationsStatus:
+    Value: !If [UseSesNotifications, configured, disabled]
+  SesFromAddress:
+    Value: !If [UseSesNotifications, !Ref SesFromEmail, not-configured]
   DataBoundary:
     Value: teacher-and-curriculum-only
