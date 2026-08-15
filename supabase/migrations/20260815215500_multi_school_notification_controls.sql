@@ -1,187 +1,8 @@
--- Multi-school provisioning and school-local Friday notification controls.
+-- Multi-school tenant provisioning and school-local Friday notification controls.
 -- Adult professional data only. Student data remains prohibited.
 -- This migration follows the deferred scheduled-delivery foundation and does not itself enable email.
-
--- Pilot access is now school-membership based. A professional account may hold governed
--- roles in more than one school while retaining one explicit home school for legacy profile scope.
-drop trigger if exists sync_tpp_allowlisted_user on private.pilot_access_allowlist;
-
-alter table private.pilot_access_allowlist
-  add column if not exists is_home boolean not null default true;
-
-alter table private.pilot_access_allowlist
-  drop constraint if exists pilot_access_allowlist_pkey;
-
-alter table private.pilot_access_allowlist
-  add constraint pilot_access_allowlist_pkey primary key (email, school_id);
-
-create unique index if not exists pilot_access_one_active_home_per_email_idx
-  on private.pilot_access_allowlist (email)
-  where is_active and is_home;
-
-comment on column private.pilot_access_allowlist.is_home is
-  'Exactly one active school membership per professional account is designated as the home school by governed provisioning.';
-
-create or replace function private.apply_pilot_access(
-  target_user_id uuid,
-  target_email text,
-  target_display_name text
-)
-returns void
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  normalized_email text := lower(btrim(target_email));
-  home_record record;
-  selected_role public.app_role;
-begin
-  select
-    a.school_id,
-    a.display_name,
-    a.roles
-  into home_record
-  from private.pilot_access_allowlist a
-  where a.email = normalized_email
-    and a.is_active
-  order by a.is_home desc, a.created_at, a.school_id
-  limit 1;
-
-  if not found then
-    update public.profiles
-      set is_active = false,
-          updated_at = now()
-      where id = target_user_id;
-    delete from public.profile_roles where profile_id = target_user_id;
-    return;
-  end if;
-
-  select case
-    when exists (
-      select 1
-      from private.pilot_access_allowlist a
-      where a.email = normalized_email
-        and a.is_active
-        and 'teacher'::public.app_role = any(a.roles)
-    ) then 'teacher'::public.app_role
-    else home_record.roles[1]
-  end
-  into selected_role;
-
-  insert into public.profiles (
-    id,
-    school_id,
-    display_name,
-    email,
-    role,
-    is_active,
-    created_at,
-    updated_at
-  ) values (
-    target_user_id,
-    home_record.school_id,
-    coalesce(
-      nullif(btrim(home_record.display_name), ''),
-      nullif(btrim(target_display_name), ''),
-      normalized_email
-    ),
-    normalized_email,
-    selected_role,
-    true,
-    now(),
-    now()
-  )
-  on conflict (id) do update set
-    school_id = excluded.school_id,
-    display_name = excluded.display_name,
-    email = excluded.email,
-    role = excluded.role,
-    is_active = true,
-    updated_at = now();
-
-  delete from public.profile_roles where profile_id = target_user_id;
-  insert into public.profile_roles (profile_id, school_id, role)
-  select distinct
-    target_user_id,
-    a.school_id,
-    role_value
-  from private.pilot_access_allowlist a
-  cross join lateral unnest(a.roles) as role_value
-  where a.email = normalized_email
-    and a.is_active
-  on conflict do nothing;
-end;
-$$;
-
-revoke all on function private.apply_pilot_access(uuid, text, text)
-  from public, anon, authenticated, service_role;
-
-create or replace function private.sync_allowlisted_auth_user()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  target_email text;
-  previous_email text;
-  user_record record;
-begin
-  target_email := case when tg_op = 'DELETE' then old.email else new.email end;
-  previous_email := case when tg_op = 'UPDATE' then old.email else null end;
-
-  select u.id, u.email, u.raw_user_meta_data
-    into user_record
-  from auth.users u
-  where lower(u.email) = target_email
-  limit 1;
-
-  if found then
-    perform private.apply_pilot_access(
-      user_record.id,
-      user_record.email,
-      coalesce(
-        user_record.raw_user_meta_data ->> 'full_name',
-        user_record.raw_user_meta_data ->> 'name',
-        user_record.email
-      )
-    );
-  end if;
-
-  if previous_email is not null and previous_email <> target_email then
-    select u.id, u.email, u.raw_user_meta_data
-      into user_record
-    from auth.users u
-    where lower(u.email) = previous_email
-    limit 1;
-
-    if found then
-      perform private.apply_pilot_access(
-        user_record.id,
-        user_record.email,
-        coalesce(
-          user_record.raw_user_meta_data ->> 'full_name',
-          user_record.raw_user_meta_data ->> 'name',
-          user_record.email
-        )
-      );
-    end if;
-  end if;
-
-  if tg_op = 'DELETE' then
-    return old;
-  end if;
-  return new;
-end;
-$$;
-
-revoke all on function private.sync_allowlisted_auth_user()
-  from public, anon, authenticated, service_role;
-
-create trigger sync_tpp_allowlisted_user
-after insert or update or delete on private.pilot_access_allowlist
-for each row execute function private.sync_allowlisted_auth_user();
+-- Professional accounts remain assigned to one explicit school. Existing district/platform roles
+-- provide intentionally broader scope without adding a second active-school session context.
 
 -- Every school owns its IANA timezone. Provisioning validates the identifier using the
 -- runtime timezone database; this database constraint additionally prevents blank values.
@@ -215,8 +36,8 @@ revoke all on table public.school_notification_settings
 comment on table public.school_notification_settings is
   'School-local professional notification controls. New schools default to all automated notifications disabled.';
 
--- The original delivery key did not distinguish the same professional recipient serving
--- more than one school. Replace it with an explicitly school-scoped at-most-once key.
+-- The scheduled-delivery foundation used recipient/week uniqueness. Include school_id as an
+-- additional defense-in-depth boundary so every automatic claim is explicitly school scoped.
 do $$
 declare
   constraint_record record;
@@ -239,7 +60,7 @@ alter table public.scheduled_notification_deliveries
   add constraint scheduled_notification_deliveries_school_recipient_week_key
   unique (notification_key, school_id, recipient_profile_id, week_start);
 
--- Return only schools whose local Friday clock is currently inside the approved 15-minute
+-- Return only enabled schools whose local Friday clock is inside the configured 15-minute
 -- dispatch window. The worker then performs an explicit school-scoped claim for each result.
 create or replace function public.scheduled_notification_school_windows(
   target_mode text,
@@ -481,6 +302,7 @@ begin
     from public.profile_roles pr
     join public.profiles p
       on p.id = pr.profile_id
+      and p.school_id = pr.school_id
       and p.is_active
       and nullif(btrim(coalesce(p.email, '')), '') is not null
     where pr.school_id = target_school_id
