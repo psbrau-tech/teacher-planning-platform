@@ -71,7 +71,7 @@ def test_plc_artifact_is_condensed_and_has_fixed_facilitation_protocol() -> None
 
 
 def test_plc_artifact_preserves_professional_learning_and_data_boundaries() -> None:
-    source = EXPERIENCE.read_text(encoding="utf-8").lower()
+    source = " ".join(EXPERIENCE.read_text(encoding="utf-8").lower().split())
 
     assert "anonymous teacher sources" in source
     assert "not teacher-performance measures" in source
