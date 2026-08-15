@@ -1,4 +1,5 @@
 /* Shared UI consistency refinements from live pilot acceptance. */
+.pdf-modal-heading,
 .pdf-modal-header {
   display: flex;
   justify-content: space-between;
@@ -8,6 +9,7 @@
   border-bottom: 1px solid #dfe5ee;
 }
 
+.pdf-modal-heading h2,
 .pdf-modal-header h3 {
   margin: 0;
   font-size: 1.25rem;
@@ -71,6 +73,7 @@
 }
 
 @media (max-width: 760px) {
+  .pdf-modal-heading,
   .pdf-modal-header {
     align-items: stretch;
     flex-direction: column;
