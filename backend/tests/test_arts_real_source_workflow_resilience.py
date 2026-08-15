@@ -19,13 +19,14 @@ def test_real_source_verification_has_tls_verified_explicit_doh_without_bypass()
     source = WORKFLOW.read_text(encoding="utf-8")
 
     assert "def doh_payload" in source
+    assert "def resolver_endpoint" in source
     assert "def resolve_ipv4" in source
     assert 'checking_disabled: bool = False' in source
     assert 'cd_value = "1" if checking_disabled else "0"' in source
-    assert '"https://cloudflare-dns.com/dns-query?name=' in source
+    assert '"https://cloudflare-dns.com/dns-query"' in source
     assert '"cloudflare-dns.com"' in source
     assert '"1.1.1.1"' in source
-    assert '"https://dns.google/resolve?name=' in source
+    assert '"https://dns.google/resolve"' in source
     assert '"dns.google"' in source
     assert '"8.8.8.8"' in source
     assert '"accept: application/dns-json"' in source
@@ -40,17 +41,23 @@ def test_real_source_verification_has_tls_verified_explicit_doh_without_bypass()
     assert 'transport = "validated-doh-resolve"' in source
 
 
-def test_cd1_dnssec_diagnostic_can_never_be_used_to_accept_source() -> None:
+def test_cd1_and_delegation_diagnostics_can_never_be_used_to_accept_source() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 
     assert "validating DoH failed; running non-accepting cd=1 diagnostic" in source
     assert "checking_disabled=True" in source
     assert "dnssec_diagnostic=validation-failed-but-cd1-resolved" in source
+    assert '"alabamaachieves.org", "NS"' in source
+    assert '"alabamaachieves.org", "DS"' in source
+    assert '"alabamaachieves.org", "DNSKEY"' in source
+    assert '("org", "NS")' in source
+    assert "def log_dns_diagnostic" in source
     diagnostic_start = source.index("except RuntimeError as validation_error:")
     diagnostic_end = source.index("with TemporaryDirectory() as temp_dir:")
     diagnostic_block = source[diagnostic_start:diagnostic_end]
     assert "diagnostic_source_ips" in diagnostic_block
     assert "diagnostic_root_ips" in diagnostic_block
+    assert "log_dns_diagnostic" in diagnostic_block
     assert 'raise StandardsIngestError(' in diagnostic_block
     assert "source_path" not in diagnostic_block
     assert "FetchedSource(" not in diagnostic_block
