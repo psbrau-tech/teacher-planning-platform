@@ -9,7 +9,7 @@ from .notification_email import (
     WeeklyAdminDigestMetrics,
     send_weekly_admin_digest,
 )
-from .settings import Settings
+from .settings import APPROVED_SES_FROM_EMAIL, Settings
 from .supabase_rest import SupabaseRestClient, SupabaseRestError
 
 
@@ -118,7 +118,7 @@ def run_scheduled_admin_digest(settings: Settings | None = None) -> dict[str, in
     the existing authenticated manual-send path.
     """
     effective_settings = settings or Settings()
-    if effective_settings.ses_from_email != effective_settings.approved_ses_from_email:
+    if effective_settings.ses_from_email != APPROVED_SES_FROM_EMAIL:
         raise ScheduledDigestWorkerError("Scheduled digest sender is not the approved TPP address")
 
     week_start = week_start_for_timezone(effective_settings.scheduled_digest_timezone)
