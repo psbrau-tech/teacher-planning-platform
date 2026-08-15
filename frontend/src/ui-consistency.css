@@ -13,29 +13,41 @@
   font-size: 1.25rem;
 }
 
-/* Weekly submissions is the administrator's single teacher/class submission follow-up view. */
-.submission-table .submission-artifact .status {
+/* Weekly submission status & review is the administrator's single teacher/class follow-up view. */
+.submission-status-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+  margin: -0.75rem 0 1rem;
+}
+
+.submission-status {
   display: inline-flex;
   width: fit-content;
   align-items: center;
-  border: 1px solid #a9d9bd;
   border-radius: 999px;
   padding: 0.3rem 0.55rem;
-  background: #e9f6ef;
-  color: #1e603f;
+  font-size: 0.8rem;
   font-weight: 800;
 }
 
-.submission-table td > .badge {
-  display: inline-flex;
-  width: fit-content;
-  align-items: center;
+.submission-status.submitted {
+  border: 1px solid #a9d9bd;
+  background: #e9f6ef;
+  color: #1e603f;
+}
+
+.submission-status.attention {
   border: 1px solid #e2c777;
-  border-radius: 999px;
-  padding: 0.3rem 0.55rem;
   background: #fff3d5;
   color: #6a4500;
-  font-weight: 800;
+}
+
+.submission-status.not-required {
+  border: 1px solid #cbd5e1;
+  background: #f4f6f9;
+  color: #5d6b82;
 }
 
 .plc-screen-summary-block,
