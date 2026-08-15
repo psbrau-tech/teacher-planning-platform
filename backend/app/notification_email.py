@@ -7,7 +7,7 @@ from typing import Any, cast
 import boto3  # type: ignore[import-untyped]
 from botocore.exceptions import BotoCoreError, ClientError  # type: ignore[import-untyped]
 
-from .settings import Settings
+from .settings import APPROVED_SES_FROM_EMAIL, Settings
 
 
 class SesDeliveryError(RuntimeError):
@@ -73,10 +73,12 @@ def send_weekly_admin_digest(
     recipient_email: str,
     metrics: WeeklyAdminDigestMetrics,
 ) -> str:
-    sender = settings.ses_from_email.strip()
+    sender = settings.ses_from_email.strip().lower()
     recipient = recipient_email.strip().lower()
     if not sender:
         raise SesDeliveryError("Email notifications are not configured for this environment")
+    if sender != APPROVED_SES_FROM_EMAIL:
+        raise SesDeliveryError("Configured email sender does not match the approved TPP sender")
     if not recipient or not settings.email_is_allowed(recipient):
         raise SesDeliveryError("Email recipient is outside the governed TPP account boundary")
 
