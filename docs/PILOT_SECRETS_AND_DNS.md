@@ -47,6 +47,8 @@ The approved SES sender is exactly `notifications@planner.guidedscholar.ai`. SES
 
 The approved automatic Friday workflow uses **separate scheduled one-shot ECS tasks**, not the interactive web task. Only those isolated worker tasks may receive `TPP_SUPABASE_SERVICE_ROLE_KEY`, together with `TPP_SUPABASE_URL`, after the scheduled notification database/AWS activation gates are approved.
 
+The **Supabase service-role** credential is therefore restricted to the isolated scheduled workers and protected operations; it is prohibited from the interactive web task.
+
 The scheduled workers must not receive the OpenAI key, Supabase anon key, PostgreSQL database URL, or Google OAuth secrets.
 
 The exact worker commands remain:
@@ -168,7 +170,7 @@ The provisioning script temporarily remains backward-compatible with the legacy 
 ## Controlled workflow order
 
 1. Merge the reviewed release PR and record the exact resulting `main` SHA.
-2. Select the exact migration target required by the release. The current accepted Friday-status live head is `20260815011000_friday_submission_status.sql`.
+2. Select the exact migration target required by the release. The earlier professional-learning/application baseline includes `20260815001500`; the current accepted Friday-status live head is `20260815011000_friday_submission_status.sql`.
 3. Automatic notification migrations remain deliberately **deferred** until email preparation is intentionally opened:
    - `20260815013000_scheduled_friday_notifications.sql`
    - `20260815215500_multi_school_notification_controls.sql`
