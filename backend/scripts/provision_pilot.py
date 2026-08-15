@@ -5,11 +5,11 @@ import json
 from dataclasses import dataclass
 from datetime import date, time
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-import psycopg
-from psycopg import Connection
+if TYPE_CHECKING:
+    from psycopg import Connection
 
 ALLOWED_DOMAIN = "anniston.k12.al.us"
 LEGACY_DISTRICT_NAME = "Anniston City Schools"
@@ -417,6 +417,8 @@ def provision(
     ends_on: date,
     replace_access: bool,
 ) -> tuple[int, int, int, int]:
+    import psycopg
+
     if ends_on < starts_on:
         raise ValueError("academic year end must be on or after its start")
     config = _load_config(access_path)
