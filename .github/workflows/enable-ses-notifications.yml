@@ -1,0 +1,253 @@
+name: Enable TPP SES Notifications
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: Reason for enabling governed TPP email delivery
+        required: true
+        type: string
+      ses_identity_arn:
+        description: Verified SES identity ARN for planner.guidedscholar.ai or the approved From address
+        required: true
+        type: string
+      sender_identity_verified:
+        description: I confirmed the SES identity is verified in us-east-2
+        required: true
+        default: false
+        type: boolean
+      production_access_confirmed:
+        description: I confirmed the SES account can send to intended professional recipients
+        required: true
+        default: false
+        type: boolean
+      privacy_help_review_confirmed:
+        description: I confirmed privacy/subprocessor and Help review for the enabled email data flow
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: tpp-pilot-infrastructure
+  cancel-in-progress: false
+
+jobs:
+  enable-ses:
+    name: Enable least-privilege SES delivery for the approved sender
+    runs-on: ubuntu-latest
+    environment: tpp-pilot
+    env:
+      AWS_REGION: ${{ vars.TPP_AWS_REGION || 'us-east-2' }}
+      AWS_ROLE_ARN: ${{ vars.TPP_AWS_ROLE_ARN }}
+      CLOUDFORMATION_ROLE_ARN: ${{ vars.TPP_CLOUDFORMATION_ROLE_ARN }}
+      STACK_NAME: ${{ vars.TPP_CLOUDFORMATION_STACK || 'TeacherPlanningPlatformPilot' }}
+      ECS_CLUSTER: ${{ vars.TPP_ECS_CLUSTER || 'teacher-planning-platform-pilot' }}
+      ECS_SERVICE: ${{ vars.TPP_ECS_SERVICE || 'teacher-planning-platform-pilot' }}
+      SES_FROM_EMAIL: notifications@planner.guidedscholar.ai
+
+    steps:
+      - name: Enforce manual activation gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ inputs.sender_identity_verified }}" != "true" ]]; then
+            echo "SES activation is blocked until the approved sender identity is verified." >&2
+            exit 1
+          fi
+          if [[ "${{ inputs.production_access_confirmed }}" != "true" ]]; then
+            echo "SES activation is blocked until sending access is confirmed." >&2
+            exit 1
+          fi
+          if [[ "${{ inputs.privacy_help_review_confirmed }}" != "true" ]]; then
+            echo "SES activation is blocked until privacy/subprocessor and Help review are confirmed." >&2
+            exit 1
+          fi
+
+      - name: Validate exact pilot and SES configuration
+        shell: bash
+        env:
+          SES_IDENTITY_ARN: ${{ inputs.ses_identity_arn }}
+        run: |
+          set -euo pipefail
+          required=(AWS_ROLE_ARN CLOUDFORMATION_ROLE_ARN STACK_NAME ECS_CLUSTER ECS_SERVICE)
+          missing=()
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing required tpp-pilot values: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+          if [[ "$AWS_REGION" != "us-east-2" ]]; then
+            echo "TPP SES delivery is locked to us-east-2." >&2
+            exit 1
+          fi
+          expected_cloudformation_role="arn:aws:iam::697091778129:role/TeacherPlanningPlatformPilotCloudFormationExecution"
+          if [[ "$CLOUDFORMATION_ROLE_ARN" != "$expected_cloudformation_role" ]]; then
+            echo "Unexpected TPP CloudFormation execution-role ARN." >&2
+            exit 1
+          fi
+          allowed_email_identity="arn:aws:ses:us-east-2:697091778129:identity/notifications@planner.guidedscholar.ai"
+          allowed_domain_identity="arn:aws:ses:us-east-2:697091778129:identity/planner.guidedscholar.ai"
+          if [[ "$SES_IDENTITY_ARN" != "$allowed_email_identity" \
+            && "$SES_IDENTITY_ARN" != "$allowed_domain_identity" ]]; then
+            echo "SES identity must be the approved address or planner.guidedscholar.ai domain identity." >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials through GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Validate template and current pilot baseline
+        id: baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws cloudformation validate-template --template-body file://infra/pilot-stack.yml >/dev/null
+          stack_json="$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --output json)"
+          stack_status="$(jq -r '.Stacks[0].StackStatus' <<<"$stack_json")"
+          case "$stack_status" in
+            CREATE_COMPLETE|UPDATE_COMPLETE) ;;
+            *)
+              echo "Pilot stack is not stable: $stack_status" >&2
+              exit 1
+              ;;
+          esac
+          service_json="$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --output json)"
+          if [[ "$(jq '.failures | length' <<<"$service_json")" != "0" ]]; then
+            jq '.failures' <<<"$service_json" >&2
+            exit 1
+          fi
+          task_definition="$(jq -r '.services[0].taskDefinition' <<<"$service_json")"
+          task_json="$(aws ecs describe-task-definition \
+            --task-definition "$task_definition" \
+            --output json)"
+          image="$(jq -r '.taskDefinition.containerDefinitions[0].image' <<<"$task_json")"
+          if [[ ! "$image" =~ @sha256:[0-9a-f]{64}$ ]]; then
+            echo "The current pilot service image is not immutable." >&2
+            exit 1
+          fi
+          secret_names="$(jq -r '.taskDefinition.containerDefinitions[0].secrets[].name' <<<"$task_json" | sort)"
+          expected_secret_names=$'TPP_OPENAI_API_KEY\nTPP_SUPABASE_ANON_KEY\nTPP_SUPABASE_URL'
+          if [[ "$secret_names" != "$expected_secret_names" ]]; then
+            echo "SES activation requires the exact approved interactive runtime secret set:" >&2
+            echo "$secret_names" >&2
+            exit 1
+          fi
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+
+      - name: Enable SES sender and least-privilege task permission through CloudFormation
+        shell: bash
+        env:
+          SES_IDENTITY_ARN: ${{ inputs.ses_identity_arn }}
+        run: |
+          set -euo pipefail
+          # aws cloudformation deploy preserves existing stack parameter values that are not
+          # specified during an update. This activation changes only the two SES parameters.
+          aws cloudformation deploy \
+            --stack-name "$STACK_NAME" \
+            --template-file infra/pilot-stack.yml \
+            --role-arn "$CLOUDFORMATION_ROLE_ARN" \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              SesFromEmail="$SES_FROM_EMAIL" \
+              SesIdentityArn="$SES_IDENTITY_ARN"
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
+
+      - name: Verify exact SES runtime configuration and preserved image
+        id: verify
+        shell: bash
+        env:
+          SES_IDENTITY_ARN: ${{ inputs.ses_identity_arn }}
+        run: |
+          set -euo pipefail
+          stack_json="$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --output json)"
+          output_value() {
+            jq -r --arg key "$1" '
+              .Stacks[0].Outputs[]
+              | select(.OutputKey == $key)
+              | .OutputValue
+            ' <<<"$stack_json"
+          }
+          if [[ "$(output_value SesNotificationsStatus)" != "configured" ]]; then
+            echo "CloudFormation did not report SES notifications as configured." >&2
+            exit 1
+          fi
+          if [[ "$(output_value SesFromAddress)" != "$SES_FROM_EMAIL" ]]; then
+            echo "CloudFormation SES From address does not match the approved sender." >&2
+            exit 1
+          fi
+
+          policy_status="$(aws cloudformation describe-stack-resource \
+            --stack-name "$STACK_NAME" \
+            --logical-resource-id SesSendPolicy \
+            --query 'StackResourceDetail.ResourceStatus' \
+            --output text)"
+          case "$policy_status" in
+            CREATE_COMPLETE|UPDATE_COMPLETE) ;;
+            *)
+              echo "SES task policy is not in a completed CloudFormation state: $policy_status" >&2
+              exit 1
+              ;;
+          esac
+
+          service_json="$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --output json)"
+          task_definition="$(jq -r '.services[0].taskDefinition' <<<"$service_json")"
+          task_json="$(aws ecs describe-task-definition \
+            --task-definition "$task_definition" \
+            --output json)"
+          image="$(jq -r '.taskDefinition.containerDefinitions[0].image' <<<"$task_json")"
+          if [[ "$image" != "${{ steps.baseline.outputs.image }}" ]]; then
+            echo "SES activation changed the accepted application image." >&2
+            exit 1
+          fi
+          from_email="$(jq -r '
+            .taskDefinition.containerDefinitions[0].environment[]
+            | select(.name == "TPP_SES_FROM_EMAIL")
+            | .value
+          ' <<<"$task_json")"
+          ses_region="$(jq -r '
+            .taskDefinition.containerDefinitions[0].environment[]
+            | select(.name == "TPP_SES_REGION")
+            | .value
+          ' <<<"$task_json")"
+          if [[ "$from_email" != "$SES_FROM_EMAIL" || "$ses_region" != "$AWS_REGION" ]]; then
+            echo "The ECS task does not contain the exact approved SES runtime configuration." >&2
+            exit 1
+          fi
+          echo "task_definition=$task_definition" >> "$GITHUB_OUTPUT"
+
+      - name: Publish controlled SES activation record
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## TPP SES notification infrastructure enabled"
+            echo "- Reason: ${{ inputs.reason }}"
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- From address: \`$SES_FROM_EMAIL\`"
+            echo "- Identity ARN: \`${{ inputs.ses_identity_arn }}\`"
+            echo "- Region: \`$AWS_REGION\`"
+            echo "- Task definition: \`${{ steps.verify.outputs.task_definition }}\`"
+            echo "- Existing immutable application image preserved: \`${{ steps.baseline.outputs.image }}\`"
+            echo "- Email sent by this workflow: \`false\`"
+            echo "- Student data boundary: \`prohibited\`"
+          } >> "$GITHUB_STEP_SUMMARY"
