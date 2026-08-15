@@ -20,6 +20,8 @@ def test_real_source_verification_has_tls_verified_explicit_doh_without_bypass()
 
     assert "def doh_payload" in source
     assert "def resolve_ipv4" in source
+    assert 'checking_disabled: bool = False' in source
+    assert 'cd_value = "1" if checking_disabled else "0"' in source
     assert '"https://cloudflare-dns.com/dns-query?name=' in source
     assert '"cloudflare-dns.com"' in source
     assert '"1.1.1.1"' in source
@@ -35,7 +37,23 @@ def test_real_source_verification_has_tls_verified_explicit_doh_without_bypass()
     assert '"--doh-insecure"' not in source
     assert "content.startswith(b\"%PDF\")" in source
     assert "MAX_SOURCE_BYTES" in source
-    assert 'transport = "explicit-doh-resolve"' in source
+    assert 'transport = "validated-doh-resolve"' in source
+
+
+def test_cd1_dnssec_diagnostic_can_never_be_used_to_accept_source() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "validating DoH failed; running non-accepting cd=1 diagnostic" in source
+    assert "checking_disabled=True" in source
+    assert "dnssec_diagnostic=validation-failed-but-cd1-resolved" in source
+    diagnostic_start = source.index("except RuntimeError as validation_error:")
+    diagnostic_end = source.index("with TemporaryDirectory() as temp_dir:")
+    diagnostic_block = source[diagnostic_start:diagnostic_end]
+    assert "diagnostic_source_ips" in diagnostic_block
+    assert "diagnostic_root_ips" in diagnostic_block
+    assert 'raise StandardsIngestError(' in diagnostic_block
+    assert "source_path" not in diagnostic_block
+    assert "FetchedSource(" not in diagnostic_block
 
 
 def test_real_source_verification_still_uses_authoritative_source_and_writes_nothing() -> None:
