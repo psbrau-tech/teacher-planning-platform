@@ -24,23 +24,29 @@ The controlled workflows use these exact secret IDs unless the corresponding Git
 
 Each secret contains only its raw value.
 
-### Credentials allowed in the running ECS task
+### Credentials allowed in the interactive ECS web task
 
-The ECS task execution role receives `secretsmanager:GetSecretValue` only for:
+The current AI-enabled interactive runtime receives only the three governed secret mappings required by application code:
 
-- `tpp/pilot/supabase-url`
-- `tpp/pilot/supabase-anon-key`
+- `TPP_SUPABASE_URL` from `tpp/pilot/supabase-url`;
+- `TPP_SUPABASE_ANON_KEY` from `tpp/pilot/supabase-anon-key`; and
+- `TPP_OPENAI_API_KEY` from `tpp/pilot/openai-api-key`.
 
-These support Supabase JWT verification and user-token REST requests governed by row-level security.
+The Supabase values support JWT verification and user-token REST requests governed by row-level security. The OpenAI key supports the reviewed AI planning and post-submission Reflection Intelligence paths. It does not change the no-student-data boundary, and required Weekly Reflection / PLC Discussion responses remain teacher-authored.
 
-The running application must **not** receive:
+The interactive web task must **not** receive:
 
 - the Supabase service-role key;
 - the PostgreSQL database URL;
-- the OpenAI API key;
 - the Google OAuth client ID or client secret.
 
-Those credentials remain outside the application task because current runtime code does not use them. Database migration and staff provisioning workflows retrieve the database connection only for their protected operation. Google provider configuration occurs in Supabase and Google consoles. OpenAI remains reserved for a future reviewed feature. The deployment verification workflow fails if an unused privileged credential appears in the ECS task as plaintext or a secret mapping.
+Those privileged credentials remain outside the interactive application task. Database migration and staff provisioning workflows retrieve the database connection only for their protected operation. Google provider configuration occurs in Supabase and Google consoles. The deployment verification workflow fails if a prohibited privileged credential appears in the ECS task as plaintext or a secret mapping.
+
+### Notification and scheduled-worker credential boundary
+
+Manual admin email delivery uses the interactive task's AWS task role for `ses:SendEmail` only after the SES sender is separately activated. `TPP_SES_FROM_EMAIL` and `TPP_SES_REGION` are non-secret runtime configuration; they are not AWS access keys.
+
+The optional automatic weekly digest uses a **separate scheduled ECS task**, not the interactive web task. Only that isolated worker may receive `TPP_SUPABASE_SERVICE_ROLE_KEY`, together with `TPP_SUPABASE_URL`, after the scheduled-worker database/AWS activation gates are approved. The scheduled worker must not receive the OpenAI key, Supabase anon key, or Google OAuth secrets.
 
 ## GitHub environment: `tpp-pilot`
 
@@ -95,20 +101,21 @@ The record matching `TPP_PLATFORM_OWNER_EMAIL` must contain both `platform_admin
 
 ## Controlled workflow order
 
-1. Merge the reviewed release pull request.
-2. Run **Apply TPP Pilot Database Migrations** with `dry_run_only=true` and review the exact pending list.
-3. Approve a second migration run with `dry_run_only=false`; verify its final dry run reports no pending migration.
-4. Run **Preflight TPP Pilot Release** with the approved academic-year dates.
-5. Run **Provision TPP Pilot Access** with the same dates and protected access-list secret.
-6. Run **Bootstrap TPP Pilot**. It creates or resumes the isolated AWS foundation, builds or reuses an exact commit-plus-build-configuration image, deploys the first ECS service, verifies target health, and requests or reuses the ACM certificate.
-7. Run **Verify TPP Pilot Deployment** with public-hostname verification disabled.
-8. Add the ACM validation CNAME returned in the workflow summary to Cloudflare.
-9. After ACM reports `ISSUED`, run **Enable TPP Pilot TLS** with that certificate ARN.
-10. Set `TPP_CERTIFICATE_ARN` to the accepted issued certificate ARN.
-11. Add the Cloudflare application record: CNAME `planner` to the exact ALB DNS name, initially **DNS only**.
-12. Complete Supabase and Google redirect configuration.
-13. Run deployment verification with public HTTPS enabled, then perform live Google SSO acceptance.
-14. Use **Deploy TPP Pilot** for subsequent exact-image releases after approval.
+1. Merge the reviewed release pull request and record the exact resulting `main` SHA.
+2. Select the exact migration target required by that release. For the August 14 professional-learning/application release, `20260815001500` intentionally leaves `20260815011000_scheduled_admin_digest_worker.sql` deferred.
+3. Run **Apply TPP Pilot Database Migrations** from `main` with the exact `expected_main_sha`, exact `target_migration_head`, `dry_run_only=true`, and `apply_target_confirmed=false`; review the target-scoped pending list.
+4. Approve a second migration run only when the preview is accepted. Use the same exact SHA/head, `dry_run_only=false`, and `apply_target_confirmed=true`. Its final dry run must report no migration pending **through that target**. Later intentionally deferred migrations may remain in the repository.
+5. Run **Preflight TPP Pilot Release** with the approved academic-year dates.
+6. Run **Provision TPP Pilot Access** with the same dates and protected access-list secret.
+7. Run **Bootstrap TPP Pilot** only for an initial stack. It creates or resumes the isolated AWS foundation, builds or reuses an exact commit-plus-build-configuration image, deploys the first ECS service, verifies target health, and requests or reuses the ACM certificate.
+8. Run **Verify TPP Pilot Deployment** with public-hostname verification disabled.
+9. Add the ACM validation CNAME returned in the workflow summary to Cloudflare.
+10. After ACM reports `ISSUED`, run **Enable TPP Pilot TLS** with that certificate ARN.
+11. Set `TPP_CERTIFICATE_ARN` to the accepted issued certificate ARN.
+12. Add the Cloudflare application record: CNAME `planner` to the exact ALB DNS name, initially **DNS only**.
+13. Complete Supabase and Google redirect configuration.
+14. Run deployment verification with public HTTPS enabled, then perform live Google SSO acceptance.
+15. For subsequent application releases, run **Deploy TPP Pilot** from `main` with the exact `expected_main_sha`, exact `expected_migration_head`, `migration_head_applied_confirmed=true`, and the required Help review confirmation.
 
 No workflow in this sequence changes Cloudflare or Route 53 directly.
 
