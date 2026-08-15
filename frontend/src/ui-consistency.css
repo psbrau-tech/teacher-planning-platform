@@ -1,0 +1,66 @@
+/* Shared UI consistency refinements from live pilot acceptance. */
+.pdf-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #dfe5ee;
+}
+
+.pdf-modal-header h3 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+/* Weekly submissions is the administrator's single teacher/class submission follow-up view. */
+.submission-table .submission-artifact .status {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  border: 1px solid #a9d9bd;
+  border-radius: 999px;
+  padding: 0.3rem 0.55rem;
+  background: #e9f6ef;
+  color: #1e603f;
+  font-weight: 800;
+}
+
+.submission-table td > .badge {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  border: 1px solid #e2c777;
+  border-radius: 999px;
+  padding: 0.3rem 0.55rem;
+  background: #fff3d5;
+  color: #6a4500;
+  font-weight: 800;
+}
+
+.plc-screen-summary-block,
+.plc-screen-guide-block {
+  margin-top: 1.25rem;
+}
+
+.plc-flow-heading {
+  margin-bottom: 0.75rem !important;
+}
+
+/* The summary is shown once on screen, then embedded again only for the printable meeting guide. */
+.plc-print-embedded-summary {
+  display: none;
+}
+
+@media print {
+  .plc-print-embedded-summary {
+    display: block;
+  }
+}
+
+@media (max-width: 760px) {
+  .pdf-modal-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
