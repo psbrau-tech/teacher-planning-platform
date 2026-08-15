@@ -242,6 +242,14 @@ def test_delivery_ledger_becomes_school_scoped_and_content_minimized() -> None:
     assert "<> 'service_role'" in multi_school
 
 
+def test_initial_school_local_window_sql_is_executable_before_hardening() -> None:
+    source = MULTI_SCHOOL_MIGRATION.read_text(encoding="utf-8")
+    assert "target_now at time zone s.timezone" in source
+    assert "lc.local_now::date + lc.teacher_reminder_local_time" in source
+    assert "lc.local_now::date + lc.admin_digest_local_time" in source
+    assert "date_trunc('day', lc.local_now) +" not in source
+
+
 def test_school_local_windows_are_iana_and_quarter_hour_governed() -> None:
     source = WINDOW_HARDENING_MIGRATION.read_text(encoding="utf-8")
     assert "teacher_reminder_local_time" in source
