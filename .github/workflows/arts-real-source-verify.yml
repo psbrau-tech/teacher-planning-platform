@@ -2,6 +2,7 @@ name: Arts Real Source Verify
 
 on:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -14,24 +15,77 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Determine whether live Arts source verification is required
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import subprocess
+
+          event_name = os.environ.get("EVENT_NAME", "")
+          protected_paths = {
+              "backend/app/standards_alabama_arts.py",
+              "backend/app/standards_ingest.py",
+              "backend/pyproject.toml",
+          }
+
+          if event_name != "pull_request":
+              live_required = True
+              changed = []
+              reason = "manual verification"
+          else:
+              base_sha = os.environ["BASE_SHA"]
+              head_sha = os.environ["HEAD_SHA"]
+              changed = subprocess.check_output(
+                  ["git", "diff", "--name-only", base_sha, head_sha],
+                  text=True,
+              ).splitlines()
+              protected_changes = sorted(protected_paths.intersection(changed))
+              live_required = bool(protected_changes)
+              reason = (
+                  "Arts parser/source transport changed: " + ", ".join(protected_changes)
+                  if protected_changes
+                  else "Arts parser/source transport unchanged"
+              )
+
+          output_path = Path(os.environ["GITHUB_OUTPUT"])
+          with output_path.open("a", encoding="utf-8") as handle:
+              handle.write(f"live_required={'true' if live_required else 'false'}\n")
+          print(f"live_source_required={live_required}")
+          print(f"scope_reason={reason}")
+          if changed:
+              print("changed_files=")
+              for path in changed:
+                  print(f"  {path}")
+          if not live_required:
+              print(
+                  "Live Arts re-fetch is not required for this pull request. "
+                  "The governed standards architecture keeps the last approved snapshot active "
+                  "when a source is unavailable and reconciles authoritative sources through "
+                  "annual, quarterly, event-driven, and manual maintenance."
+              )
+          PY
       - uses: actions/setup-python@v5
+        if: steps.scope.outputs.live_required == 'true'
         with:
           python-version: '3.12'
           cache: pip
       - name: Install backend
+        if: steps.scope.outputs.live_required == 'true'
         run: python -m pip install -e '.[dev]'
       - name: Parse current Alabama Arts source read-only
+        if: steps.scope.outputs.live_required == 'true'
         run: |
           python - <<'PY'
           from collections import Counter
-          from hashlib import sha256
-          from ipaddress import ip_address
-          import json
-          from pathlib import Path
-          import subprocess
-          from tempfile import TemporaryDirectory
           from time import sleep
-          from urllib.parse import quote
 
           from app.standards_alabama_arts import (
               _course_key,
@@ -39,8 +93,6 @@ jobs:
               parse_alabama_arts_2024,
           )
           from app.standards_ingest import (
-              FetchedSource,
-              MAX_SOURCE_BYTES,
               StandardsIngestError,
               extract_document,
               fetch_source,
@@ -50,189 +102,10 @@ jobs:
               "https://www.alabamaachieves.org/wp-content/uploads/2025/01/"
               "AS_20250108_2024-Alabama-Course-of-Study-Arts-Education_V1.0.pdf"
           )
-          # These hashes come from the last successful governed live-source verification.
-          # They are used only when public DNS cannot reach the authoritative name servers.
-          # The recovery path still downloads the live official HTTPS URL, keeps hostname/TLS
-          # certificate verification enabled, and rejects any byte or normalized-content change.
-          KNOWN_SOURCE_SHA256 = (
-              "add310883b958ebb8a617d9b405a596aeda3488d75ddf24f2aef1bf463995498"
-          )
-          KNOWN_NORMALIZED_SHA256 = (
-              "9cb3249ec617c4253c6812c1a8822a8c19dbbf2ab0a33869b0506105216b5fc8"
-          )
-          # Routing hint only, never an authenticity signal. A stale or incorrect endpoint cannot
-          # pass unless it presents valid TLS for the official hostname and serves the exact
-          # previously governed source bytes.
-          RECOVERY_SOURCE_IP = "157.149.4.100"
 
-          RESOLVERS = (
-              ("cloudflare", "cloudflare-dns.com", "1.1.1.1", "https://cloudflare-dns.com/dns-query"),
-              ("google", "dns.google", "8.8.8.8", "https://dns.google/resolve"),
-          )
-
-          def doh_payload(resolver_host: str, resolver_ip: str, endpoint: str) -> dict:
-              completed = subprocess.run(
-                  [
-                      "curl",
-                      "--fail",
-                      "--silent",
-                      "--show-error",
-                      "--resolve",
-                      f"{resolver_host}:443:{resolver_ip}",
-                      "--connect-timeout",
-                      "20",
-                      "--max-time",
-                      "30",
-                      "--header",
-                      "accept: application/dns-json",
-                      endpoint,
-                  ],
-                  check=True,
-                  capture_output=True,
-                  text=True,
-              )
-              payload = json.loads(completed.stdout)
-              if not isinstance(payload, dict):
-                  raise RuntimeError("DNS-over-HTTPS returned an invalid response")
-              return payload
-
-          def resolve_ipv4(hostname: str, seen: set[str] | None = None) -> list[str]:
-              normalized = hostname.rstrip(".").lower()
-              visited = set() if seen is None else set(seen)
-              if normalized in visited:
-                  raise RuntimeError(f"DNS CNAME loop while resolving {normalized}")
-              visited.add(normalized)
-
-              last_error: Exception | None = None
-              for resolver_name, resolver_host, resolver_ip, base_url in RESOLVERS:
-                  endpoint = (
-                      f"{base_url}?name={quote(normalized)}&type=A&cd=0"
-                  )
-                  try:
-                      payload = doh_payload(resolver_host, resolver_ip, endpoint)
-                  except (subprocess.CalledProcessError, json.JSONDecodeError, RuntimeError) as error:
-                      last_error = error
-                      print(f"{resolver_name} validating DoH failed for {normalized}: {error}")
-                      continue
-
-                  status = payload.get("Status")
-                  print(
-                      f"doh_resolver={resolver_name} host={normalized} "
-                      f"validation=on status={status}"
-                  )
-                  if status != 0:
-                      last_error = RuntimeError(
-                          f"{resolver_name} DoH returned DNS status {status} for {normalized}"
-                      )
-                      continue
-
-                  answers = payload.get("Answer") or []
-                  ipv4 = []
-                  cnames = []
-                  for answer in answers:
-                      if not isinstance(answer, dict):
-                          continue
-                      record_type = answer.get("type")
-                      data = answer.get("data")
-                      if not isinstance(data, str):
-                          continue
-                      if record_type == 1:
-                          try:
-                              parsed_ip = ip_address(data)
-                          except ValueError:
-                              continue
-                          if parsed_ip.version == 4:
-                              ipv4.append(str(parsed_ip))
-                      elif record_type == 5:
-                          cnames.append(data.rstrip("."))
-
-                  if ipv4:
-                      print(
-                          f"doh_resolver={resolver_name} host={normalized} "
-                          f"ipv4={','.join(ipv4)}"
-                      )
-                      return ipv4
-                  for cname in cnames:
-                      try:
-                          return resolve_ipv4(cname, visited)
-                      except RuntimeError as error:
-                          last_error = error
-
-              if last_error is not None:
-                  raise RuntimeError(
-                      f"Could not resolve {normalized} through validating DoH"
-                  ) from last_error
-              raise RuntimeError(f"Could not resolve {normalized} through validating DoH")
-
-          def fetch_with_explicit_route(
-              source_ip: str,
-              *,
-              require_known_hash: bool,
-          ) -> FetchedSource:
-              # --resolve changes routing only. curl still connects as
-              # https://www.alabamaachieves.org, sends that SNI/Host name, and validates the
-              # certificate normally. No --insecure or alternate content source is permitted.
-              with TemporaryDirectory() as temp_dir:
-                  source_path = Path(temp_dir) / "alabama-arts.pdf"
-                  try:
-                      completed = subprocess.run(
-                          [
-                              "curl",
-                              "--fail",
-                              "--silent",
-                              "--show-error",
-                              "--location",
-                              "--resolve",
-                              f"www.alabamaachieves.org:443:{source_ip}",
-                              "--resolve",
-                              f"alabamaachieves.org:443:{source_ip}",
-                              "--connect-timeout",
-                              "30",
-                              "--max-time",
-                              "120",
-                              "--output",
-                              str(source_path),
-                              "--write-out",
-                              "%{url_effective}",
-                              url,
-                          ],
-                          check=True,
-                          capture_output=True,
-                          text=True,
-                      )
-                  except subprocess.CalledProcessError as error:
-                      if error.stderr:
-                          print(error.stderr.strip())
-                      raise StandardsIngestError(
-                          "Authoritative standards source is unavailable"
-                      ) from error
-
-                  content = source_path.read_bytes()
-                  if not content or len(content) > MAX_SOURCE_BYTES:
-                      raise StandardsIngestError(
-                          "Authoritative standards source has an invalid size"
-                      )
-                  if not content.startswith(b"%PDF"):
-                      raise StandardsIngestError(
-                          "Authoritative standards PDF returned unexpected content"
-                      )
-                  source_digest = sha256(content).hexdigest()
-                  if require_known_hash and source_digest != KNOWN_SOURCE_SHA256:
-                      raise StandardsIngestError(
-                          "Authoritative Arts source changed while DNS recovery routing was required"
-                      )
-                  return FetchedSource(
-                      requested_url=url,
-                      resolved_url=completed.stdout.strip() or url,
-                      document_format="pdf",
-                      content=content,
-                      source_sha256=source_digest,
-                  )
-
-          # Prefer the application's normal source transport. Retry only the bounded
-          # source-unavailable condition; invalid content and parser failures still fail closed.
+          # Retry only the bounded source-unavailable condition. Invalid content,
+          # parser failures, and every other verification error fail closed immediately.
           fetched = None
-          transport = "system-dns"
           for attempt in range(1, 5):
               try:
                   fetched = fetch_source(url, "pdf")
@@ -240,61 +113,19 @@ jobs:
               except StandardsIngestError as error:
                   if str(error) != "Authoritative standards source is unavailable":
                       raise
-                  if attempt < 4:
-                      wait_seconds = 15 * attempt
-                      print(
-                          f"authoritative source unavailable on attempt {attempt}/4; "
-                          f"retrying in {wait_seconds}s"
-                      )
-                      sleep(wait_seconds)
+                  if attempt == 4:
+                      raise
+                  wait_seconds = 15 * attempt
+                  print(
+                      f"authoritative source unavailable on attempt {attempt}/4; "
+                      f"retrying in {wait_seconds}s"
+                  )
+                  sleep(wait_seconds)
 
           if fetched is None:
-              # Try two independent public validating resolvers. If the domain's delegated
-              # authoritative DNS is unavailable, use the last-known endpoint strictly as a
-              # routing hint and require TLS plus the exact last-governed source hash.
-              print("system DNS could not resolve the authoritative source; checking validating DoH")
-              try:
-                  source_ips = resolve_ipv4("www.alabamaachieves.org")
-              except RuntimeError as dns_error:
-                  print(
-                      "validating DNS is unavailable; trying TLS-verified, hash-pinned "
-                      "official-host recovery route"
-                  )
-                  transport = "pinned-route-tls-hash"
-                  try:
-                      fetched = fetch_with_explicit_route(
-                          RECOVERY_SOURCE_IP,
-                          require_known_hash=True,
-                      )
-                  except StandardsIngestError as recovery_error:
-                      raise StandardsIngestError(
-                          "Authoritative standards source is unavailable"
-                      ) from recovery_error
-              else:
-                  transport = "validated-doh-route"
-                  last_route_error = None
-                  for source_ip in source_ips:
-                      try:
-                          fetched = fetch_with_explicit_route(
-                              source_ip,
-                              require_known_hash=False,
-                          )
-                          break
-                      except StandardsIngestError as route_error:
-                          last_route_error = route_error
-                  if fetched is None:
-                      raise StandardsIngestError(
-                          "Authoritative standards source is unavailable"
-                      ) from last_route_error
+              raise RuntimeError("Authoritative Arts source verification did not obtain a source")
 
           extracted = extract_document(fetched)
-          if transport == "pinned-route-tls-hash" and (
-              extracted.normalized_sha256 != KNOWN_NORMALIZED_SHA256
-          ):
-              raise StandardsIngestError(
-                  "Authoritative Arts normalized content changed while DNS recovery routing was required"
-              )
-
           markers = tuple(
               index for index, line in enumerate(extracted.lines) if line == "Content Standards"
           )
@@ -325,14 +156,6 @@ jobs:
               )
 
           parsed = parse_alabama_arts_2024(extracted)
-          if transport == "pinned-route-tls-hash":
-              if len(parsed.courses) != 82:
-                  raise RuntimeError("Pinned Arts source parsed an unexpected course count")
-              if sum(len(course.standards) for course in parsed.courses) != 1634:
-                  raise RuntimeError("Pinned Arts source parsed an unexpected standard count")
-
-          print(f"source_transport={transport}")
-          print(f"resolved_url={fetched.resolved_url}")
           print(f"source_sha256={fetched.source_sha256}")
           print(f"normalized_sha256={extracted.normalized_sha256}")
           print(f"parser_version={parsed.parser_version}")
