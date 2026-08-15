@@ -15,10 +15,16 @@ def normalized() -> str:
 
 def test_runbook_preserves_reflection_and_student_data_boundaries() -> None:
     source = normalized()
-    assert "12 required weekly reflection / plc discussion responses remain teacher-authored" in source
+    assert (
+        "12 required weekly reflection / plc discussion responses remain teacher-authored"
+        in source
+    )
     assert "student pii" in source
     assert "student assessment results" in source
-    assert "reflection intelligence operates only after teacher-authored reflection submission" in source
+    assert (
+        "reflection intelligence operates only after teacher-authored reflection submission"
+        in source
+    )
     assert "not teacher-performance/compliance measures" in source
 
 
@@ -33,9 +39,16 @@ def test_runbook_keeps_email_fail_closed_until_separate_activation() -> None:
 
 def test_runbook_keeps_service_role_out_of_interactive_web_task() -> None:
     source = normalized()
-    assert "interactive web ecs task must not receive a supabase service-role credential" in source
+    assert (
+        "interactive web ecs task must not receive a supabase service-role credential"
+        in source
+    )
     assert "tpp/pilot/supabase-service-role-key-*" in source
-    assert "scheduled worker receives only `tpp_supabase_url` and `tpp_supabase_service_role_key`" in source
+    assert (
+        "scheduled worker receives only `tpp_supabase_url` and "
+        "`tpp_supabase_service_role_key`"
+        in source
+    )
     assert "does not receive the openai key, supabase anon key, or oauth secrets" in source
 
 
