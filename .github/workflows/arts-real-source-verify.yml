@@ -24,6 +24,10 @@ jobs:
         run: |
           python - <<'PY'
           from collections import Counter
+          from hashlib import sha256
+          from pathlib import Path
+          import subprocess
+          from tempfile import TemporaryDirectory
           from time import sleep
 
           from app.standards_alabama_arts import (
@@ -32,6 +36,8 @@ jobs:
               parse_alabama_arts_2024,
           )
           from app.standards_ingest import (
+              FetchedSource,
+              MAX_SOURCE_BYTES,
               StandardsIngestError,
               extract_document,
               fetch_source,
@@ -42,26 +48,86 @@ jobs:
               "AS_20250108_2024-Alabama-Course-of-Study-Arts-Education_V1.0.pdf"
           )
 
-          # GitHub-hosted runners can experience transient DNS/network failures. Retry only
-          # the bounded source-unavailable condition; invalid content, parser failures, and
-          # every other verification error still fail closed immediately.
+          # Prefer the application's normal transport. GitHub-hosted runners can experience
+          # resolver-specific failures for an otherwise reachable public source, so retry only
+          # the bounded source-unavailable condition. Invalid content and parser failures still
+          # fail closed immediately.
           fetched = None
+          transport = "system-dns"
           for attempt in range(1, 5):
               try:
                   fetched = fetch_source(url, "pdf")
                   break
               except StandardsIngestError as error:
-                  if str(error) != "Authoritative standards source is unavailable" or attempt == 4:
+                  if str(error) != "Authoritative standards source is unavailable":
                       raise
-                  wait_seconds = 15 * attempt
-                  print(
-                      f"authoritative source unavailable on attempt {attempt}/4; "
-                      f"retrying in {wait_seconds}s"
-                  )
-                  sleep(wait_seconds)
+                  if attempt < 4:
+                      wait_seconds = 15 * attempt
+                      print(
+                          f"authoritative source unavailable on attempt {attempt}/4; "
+                          f"retrying in {wait_seconds}s"
+                      )
+                      sleep(wait_seconds)
 
           if fetched is None:
-              raise RuntimeError("Authoritative Arts source verification did not obtain a source")
+              # Keep the source authoritative while bypassing only the runner's failing system
+              # DNS path. curl resolves the official Alabama hostname through DNS-over-HTTPS,
+              # bootstrapped to Cloudflare by IP, while normal TLS certificate verification
+              # remains enabled for both the DoH server and the Alabama HTTPS endpoint.
+              print("system DNS could not resolve the authoritative source; trying TLS-verified DoH")
+              transport = "cloudflare-doh"
+              with TemporaryDirectory() as temp_dir:
+                  source_path = Path(temp_dir) / "alabama-arts.pdf"
+                  try:
+                      completed = subprocess.run(
+                          [
+                              "curl",
+                              "--fail",
+                              "--silent",
+                              "--show-error",
+                              "--location",
+                              "--doh-url",
+                              "https://cloudflare-dns.com/dns-query",
+                              "--resolve",
+                              "cloudflare-dns.com:443:1.1.1.1",
+                              "--connect-timeout",
+                              "30",
+                              "--max-time",
+                              "120",
+                              "--output",
+                              str(source_path),
+                              "--write-out",
+                              "%{url_effective}",
+                              url,
+                          ],
+                          check=True,
+                          capture_output=True,
+                          text=True,
+                      )
+                  except subprocess.CalledProcessError as error:
+                      if error.stderr:
+                          print(error.stderr.strip())
+                      raise StandardsIngestError(
+                          "Authoritative standards source is unavailable"
+                      ) from error
+
+                  content = source_path.read_bytes()
+                  if not content or len(content) > MAX_SOURCE_BYTES:
+                      raise StandardsIngestError(
+                          "Authoritative standards source has an invalid size"
+                      )
+                  if not content.startswith(b"%PDF"):
+                      raise StandardsIngestError(
+                          "Authoritative standards PDF returned unexpected content"
+                      )
+                  resolved_url = completed.stdout.strip() or url
+                  fetched = FetchedSource(
+                      requested_url=url,
+                      resolved_url=resolved_url,
+                      document_format="pdf",
+                      content=content,
+                      source_sha256=sha256(content).hexdigest(),
+                  )
 
           extracted = extract_document(fetched)
           markers = tuple(
@@ -94,6 +160,8 @@ jobs:
               )
 
           parsed = parse_alabama_arts_2024(extracted)
+          print(f"source_transport={transport}")
+          print(f"resolved_url={fetched.resolved_url}")
           print(f"source_sha256={fetched.source_sha256}")
           print(f"normalized_sha256={extracted.normalized_sha256}")
           print(f"parser_version={parsed.parser_version}")
