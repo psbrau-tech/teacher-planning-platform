@@ -52,10 +52,13 @@ def test_live_source_verification_still_uses_only_authoritative_source_and_write
     assert "KNOWN_SOURCE_SHA256" not in source
 
 
-def test_architecture_explicitly_preserves_snapshot_during_source_outage_and_scopes_pr_check() -> None:
+def test_architecture_preserves_snapshot_during_outage_and_scopes_pr_check() -> None:
     source = ARCHITECTURE.read_text(encoding="utf-8")
 
     assert "last approved snapshot remains active" in source
     assert "does not re-fetch unchanged standards documents for unrelated product changes" in source
-    assert "Arts parser, shared source-ingestion transport, or backend dependency contract" in source
+    assert (
+        "Arts parser, shared source-ingestion transport, or backend dependency contract"
+        in source
+    )
     assert "controlled manual live-source verification remains available" in source
