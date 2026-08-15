@@ -101,7 +101,9 @@ jobs:
       - name: Validate CloudFormation
         # W1030 evaluates the intentionally empty bootstrap defaults for secret ARN
         # parameters. Controlled workflows resolve and pass exact secret ARNs.
-        run: cfn-lint infra/pilot-stack.yml -i W1030
+        run: |
+          cfn-lint infra/pilot-stack.yml -i W1030
+          cfn-lint infra/scheduled-admin-digest-stack.yml
       - name: Parse GitHub workflow YAML
         run: |
           ruby -ryaml -e '
