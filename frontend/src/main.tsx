@@ -10,6 +10,7 @@ import { PlcFacilitationArtifactExperience } from "./PlcFacilitationArtifactExpe
 import { ProductUsageObserver } from "./ProductUsageObserver";
 import { ReflectionIntelligenceExperience } from "./ReflectionIntelligenceExperience";
 import { TeacherPlanningShell } from "./TeacherPlanningShell";
+import { UiConsistencyExperience } from "./UiConsistencyExperience";
 import "./workflow-overrides.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -24,5 +25,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <FridayStatusExperience />
     <PlcFacilitationArtifactExperience />
     <ReflectionIntelligenceExperience />
+    <UiConsistencyExperience />
   </React.StrictMode>,
 );
