@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >-
-  Isolated scheduled TPP school-admin weekly digest worker. Adult professional operational
-  communication only; no student data. This stack is separate from the interactive web task.
+  Isolated scheduled TPP Friday professional-notification workers. Teacher courtesy reminders and
+  school-admin aggregate digests only; no student data. Separate from the interactive web task.
 
 Parameters:
   ClusterArn:
@@ -34,21 +34,30 @@ Parameters:
     Default: notifications@planner.guidedscholar.ai
     AllowedValues:
       - notifications@planner.guidedscholar.ai
-  ScheduleExpression:
+  TeacherScheduleExpression:
     Type: String
-    MinLength: 1
-    Description: Approved EventBridge Scheduler cron expression.
+    Default: cron(0 14 ? * FRI *)
+    AllowedValues:
+      - cron(0 14 ? * FRI *)
+    Description: Approved Friday 2:00 PM school-local teacher courtesy reminder schedule.
+  AdminScheduleExpression:
+    Type: String
+    Default: cron(30 15 ? * FRI *)
+    AllowedValues:
+      - cron(30 15 ? * FRI *)
+    Description: Approved Friday 3:30 PM school-local administrator digest schedule.
   ScheduleTimezone:
     Type: String
     Default: America/Chicago
-    MinLength: 1
+    AllowedValues:
+      - America/Chicago
   ScheduleState:
     Type: String
     Default: DISABLED
     AllowedValues:
       - DISABLED
       - ENABLED
-    Description: Keep disabled until the activation workflow verifies the staged worker.
+    Description: Keep both schedules disabled until the activation workflow verifies the staged workers.
 
 Resources:
   ScheduledDigestLogGroup:
@@ -103,7 +112,64 @@ Resources:
                 Action: ses:SendEmail
                 Resource: !Ref SesIdentityArn
 
-  ScheduledDigestTaskDefinition:
+  TeacherReminderTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: teacher-planning-platform-pilot-teacher-friday-reminder
+      Cpu: '256'
+      Memory: '512'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !GetAtt ScheduledDigestTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ScheduledDigestTaskRole.Arn
+      RuntimePlatform:
+        CpuArchitecture: X86_64
+        OperatingSystemFamily: LINUX
+      Volumes:
+        - Name: temp
+      ContainerDefinitions:
+        - Name: teacher-friday-reminder
+          Image: !Ref ImageUri
+          Essential: true
+          Command:
+            - python
+            - -m
+            - app.scheduled_digest_worker
+            - teacher
+          Environment: &ScheduledEnvironment
+            - Name: TPP_ENVIRONMENT
+              Value: pilot-scheduled-worker
+            - Name: TPP_PUBLIC_BASE_URL
+              Value: !Ref PublicBaseUrl
+            - Name: TPP_DATA_BOUNDARY
+              Value: teacher-and-curriculum-only
+            - Name: TPP_ALLOWED_EMAIL_DOMAINS
+              Value: !Ref AllowedEmailDomains
+            - Name: TPP_SES_FROM_EMAIL
+              Value: !Ref SesFromEmail
+            - Name: TPP_SES_REGION
+              Value: !Ref AWS::Region
+            - Name: TPP_SCHEDULED_DIGEST_TIMEZONE
+              Value: !Ref ScheduleTimezone
+          Secrets: &ScheduledSecrets
+            - Name: TPP_SUPABASE_URL
+              ValueFrom: !Ref SupabaseUrlSecretArn
+            - Name: TPP_SUPABASE_SERVICE_ROLE_KEY
+              ValueFrom: !Ref SupabaseServiceRoleSecretArn
+          MountPoints:
+            - SourceVolume: temp
+              ContainerPath: /tmp
+              ReadOnly: false
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref ScheduledDigestLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: teacher-friday-reminder
+          ReadonlyRootFilesystem: true
+
+  AdminDigestTaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
       Family: teacher-planning-platform-pilot-scheduled-digest
@@ -127,26 +193,9 @@ Resources:
             - python
             - -m
             - app.scheduled_digest_worker
-          Environment:
-            - Name: TPP_ENVIRONMENT
-              Value: pilot-scheduled-worker
-            - Name: TPP_PUBLIC_BASE_URL
-              Value: !Ref PublicBaseUrl
-            - Name: TPP_DATA_BOUNDARY
-              Value: teacher-and-curriculum-only
-            - Name: TPP_ALLOWED_EMAIL_DOMAINS
-              Value: !Ref AllowedEmailDomains
-            - Name: TPP_SES_FROM_EMAIL
-              Value: !Ref SesFromEmail
-            - Name: TPP_SES_REGION
-              Value: !Ref AWS::Region
-            - Name: TPP_SCHEDULED_DIGEST_TIMEZONE
-              Value: !Ref ScheduleTimezone
-          Secrets:
-            - Name: TPP_SUPABASE_URL
-              ValueFrom: !Ref SupabaseUrlSecretArn
-            - Name: TPP_SUPABASE_SERVICE_ROLE_KEY
-              ValueFrom: !Ref SupabaseServiceRoleSecretArn
+            - admin
+          Environment: *ScheduledEnvironment
+          Secrets: *ScheduledSecrets
           MountPoints:
             - SourceVolume: temp
               ContainerPath: /tmp
@@ -171,13 +220,15 @@ Resources:
               Service: scheduler.amazonaws.com
             Action: sts:AssumeRole
       Policies:
-        - PolicyName: RunExactScheduledDigestTask
+        - PolicyName: RunExactScheduledDigestTasks
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
                 Action: ecs:RunTask
-                Resource: !Ref ScheduledDigestTaskDefinition
+                Resource:
+                  - !Ref TeacherReminderTaskDefinition
+                  - !Ref AdminDigestTaskDefinition
               - Effect: Allow
                 Action: iam:PassRole
                 Resource:
@@ -187,13 +238,12 @@ Resources:
                   StringEquals:
                     iam:PassedToService: ecs-tasks.amazonaws.com
 
-  ScheduledDigestSchedule:
+  TeacherReminderSchedule:
     Type: AWS::Scheduler::Schedule
     Properties:
-      Name: tpp-pilot-admin-weekly-digest
-      Description: >-
-        Runs the isolated content-minimized TPP school-admin weekly digest worker.
-      ScheduleExpression: !Ref ScheduleExpression
+      Name: tpp-pilot-teacher-friday-reminder
+      Description: Runs the isolated class-specific TPP teacher Friday reminder worker at 2:00 PM local time.
+      ScheduleExpression: !Ref TeacherScheduleExpression
       ScheduleExpressionTimezone: !Ref ScheduleTimezone
       State: !Ref ScheduleState
       FlexibleTimeWindow:
@@ -205,29 +255,59 @@ Resources:
           MaximumEventAgeInSeconds: 3600
           MaximumRetryAttempts: 1
         EcsParameters:
-          TaskDefinitionArn: !Ref ScheduledDigestTaskDefinition
+          TaskDefinitionArn: !Ref TeacherReminderTaskDefinition
           LaunchType: FARGATE
           PlatformVersion: LATEST
           TaskCount: 1
           EnableECSManagedTags: true
-          NetworkConfiguration:
+          NetworkConfiguration: &ScheduledNetwork
             AwsvpcConfiguration:
               AssignPublicIp: ENABLED
               SecurityGroups:
                 - !Ref TaskSecurityGroupId
               Subnets: !Ref PublicSubnetIds
 
+  AdminDigestSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: tpp-pilot-admin-weekly-digest
+      Description: Runs the isolated aggregate TPP school-admin Friday digest worker at 3:30 PM local time.
+      ScheduleExpression: !Ref AdminScheduleExpression
+      ScheduleExpressionTimezone: !Ref ScheduleTimezone
+      State: !Ref ScheduleState
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      Target:
+        Arn: !Ref ClusterArn
+        RoleArn: !GetAtt ScheduledDigestSchedulerRole.Arn
+        RetryPolicy:
+          MaximumEventAgeInSeconds: 3600
+          MaximumRetryAttempts: 1
+        EcsParameters:
+          TaskDefinitionArn: !Ref AdminDigestTaskDefinition
+          LaunchType: FARGATE
+          PlatformVersion: LATEST
+          TaskCount: 1
+          EnableECSManagedTags: true
+          NetworkConfiguration: *ScheduledNetwork
+
 Outputs:
-  ScheduleName:
-    Value: !Ref ScheduledDigestSchedule
+  TeacherScheduleName:
+    Value: !Ref TeacherReminderSchedule
+  AdminScheduleName:
+    Value: !Ref AdminDigestSchedule
   ScheduleTimezone:
     Value: !Ref ScheduleTimezone
-  ScheduleExpression:
-    Value: !Ref ScheduleExpression
+  TeacherScheduleExpression:
+    Value: !Ref TeacherScheduleExpression
+  AdminScheduleExpression:
+    Value: !Ref AdminScheduleExpression
   ScheduleState:
     Value: !Ref ScheduleState
-  TaskDefinitionArn:
-    Value: !Ref ScheduledDigestTaskDefinition
+  TeacherTaskDefinitionArn:
+    Value: !Ref TeacherReminderTaskDefinition
+  AdminTaskDefinitionArn:
+    Value: !Ref AdminDigestTaskDefinition
   TaskExecutionRoleArn:
     Value: !GetAtt ScheduledDigestTaskExecutionRole.Arn
   TaskRoleArn:
