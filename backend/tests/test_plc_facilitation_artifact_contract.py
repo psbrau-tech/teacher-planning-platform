@@ -3,6 +3,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 EXPERIENCE = ROOT / "frontend" / "src" / "PlcFacilitationArtifactExperience.tsx"
 STYLE = ROOT / "frontend" / "src" / "plc-facilitation-artifact.css"
+PRINT_STYLE = ROOT / "frontend" / "src" / "print-artifact.css"
 MAIN = ROOT / "frontend" / "src" / "main.tsx"
 DECISION = (
     ROOT
@@ -93,6 +94,7 @@ def test_plc_artifact_preserves_professional_learning_and_data_boundaries() -> N
 
 def test_print_contract_targets_letter_and_keeps_snapshot_compact() -> None:
     source = STYLE.read_text(encoding="utf-8").lower()
+    shared_print = PRINT_STYLE.read_text(encoding="utf-8").lower()
 
     assert "@media print" in source
     assert "size: letter portrait" in source
@@ -101,6 +103,10 @@ def test_print_contract_targets_letter_and_keeps_snapshot_compact() -> None:
     assert "visibility: visible !important" in source
     assert ".plc-assessment-snapshot" in source
     assert "break-inside: avoid" in source
+    assert ":has(.plc-facilitation-handout)" in shared_print
+    assert ".plc-artifact-columns:has(> div:first-child:empty)" in shared_print
+    assert "grid-template-columns: 1fr !important" in shared_print
+    assert ".plc-action-workspace" in shared_print
 
 
 def test_plc_artifact_governance_defers_retained_action_and_combined_profile_tracking() -> None:
