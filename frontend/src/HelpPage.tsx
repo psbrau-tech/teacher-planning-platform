@@ -15,7 +15,8 @@ export function HelpPage({ roles }: Props) {
           <h2>Teacher Planning Platform help</h2>
           <p className="supporting">
             Current guidance for Course Setup, Curriculum & Pacing, weekly planning, Friday
-            closeout, surveys, administration, and Platform Owner reporting.
+            closeout, professional-learning analytics, notifications, surveys, administration, and
+            Platform Owner reporting.
           </p>
         </div>
       </div>
@@ -23,10 +24,10 @@ export function HelpPage({ roles }: Props) {
         <strong>Data boundary</strong>
         <p>
           TPP is for educator/account information, curriculum, standards, schedules, lesson plans,
-          weekly reflection, and related professional planning content. Do not enter student names,
-          IDs, grades, IEP/504 information, health or discipline information, identifiable student
-          work, or other student-specific information. Use class- or group-level instructional
-          observations.
+          weekly reflection, professional-learning information, and related professional planning
+          content. Do not enter student names, IDs, grades or assessment results, IEP/504
+          information, health or discipline information, identifiable student work, or other
+          student-specific information. Use class- or group-level instructional observations.
         </p>
       </div>
 
@@ -179,7 +180,8 @@ export function HelpPage({ roles }: Props) {
             <p>
               <strong>2. Complete the teacher-authored reflection.</strong> Complete all 12 Weekly
               Reflection / PLC Discussion prompts yourself using class- or group-level observations
-              only. TPP does not generate or rewrite reflection responses.
+              only. TPP does not suggest, generate, complete, or rewrite those required reflection
+              responses.
             </p>
             <p>
               <strong>3. Review the Completed Weekly Packet.</strong> Review the immutable packet
@@ -194,6 +196,12 @@ export function HelpPage({ roles }: Props) {
               <strong>If you refresh after closeout.</strong> TPP should recognize an already
               submitted Completed Weekly Packet and return you to packet review rather than asking
               you to submit the reflection again.
+            </p>
+            <p>
+              <strong>Reflection Intelligence is after submission.</strong> Where enabled, you may
+              ask TPP for a private recap based on your own already-submitted professional
+              reflections. That recap is an AI-generated analytical aid; it does not alter your
+              submitted reflection and is not an official response or teacher-performance score.
             </p>
             <p>
               <strong>One-time Pilot feedback.</strong> Pilot teachers may receive a short feedback
@@ -263,6 +271,64 @@ export function HelpPage({ roles }: Props) {
               after that week's Friday closeout.
             </p>
           </div>
+
+          <div className="help-notes">
+            <h3>Reflection Intelligence and PLC use</h3>
+            <p>
+              <strong>School PLC briefs use submitted professional reflections.</strong> TPP may
+              generate an anonymous aggregate school brief only through the governed reporting
+              role and source-threshold rules. Common themes require support from at least two
+              distinct anonymous teacher sources. The brief is for professional learning and
+              discussion, not teacher ranking, quality scoring, personnel evaluation, or student
+              outcome inference.
+            </p>
+            <p>
+              <strong>PLC facilitation handout.</strong> An authorized administrator can turn the
+              school brief into a condensed print-oriented meeting resource with a fixed 40-minute
+              facilitation protocol and action workspace. Formatting the handout does not make a
+              second AI request. The action workspace is not stored by TPP in the current design;
+              do not add student-specific information to PLC notes.
+            </p>
+          </div>
+
+          <div className="help-notes">
+            <h3>Daily formative-assessment analytics</h3>
+            <p>
+              The Administration view may summarize the types of daily formative checks already
+              written into submitted lesson plans, including items such as exit tickets/slips,
+              quick writes, questioning, response signals, retrieval checks, digital checks, and
+              other planned strategies. Classification is deterministic and does not send lesson-
+              plan text to AI merely to classify an assessment type.
+            </p>
+            <p>
+              These counts describe <strong>planned formative-assessment signals</strong>. They are
+              not student assessment results, do not prove the activity was actually administered,
+              and are not teacher-performance measures. The analytics API does not return raw
+              lesson-plan text, teacher names, or course names for this purpose.
+            </p>
+          </div>
+
+          <div className="help-notes">
+            <h3>Professional operational email</h3>
+            <p>
+              When the separately governed email infrastructure is enabled, an authorized
+              administrator may send a minimized weekly digest to that administrator's own TPP
+              professional account. The approved application From address is
+              <strong> notifications@planner.guidedscholar.ai</strong>.
+            </p>
+            <p>
+              The first-release digest is limited to school operational counts and a link back to
+              authenticated TPP. It does not include teacher names or teacher-level exception lists,
+              teacher reflection text, AI-generated instructional insight, student information, or
+              teacher-quality/performance scores. Named operational follow-up remains inside the
+              authenticated application.
+            </p>
+            <p>
+              A separate automatic weekly school-admin delivery path may be enabled only through a
+              controlled release. Automatic delivery uses the same minimized content boundary and
+              does not authorize new student, reflection, or personnel data in email.
+            </p>
+          </div>
         </section>
       )}
 
@@ -275,13 +341,22 @@ export function HelpPage({ roles }: Props) {
               <strong> Owner</strong> tab. Owner reporting is consolidated there instead of mixing
               Platform Owner controls into school administration or using floating report buttons.
               The Owner tab contains product-usage reporting, Pilot feedback, the pre-TPP teacher
-              baseline, governed standards operations, and AI cost reporting.
+              baseline, Reflection Intelligence adoption, governed standards operations, and AI
+              cost reporting.
             </p>
             <p>
               <strong>Product usage</strong> is for product adoption, not teacher evaluation. It
               shows the authorized → authenticated → active onboarding funnel, measured curriculum
               setup pathways, weekly planning and AI usage, PDF review activity, submissions,
               closeouts, and Pilot survey response counts.
+            </p>
+            <p>
+              <strong>Reflection Intelligence adoption</strong> reports product-use counts such as
+              private recaps generated, aggregate PLC briefs generated, PLC handout use, and, when
+              activated, minimized manual versus scheduled admin-digest delivery. These are product
+              adoption/operations signals. They contain no reflection text or student data and must
+              not be used to rank staff or infer teacher quality, effort, productivity, or
+              performance.
             </p>
             <p>
               <strong>Teacher baseline</strong> reports pre-TPP workload/value measures by school
