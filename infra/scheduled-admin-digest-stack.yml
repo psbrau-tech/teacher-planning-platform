@@ -4,10 +4,6 @@ Description: >-
   communication only; no student data. This stack is separate from the interactive web task.
 
 Parameters:
-  ResourceNamePrefix:
-    Type: String
-    Default: tpp-pilot
-    AllowedPattern: '^[a-z0-9-]+$'
   ClusterArn:
     Type: String
     MinLength: 1
