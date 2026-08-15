@@ -28,7 +28,7 @@ as $$
         from public.meeting_patterns mp
         where mp.teaching_assignment_id = ta.id
           and day_value::date between mp.effective_from and mp.effective_to
-          and extract(isodow from day_value)::integer = any(mp.weekdays)
+          and extract(isodow from day_value)::smallint = any(mp.weekdays)
       )
       and coalesce((
         select cd.is_instructional
@@ -75,6 +75,9 @@ stable
 security definer
 set search_path = ''
 as $$
+  -- Submission truth comes directly from immutable weekly_plan_submissions by assignment + week.
+  -- Do not anchor status to the newest mutable weekly_plan_snapshot: a newer working draft must
+  -- never make an already-submitted packet or lesson plan appear missing.
   with status as (
     select
       ta.school_id,
