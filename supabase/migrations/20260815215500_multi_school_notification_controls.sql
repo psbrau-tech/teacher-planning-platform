@@ -289,15 +289,17 @@ begin
       (
         target_mode = 'teacher'
         and lc.teacher_reminders_enabled
-        and lc.local_now >= date_trunc('day', lc.local_now) + lc.teacher_reminder_local_time
-        and lc.local_now < date_trunc('day', lc.local_now) + lc.teacher_reminder_local_time + interval '15 minutes'
+        and lc.local_now >= lc.local_now::date + lc.teacher_reminder_local_time
+        and lc.local_now < lc.local_now::date + lc.teacher_reminder_local_time
+          + interval '15 minutes'
       )
       or
       (
         target_mode = 'admin'
         and lc.admin_digest_enabled
-        and lc.local_now >= date_trunc('day', lc.local_now) + lc.admin_digest_local_time
-        and lc.local_now < date_trunc('day', lc.local_now) + lc.admin_digest_local_time + interval '15 minutes'
+        and lc.local_now >= lc.local_now::date + lc.admin_digest_local_time
+        and lc.local_now < lc.local_now::date + lc.admin_digest_local_time
+          + interval '15 minutes'
       )
     )
   order by lc.school_id;
