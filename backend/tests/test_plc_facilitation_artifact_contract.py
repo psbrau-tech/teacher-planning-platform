@@ -42,7 +42,7 @@ def test_plc_artifact_adds_only_governed_aggregate_assessment_snapshot() -> None
     assert "student_name" not in source
 
 
-def test_assessment_snapshot_is_optional_and_does_not_block_reflection_handout() -> None:
+def test_assessment_snapshot_is_optional_and_does_not_block_meeting_guide() -> None:
     source = EXPERIENCE.read_text(encoding="utf-8")
 
     assert "Promise.allSettled" in source
@@ -55,10 +55,26 @@ def test_assessment_snapshot_is_optional_and_does_not_block_reflection_handout()
     assert "setBrief(await briefResponse.json() as SchoolBrief)" in source
 
 
-def test_plc_artifact_is_condensed_and_has_fixed_facilitation_protocol() -> None:
+def test_plc_meeting_guide_embeds_school_reflection_summary_before_facilitation() -> None:
     source = EXPERIENCE.read_text(encoding="utf-8")
 
-    assert "items.slice(0, 3)" in source
+    assert "function SchoolReflectionSummary" in source
+    assert 'aria-label="School Reflection Summary"' in source
+    assert "What teachers are collectively reporting this week" in source
+    assert 'title="Common successes"' in source
+    assert 'title="Common challenges"' in source
+    assert 'title="Emerging themes"' in source
+    assert 'title="Discussion questions"' in source
+    assert 'title="Possible actions"' in source
+    assert 'title="Support needs"' in source
+    assert "items.map((item)" in source
+    assert "The School Reflection Summary below is the evidence base for this meeting" in source
+    assert "the guide is not a generic agenda" in source
+
+
+def test_plc_meeting_guide_has_fixed_facilitation_protocol_and_action_workspace() -> None:
+    source = EXPERIENCE.read_text(encoding="utf-8")
+
     assert "40-minute PLC protocol" in source
     protocol_steps = (
         "5 min · Orient",
@@ -73,15 +89,16 @@ def test_plc_artifact_is_condensed_and_has_fixed_facilitation_protocol() -> None
     assert "Evidence we will bring back:" in source
     assert "Support or resource needed:" in source
     assert "Revisit date:" in source
+    assert "Generate PLC meeting guide" in source
+    assert "Print PLC meeting guide" in source
 
 
 def test_plc_artifact_preserves_professional_learning_and_data_boundaries() -> None:
     source = " ".join(EXPERIENCE.read_text(encoding="utf-8").lower().split())
 
     assert "anonymous teacher sources" in source
-    assert "not teacher-performance measures" in source
+    assert "no teacher quality score" in source
     assert "no student data" in source
-    assert "planned assessment signals only" in source
     assert "student results" in source
     assert "teacher effectiveness" in source
     assert "ranking" in source
@@ -92,7 +109,7 @@ def test_plc_artifact_preserves_professional_learning_and_data_boundaries() -> N
     assert "student_name" not in source
 
 
-def test_print_contract_targets_letter_and_keeps_snapshot_compact() -> None:
+def test_print_contract_targets_letter_and_keeps_embedded_summary_compact() -> None:
     source = STYLE.read_text(encoding="utf-8").lower()
     shared_print = PRINT_STYLE.read_text(encoding="utf-8").lower()
 
@@ -101,11 +118,12 @@ def test_print_contract_targets_letter_and_keeps_snapshot_compact() -> None:
     assert ".plc-facilitation-handout" in source
     assert "visibility: hidden !important" in source
     assert "visibility: visible !important" in source
+    assert ".plc-school-reflection-summary" in source
+    assert ".plc-summary-theme-grid" in source
+    assert ".plc-summary-action-grid" in source
     assert ".plc-assessment-snapshot" in source
     assert "break-inside: avoid" in source
     assert ":has(.plc-facilitation-handout)" in shared_print
-    assert ".plc-artifact-columns:has(> div:first-child:empty)" in shared_print
-    assert "grid-template-columns: 1fr !important" in shared_print
     assert ".plc-action-workspace" in shared_print
 
 
