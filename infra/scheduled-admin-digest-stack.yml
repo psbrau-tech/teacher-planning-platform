@@ -41,11 +41,18 @@ Parameters:
   ScheduleExpression:
     Type: String
     MinLength: 1
-    Description: Approved EventBridge Scheduler cron or rate expression.
+    Description: Approved EventBridge Scheduler cron expression.
   ScheduleTimezone:
     Type: String
     Default: America/Chicago
     MinLength: 1
+  ScheduleState:
+    Type: String
+    Default: DISABLED
+    AllowedValues:
+      - DISABLED
+      - ENABLED
+    Description: Keep disabled until the activation workflow verifies the staged worker.
 
 Resources:
   ScheduledDigestLogGroup:
@@ -192,7 +199,7 @@ Resources:
         Runs the isolated content-minimized TPP school-admin weekly digest worker.
       ScheduleExpression: !Ref ScheduleExpression
       ScheduleExpressionTimezone: !Ref ScheduleTimezone
-      State: ENABLED
+      State: !Ref ScheduleState
       FlexibleTimeWindow:
         Mode: 'OFF'
       Target:
@@ -221,6 +228,8 @@ Outputs:
     Value: !Ref ScheduleTimezone
   ScheduleExpression:
     Value: !Ref ScheduleExpression
+  ScheduleState:
+    Value: !Ref ScheduleState
   TaskDefinitionArn:
     Value: !Ref ScheduledDigestTaskDefinition
   TaskExecutionRoleArn:
