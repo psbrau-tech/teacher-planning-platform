@@ -45,6 +45,9 @@ class NotificationUsageRead(BaseModel):
     period_end: date
     admin_weekly_digests_sent: int = 0
     admin_digest_senders: int = 0
+    scheduled_admin_weekly_digests_sent: int = 0
+    scheduled_digest_recipient_admins: int = 0
+    scheduled_digest_schools: int = 0
 
 
 def _client(identity: AuthenticatedTeacher, settings: Settings) -> SupabaseRestClient:
