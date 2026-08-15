@@ -35,7 +35,10 @@ def test_runbook_keeps_email_fail_closed_until_separate_activation() -> None:
     assert "activation workflow itself sends **no test email**" in source
     assert "email must never contain student information" in source
     assert "ses messageid" in source
-    assert "adding a school or professional account does not automatically enable scheduled email" in source
+    assert (
+        "adding a school or professional account does not automatically enable scheduled email"
+        in source
+    )
 
 
 def test_runbook_keeps_service_role_out_of_interactive_web_task() -> None:
