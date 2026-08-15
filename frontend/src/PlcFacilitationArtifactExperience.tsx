@@ -91,7 +91,7 @@ function ThemeList({ title, items }: { title: string; items: SupportedTheme[] })
     <section className="plc-artifact-section">
       <h5>{title}</h5>
       <ul className="plc-theme-list">
-        {items.slice(0, 3).map((item) => (
+        {items.map((item) => (
           <li key={`${title}-${item.theme}`}>
             <strong>{item.theme}</strong>
             <span>{item.evidence_summary}</span>
@@ -103,12 +103,12 @@ function ThemeList({ title, items }: { title: string; items: SupportedTheme[] })
   );
 }
 
-function BoundedList({ title, items, limit = 4 }: { title: string; items: string[]; limit?: number }) {
+function SummaryList({ title, items }: { title: string; items: string[] }) {
   if (!items.length) return null;
   return (
-    <section className="plc-artifact-section">
+    <section className="plc-artifact-section plc-summary-list">
       <h5>{title}</h5>
-      <ul>{items.slice(0, limit).map((item) => <li key={item}>{item}</li>)}</ul>
+      <ul>{items.map((item) => <li key={item}>{item}</li>)}</ul>
     </section>
   );
 }
@@ -148,7 +148,33 @@ function AssessmentSnapshot({ snapshot }: { snapshot: AssessmentPlanningSnapshot
   );
 }
 
-function FacilitationHandout({
+function SchoolReflectionSummary({ brief }: { brief: SchoolBrief }) {
+  return (
+    <section className="plc-school-reflection-summary" aria-label="School Reflection Summary">
+      <div className="plc-summary-heading">
+        <div>
+          <p className="eyebrow">School Reflection Summary</p>
+          <h5>What teachers are collectively reporting this week</h5>
+        </div>
+        <small>
+          {brief.source_teacher_count} anonymous teacher sources · {brief.source_submission_count} submitted reflections
+        </small>
+      </div>
+      <div className="plc-summary-theme-grid">
+        <ThemeList title="Common successes" items={brief.brief.common_successes} />
+        <ThemeList title="Common challenges" items={brief.brief.common_challenges} />
+        <ThemeList title="Emerging themes" items={brief.brief.emerging_themes} />
+      </div>
+      <div className="plc-summary-action-grid">
+        <SummaryList title="Discussion questions" items={brief.brief.discussion_questions} />
+        <SummaryList title="Possible actions" items={brief.brief.possible_actions} />
+        <SummaryList title="Support needs" items={brief.brief.support_needs} />
+      </div>
+    </section>
+  );
+}
+
+function PlcMeetingGuide({
   brief,
   assessmentSnapshot,
   weekLabel,
@@ -163,15 +189,18 @@ function FacilitationHandout({
     ?? null;
 
   return (
-    <article className="plc-facilitation-handout" aria-label="Printable PLC facilitation handout">
+    <article className="plc-facilitation-handout" aria-label="Printable PLC meeting guide">
       <header className="plc-artifact-header">
         <p className="eyebrow">Teacher Planning Platform · Reflection Intelligence</p>
-        <h4>PLC Facilitation Handout — Week of {weekLabel}</h4>
+        <h4>PLC Meeting Guide — Week of {weekLabel}</h4>
         <p>
-          Aggregate professional learning from {brief.source_teacher_count} anonymous teacher sources.
-          Themes are discussion signals, not teacher-performance measures.
+          The School Reflection Summary below is the evidence base for this meeting. It is synthesized
+          from anonymous teacher-authored submitted reflections and is used for professional learning,
+          not teacher evaluation.
         </p>
       </header>
+
+      <SchoolReflectionSummary brief={brief} />
 
       {focus ? (
         <section className="plc-focus-box">
@@ -183,28 +212,16 @@ function FacilitationHandout({
 
       {assessmentSnapshot ? <AssessmentSnapshot snapshot={assessmentSnapshot} /> : null}
 
-      <div className="plc-artifact-columns">
-        <div>
-          <ThemeList title="Common successes" items={brief.brief.common_successes} />
-          <ThemeList title="Common challenges" items={brief.brief.common_challenges} />
-          <ThemeList title="Emerging themes" items={brief.brief.emerging_themes} />
-        </div>
-        <div>
-          <section className="plc-artifact-section plc-protocol">
-            <h5>40-minute PLC protocol</h5>
-            <ol>
-              <li><strong>5 min · Orient.</strong> Read the brief and name one aggregate success worth preserving.</li>
-              <li><strong>10 min · Examine.</strong> Unpack the focus theme and clarify what the team is seeing.</li>
-              <li><strong>10 min · Exchange.</strong> Share instructional moves, examples, and adaptations connected to the theme.</li>
-              <li><strong>10 min · Decide.</strong> Select one practical next-step action and the support needed to try it.</li>
-              <li><strong>5 min · Commit.</strong> Decide what evidence the team will bring back and when the theme will be revisited.</li>
-            </ol>
-          </section>
-          <BoundedList title="Discussion questions" items={brief.brief.discussion_questions} />
-          <BoundedList title="Possible actions" items={brief.brief.possible_actions} />
-          <BoundedList title="Support needs" items={brief.brief.support_needs} limit={3} />
-        </div>
-      </div>
+      <section className="plc-artifact-section plc-protocol">
+        <h5>40-minute PLC protocol</h5>
+        <ol>
+          <li><strong>5 min · Orient.</strong> Read the School Reflection Summary and name one aggregate success worth preserving.</li>
+          <li><strong>10 min · Examine.</strong> Unpack the suggested focus and clarify what the team is collectively seeing.</li>
+          <li><strong>10 min · Exchange.</strong> Share instructional moves, examples, and adaptations connected to the focus.</li>
+          <li><strong>10 min · Decide.</strong> Select one practical next-step action and the support needed to try it.</li>
+          <li><strong>5 min · Commit.</strong> Decide what evidence the team will bring back and when the focus will be revisited.</li>
+        </ol>
+      </section>
 
       <section className="plc-action-workspace" aria-label="Non-persistent PLC action workspace">
         <h5>Team action workspace</h5>
@@ -216,10 +233,10 @@ function FacilitationHandout({
       </section>
 
       <footer className="plc-artifact-footer">
-        AI synthesis is limited to the governed anonymous reflection brief. The assessment planning
-        snapshot, facilitation protocol, and handout formatting are deterministic. Do not add
-        student-specific information to PLC notes. Use this artifact for professional learning,
-        not personnel evaluation, ranking, or comparison.
+        AI synthesis is limited to the governed anonymous School Reflection Summary. The assessment
+        planning snapshot, facilitation protocol, and meeting-guide formatting are deterministic.
+        Do not add student-specific information to PLC notes. Use this artifact for professional
+        learning, not personnel evaluation, ranking, or comparison.
       </footer>
     </article>
   );
@@ -291,7 +308,7 @@ export function PlcFacilitationArtifactExperience() {
     return await fetch(path, { ...init, headers });
   }
 
-  async function generateHandout() {
+  async function generateMeetingGuide() {
     setWorking(true);
     setError("");
     setAssessmentWarning("");
@@ -309,13 +326,13 @@ export function PlcFacilitationArtifactExperience() {
       ]);
 
       if (briefResult.status === "rejected") {
-        throw new Error("The PLC facilitation handout could not be generated.");
+        throw new Error("The PLC meeting guide could not be generated.");
       }
       const briefResponse = briefResult.value;
       if (!briefResponse.ok) {
         throw new Error(await readError(
           briefResponse,
-          "The PLC facilitation handout could not be generated.",
+          "The PLC meeting guide could not be generated.",
         ));
       }
       setBrief(await briefResponse.json() as SchoolBrief);
@@ -327,7 +344,7 @@ export function PlcFacilitationArtifactExperience() {
       } else {
         setAssessmentSnapshot(null);
         setAssessmentWarning(
-          "The reflection-based handout is ready, but the optional formative-assessment planning snapshot is unavailable.",
+          "The School Reflection Summary and meeting guide are ready, but the optional formative-assessment planning snapshot is unavailable.",
         );
       }
     } catch (caught) {
@@ -336,13 +353,13 @@ export function PlcFacilitationArtifactExperience() {
       setAssessmentWarning("");
       setError(caught instanceof Error
         ? caught.message
-        : "The PLC facilitation handout could not be generated.");
+        : "The PLC meeting guide could not be generated.");
     } finally {
       setWorking(false);
     }
   }
 
-  async function printHandout() {
+  async function printMeetingGuide() {
     if (!brief) return;
     try {
       await authenticatedFetch(
@@ -361,13 +378,13 @@ export function PlcFacilitationArtifactExperience() {
     <section className="plc-facilitation-artifact" aria-labelledby="plc-artifact-title">
       <div className="section-heading compact">
         <div>
-          <p className="eyebrow">PLC artifact</p>
-          <h3 id="plc-artifact-title">Turn weekly reflection and planning signals into a meeting handout</h3>
+          <p className="eyebrow">PLC meeting guide</p>
+          <h3 id="plc-artifact-title">Move from school reflection patterns to a focused PLC conversation</h3>
           <p className="supporting">
-            Generate a condensed one-to-two-page facilitation resource from the governed anonymous school
-            reflection brief plus an aggregate snapshot of formative-assessment types already planned for
-            the same week. The assessment snapshot is deterministic, adds no AI pass over lesson-plan text,
-            and does not store PLC notes.
+            Generate a one-to-two-page meeting guide that embeds the School Reflection Summary first,
+            then adds a suggested focus, an aggregate formative-assessment planning snapshot, a fixed
+            40-minute protocol, and a non-persistent team action workspace. The reflection summary is
+            the meeting evidence base; the guide is not a generic agenda.
           </p>
         </div>
       </div>
@@ -388,25 +405,29 @@ export function PlcFacilitationArtifactExperience() {
             }}
           />
         </label>
-        <button type="button" className="primary" disabled={working} onClick={() => void generateHandout()}>
-          {working ? "Generating PLC handout…" : "Generate PLC facilitation handout"}
+        <button type="button" className="primary" disabled={working} onClick={() => void generateMeetingGuide()}>
+          {working ? "Generating PLC meeting guide…" : "Generate PLC meeting guide"}
         </button>
         {brief ? (
-          <button type="button" className="secondary" onClick={() => void printHandout()}>
-            Print PLC facilitation handout
+          <button type="button" className="secondary" onClick={() => void printMeetingGuide()}>
+            Print PLC meeting guide
           </button>
         ) : null}
       </div>
 
-      <p className="plc-artifact-boundary">
-        Professional learning only · anonymous aggregate teacher sources · planned assessment signals only ·
-        no student data · no teacher scoring, ranking, comparison, or personnel evaluation.
-      </p>
+      <div className="plc-artifact-boundary" role="note">
+        <strong>Professional learning only.</strong>{" "}
+        The School Reflection Summary uses anonymous teacher source references and requires governed
+        aggregate support. It contains no teacher quality score and no student data. The meeting guide
+        does not persist team notes.
+      </div>
 
-      {error ? <p className="error-message" role="alert">{error}</p> : null}
-      {assessmentWarning ? <p className="guidance-text" role="status">{assessmentWarning}</p> : null}
+      {assessmentWarning ? (
+        <p className="plc-assessment-warning" role="status">{assessmentWarning}</p>
+      ) : null}
+      {error ? <p className="plc-artifact-error" role="alert">{error}</p> : null}
       {brief ? (
-        <FacilitationHandout
+        <PlcMeetingGuide
           brief={brief}
           assessmentSnapshot={assessmentSnapshot}
           weekLabel={weekLabel}
