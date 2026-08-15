@@ -2,14 +2,14 @@
 
 **Provider:** Brau Consulting LLC  
 **Original date:** 2026-08-13  
-**Product reconciliation:** 2026-08-14  
+**Product reconciliation:** 2026-08-15  
 **Status:** Pre-publication legal-review brief
 
 ## Purpose of this brief
 
 Brau Consulting LLC is preparing Teacher Planning Platform (TPP) for broader school/district use after deployment of a controlled pilot. This brief is intended to help counsel review the accompanying Terms of Use, Privacy Policy, Acceptable Use Policy, AI Use & Accuracy Notice, Institutional Services Agreement, Security & Data Practices overview, Subprocessor List, Accessibility Statement, and related internal governance documents efficiently.
 
-The customer-facing documents are drafts only and are not yet legally effective. The August 14 reconciliation below also distinguishes source-controlled product work from features that have actually been activated in the pilot infrastructure.
+The customer-facing documents are drafts only and are not yet legally effective. This reconciliation distinguishes source-controlled product work from features actually activated in pilot infrastructure and incorporates the approved August 15 Friday professional-status/notification design.
 
 ## Product summary
 
@@ -17,7 +17,9 @@ TPP is an adult educator/administrator productivity and instructional-planning p
 
 TPP provides teacher-invoked generative-AI planning assistance. AI suggestions are drafts subject to educator review and control; the service is not designed to make autonomous instructional decisions.
 
-The product also now includes source-controlled professional-learning features that analyze already-submitted professional planning/reflection information. These features remain within the adult educator/admin boundary and are specifically designed not to become teacher-evaluation or student-analytics systems.
+The product also includes professional-learning features that analyze already-submitted professional planning/reflection information. These features remain within the adult educator/admin boundary and are specifically designed not to become teacher-evaluation or student-analytics systems.
+
+TPP now also has an approved professional Friday workflow for submitted-plan status. Teachers can see class-by-class current-week reflection/completed-packet status and following-week lesson-plan status. Authorized administrators can see teacher/class operational status for follow-up. This is workflow status, not instructional-quality or personnel evaluation.
 
 ## Locked data boundary
 
@@ -53,9 +55,11 @@ The application/database model includes role/authorization data, professional cu
 
 ### Source-controlled notification infrastructure not yet activated
 
-As of the August 14 reconciliation, the repository also contains fail-closed infrastructure for professional operational email through Amazon SES and an isolated future scheduled-digest worker. These changes have **not** by themselves activated SES, applied the new scheduled-worker database migration, created the scheduler, added the scheduled worker's service-role secret to AWS, selected the weekly delivery time, or sent production/pilot email.
+The repository contains fail-closed infrastructure for professional operational email through Amazon SES and isolated future scheduled workers. Source-controlled implementation does **not** by itself activate SES, apply the deferred scheduled-delivery migration, create/enable the Scheduler resources, create the scheduled worker's service-role secret in AWS, or send pilot/production email.
 
-The approved future From address is `notifications@planner.guidedscholar.ai`. Activation is designed to require separate human-controlled AWS, privacy/help, database, IAM, and schedule approvals.
+The approved From address is `notifications@planner.guidedscholar.ai`. The approved Anniston Pilot cadence is Friday at 2:00 PM `America/Chicago` for teacher courtesy reminders and Friday at 3:30 PM for the school-administrator aggregate digest. Activation still requires separate human-controlled database, SES, AWS secret, IAM, privacy/Help, and scheduler gates.
+
+The dashboard/status database change is intentionally separable from delivery. TPP may expose authenticated Friday submission status while SES remains fail-closed and the scheduled-delivery migration remains unapplied.
 
 ## AI design
 
@@ -101,7 +105,20 @@ The school Reflection Intelligence design uses anonymous source references for a
 
 ### Planned formative-assessment analytics
 
-The product also includes school-level analysis of daily formative-assessment types teachers already place in submitted lesson plans, such as exit tickets/slips and other checks for understanding. Classification is deterministic rather than generative-AI based. The analytics describe **planned instructional/formative-assessment signals** only; they do not collect student assessment results and do not claim that a planned activity was actually administered. The reporting surface does not return teacher names, course names, raw lesson-plan text, or student data for this purpose and is not framed as a teacher-performance measure.
+The product also includes school-level analysis of daily formative-assessment types teachers already place in submitted lesson plans, such as exit tickets/slips and other checks for understanding. Classification is deterministic rather than generative-AI based. The analytics describe **planned instructional/formative-assessment signals** only; they do not collect student assessment results and do not claim that a planned activity was actually administered. The analytics surface is not framed as a teacher-performance measure.
+
+### Friday professional submission status
+
+The approved Friday status feature uses immutable professional submission records to distinguish:
+
+- current-week required completed packets, whose submission path requires the teacher-authored reflection; and
+- following-week required lesson plans.
+
+Teacher Dashboard status is limited to the requesting teacher's classes. Authorized administrative reporting can identify teacher and professional course/class for operational follow-up within existing reporting scope. The status source does not return reflection text, lesson-plan body, student data, or generated instructional insight.
+
+Whether an item is required is schedule-aware. The design considers active assignment dates, effective meeting patterns, explicit non-instructional calendar days, and class schedule exceptions so that a class with no expected instructional meeting is not falsely shown as missing.
+
+Submission status is not normalized into teacher ratings, rankings, quality/effort/productivity measures, or personnel judgments.
 
 ### Product-effectiveness telemetry
 
@@ -111,13 +128,29 @@ We would like counsel to review whether these disclosure and role-separation cho
 
 ## Professional operational email design
 
-The first-release admin email design is deliberately content-minimized. An authenticated administrator may request, and a future isolated scheduler may deliver when separately activated, a weekly school operations digest containing counts such as configured assignments and submitted/missing weekly plan/packet totals plus a link back to authenticated TPP.
+The approved Friday design replaces the normal administrator-facing manual email action with scheduled professional notifications plus authenticated status reporting. A retained manual send path, if kept, is controlled operational recovery rather than the normal administrator workflow.
 
-The first-release email contract excludes teacher names or teacher-level exception lists, teacher reflection text, AI-generated instructional insight, student data/results/work, and teacher-quality/performance information.
+### Teacher courtesy reminder — Friday 2:00 PM local time
 
-The automatic path is designed as a separate short-lived ECS task rather than giving the interactive web application a Supabase service-role credential. Its service-role database access is restricted through purpose-built functions that return a minimized recipient/metrics manifest. The scheduled-delivery ledger is designed to retain professional profile/school identifiers, delivery state, week, and timestamps but not the recipient email address, email body, or SES MessageId.
+A teacher receives **no email** when every required current-week completed packet/reflection and following-week lesson plan is already submitted. If something is missing, TPP sends one combined courtesy reminder. To avoid requiring a teacher with multiple classes to search every plan, the reminder identifies the exact professional class/course associated with each missing submission and whether the outstanding item is the current-week reflection/completed packet, the following-week lesson plan, or both.
 
-We would appreciate counsel's view on the sufficiency of this professional-email disclosure, whether any customer agreement should address automated operational notices, and whether there are employment/personnel concerns even when email contents are aggregate/minimized.
+The teacher reminder does not include reflection text, lesson-plan content, generated instructional insight, student data, or teacher quality/performance/effort/productivity judgments. Course name is included solely as the professional operational locator needed to make the reminder actionable.
+
+### Administrator digest — Friday 3:30 PM local time
+
+The 90-minute interval is intended to give teachers a courtesy reminder window before the administrator snapshot. Eligible active school administrators receive aggregate school counts for current-week closeout and following-week lesson-plan submission, along with a link to authenticated TPP. Teacher/class exceptions remain inside the authorized application and are not placed in the administrator email.
+
+The administrator email excludes teacher names, class-level exception lists, reflection text, lesson-plan content, AI-generated instructional insight, student data/results/work, and teacher-quality/performance information.
+
+### Isolated delivery architecture
+
+Automatic delivery uses separate short-lived ECS tasks rather than giving the interactive web application a Supabase service-role credential. Service-role database access is restricted through purpose-built functions that return only the transient professional recipient/status manifest required for delivery.
+
+For teacher reminders, the transient manifest may contain recipient professional email, display name, course name, and missing-item flags because those are necessary to build the approved message. Those values are not added to the scheduled-delivery ledger.
+
+The scheduled-delivery ledger is designed to retain professional profile/school identifiers, notification key, delivery state, week, and timestamps but not recipient email, course reminder lists, email body, reflection text, lesson-plan content, student data, generated insight, or SES MessageId. At-most-once claims are written before delivery to reduce duplicate automatic sends on retries.
+
+We would appreciate counsel's view on the sufficiency of these professional-email disclosures, whether customer agreements should address automated operational notices or suppression/preferences, whether identifying a teacher's own professional classes in a reminder raises any employment/personnel concerns, and whether the 90-minute teacher-reminder/admin-summary sequence has any material legal or labor implications.
 
 ## Data retention status
 
@@ -164,7 +197,8 @@ Useful internal context:
 - `../governance/PLC_FACILITATION_ARTIFACT_DECISION_2026-08-14.md`
 - `../governance/ADMIN_EMAIL_NOTIFICATION_DECISION_2026-08-14.md`
 - `../governance/SES_NOTIFICATION_INFRASTRUCTURE_DECISION_2026-08-14.md`
-- `../governance/SCHEDULED_ADMIN_DIGEST_DECISION_2026-08-14.md`
+- `../governance/SCHEDULED_ADMIN_DIGEST_DECISION_2026-08-14.md` (historical/superseded)
+- `../governance/FRIDAY_STATUS_NOTIFICATION_DECISION_2026-08-15.md`
 
 ## Specific questions for counsel
 
@@ -177,11 +211,11 @@ Please focus legal review on the following issues:
 5. **Governing law, venue, arbitration, and jury waiver** — recommended approach for Brau Consulting LLC and public-school customers.
 6. **Institutional/public-school agreement terms** — appropriations/non-appropriation, public-records/confidentiality, insurance, breach terms, termination, procurement clauses, and governmental restrictions.
 7. **Privacy posture** — whether the no-student-data architecture and policy language appropriately limit student-record obligations; treatment of accidental prohibited data; educator/admin account information; product analytics; professional reflection analysis; operational emails; and institutional administrator visibility.
-8. **Personnel/evaluation boundary** — whether additional contractual or product language is advisable to distinguish school-level Reflection Intelligence, formative-assessment planning analytics, and product-usage analytics from formal teacher evaluation/personnel decision systems.
+8. **Personnel/evaluation boundary** — whether additional contractual or product language is advisable to distinguish school-level Reflection Intelligence, formative-assessment planning analytics, Friday professional submission status, and product-usage analytics from formal teacher evaluation/personnel decision systems.
 9. **Incident/breach obligations** — recommended contractual notification language and interaction with Alabama and other applicable state breach laws.
 10. **Retention/deletion** — recommended contractual framework while final operational schedules are being technically verified, including professional notification-delivery records.
 11. **AI provisions** — provider disclosure, human-review responsibility, post-submission reflection synthesis, model-training/data-use language, changing models/providers, and any additional AI-specific provisions advisable for school customers.
-12. **Automated professional communications** — whether weekly operational admin email requires any specific contractual, notice, suppression, recordkeeping, or public-sector communication terms beyond the current minimized design.
+12. **Automated professional communications** — whether class-specific teacher courtesy reminders and aggregate administrator Friday email require specific contractual, notice, suppression/preference, employment/labor, recordkeeping, or public-sector communication terms beyond the minimized design.
 13. **Accessibility** — Title II/WCAG 2.1 AA contracting implications, representations, generated PDFs/print artifacts, remediation obligations, and procurement language.
 14. **Intellectual property** — user/institution ownership, Brau Consulting's limited processing license, AI output treatment, feedback, standards/reference content, and employment-created materials.
 15. **Subprocessors** — notice/change provisions, DPA expectations, AWS SES treatment as part of the existing AWS relationship, and whether a separate data-processing/security addendum is advisable despite the no-student-data boundary.
