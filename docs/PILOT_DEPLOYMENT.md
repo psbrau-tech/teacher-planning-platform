@@ -11,14 +11,15 @@
 - OpenAI: separate TPP project and key
 - Data boundary: teacher and curriculum professional data only; no student data
 - Platform Owner: one governed account must hold concurrent `platform_admin` and `teacher` roles
-- Tenant model: Anniston City Schools district with explicit school records, school-scoped roles, and one governed home school per professional account
+- Tenant model: Anniston City Schools district with explicit school records and one explicit school assignment per professional account
+- Authorization model: `school_admin` is school-scoped; existing `district_admin` and `platform_admin` roles provide intentionally broader scope
 - Timezone model: every school stores a required IANA timezone; notification delivery uses school-local time and must not rely on a platform-wide UTC offset
 - Notification default: newly provisioned schools have teacher reminders and administrator digests disabled until explicitly approved
 - DNS: Cloudflare remains authoritative for the pilot; a later Route 53 migration moves the complete `guidedscholar.ai` zone, including `planner.guidedscholar.ai`, as one coordinated action
 
 ## Current accepted live baseline
 
-The accepted interactive pilot is deployed from the release that includes Friday-status and Reflection Intelligence UX through database migration `20260815011000_friday_submission_status.sql`.
+The accepted interactive pilot is deployed from the release that includes Friday status and Reflection Intelligence UX through database migration `20260815011000_friday_submission_status.sql`.
 
 Earlier professional-learning/application functionality was already present through `20260815001500`. The source-controlled automatic-notification chain is intentionally later and remains **deferred** until its separately governed activation:
 
@@ -34,15 +35,15 @@ Repository source state and live database state are separate evidence. A merge o
 
 - `.github/workflows/apply-pilot-database.yml` — target-scoped Supabase migration preview/application with exact `main` SHA, exact migration head, pinned CLI version, explicit apply confirmation, later-migration deferral, and post-apply target dry-run verification.
 - `.github/workflows/provision-pilot-access.yml` — transaction-safe district/school, academic-year, school-timezone, notification-setting, and professional-access provisioning from a protected configuration secret.
-- `.github/workflows/bootstrap-pilot.yml` — isolated AWS foundation, first exact-image deployment, health verification, and ACM request; safe to retry only for the same accepted commit.
+- `.github/workflows/bootstrap-pilot.yml` — isolated AWS foundation, first exact-image deployment, health verification, and ACM request.
 - `.github/workflows/enable-pilot-tls.yml` — issued-certificate attachment with listener, redirect, target-health, and image-preservation verification.
-- `.github/workflows/deploy-pilot.yml` — subsequent exact-digest ECS deployments requiring the exact accepted `main` SHA, the confirmed applied migration head, Help review, prior-task-definition rollback evidence, and no-op verification when the exact image is already active.
-- `.github/workflows/enable-ses-notifications.yml` — separate manual activation of the approved SES sender after identity/sending/privacy gates; does not send a test email.
-- `.github/workflows/enable-scheduled-admin-digest.yml` — **Enable TPP Friday Notifications**; separate isolated activation of the two quarter-hour dispatcher schedules after the notification migration chain, SES, IAM, privacy/Help, school-local settings, and service-role-secret gates. It is not part of normal application deployment.
+- `.github/workflows/deploy-pilot.yml` — subsequent exact-digest ECS deployments requiring exact accepted `main` SHA, confirmed migration head, Help review, rollback evidence, and immutable-image verification.
+- `.github/workflows/enable-ses-notifications.yml` — separate manual activation of the approved SES sender after identity/sending/privacy gates; sends no test email.
+- `.github/workflows/enable-scheduled-admin-digest.yml` — **Enable TPP Friday Notifications**; separate isolated activation of the two quarter-hour dispatcher schedules after database, SES, IAM, privacy/Help, school-local settings, and service-role-secret gates.
 
 ### Read-only workflows
 
-- `.github/workflows/preflight-pilot.yml` — validates protected GitHub configuration, staff-access configuration, academic-year dates, AWS OIDC, required secret metadata, CloudFormation, and migration inventory before mutation.
+- `.github/workflows/preflight-pilot.yml` — validates protected GitHub configuration, access configuration, academic-year dates, AWS OIDC, required secret metadata, CloudFormation, and migration inventory before mutation.
 - `.github/workflows/verify-pilot-deployment.yml` — verifies stack stability, ECS counts, immutable image provenance, target health, log retention, secret mappings, certificate metadata, and optional public HTTPS without changing AWS.
 
 ### Application and infrastructure
@@ -50,7 +51,7 @@ Repository source state and live database state are separate evidence. A merge o
 - `Dockerfile` — combined React/FastAPI production image with non-root runtime and application health check.
 - `infra/pilot-stack.yml` — isolated TPP pilot CloudFormation stack, including fail-closed SES parameters.
 - `infra/scheduled-admin-digest-stack.yml` — separate optional professional-notification worker stack containing isolated teacher-reminder and administrator-digest tasks plus two exact EventBridge Scheduler resources. These are dispatcher schedules, not fixed school-time schedules.
-- `backend/scripts/provision_pilot.py` — governed multi-school configuration parser/provisioner with IANA timezone validation, explicit school membership, one home school per active account, school notification settings, and backward-compatible fail-closed handling of the legacy AHS access-list shape.
+- `backend/scripts/provision_pilot.py` — governed multi-school configuration parser/provisioner with IANA timezone validation, one explicit school per professional account, school notification settings, and backward-compatible fail-closed handling of the legacy AHS access-list shape.
 - `scripts/verify_exact_release_candidate.sh` — requires a release workflow to run from `main`, at the exact accepted SHA, against an exact repository migration version.
 - `scripts/stage_migrations_through.sh` — makes only migrations through the approved target visible to the Supabase CLI in the ephemeral Actions checkout, leaving later source migrations intentionally deferred.
 
@@ -74,7 +75,7 @@ Do not select a later migration merely because it exists in source. The approved
 
 ## Multi-school provisioning boundary
 
-TPP no longer treats Anniston High School as an implicit singleton tenant. The protected `TPP_PILOT_ACCESS_JSON` configuration identifies the district's governed schools and staff memberships.
+TPP no longer treats Anniston High School as an implicit singleton tenant. The protected `TPP_PILOT_ACCESS_JSON` configuration identifies the district's governed schools and staff accounts.
 
 Each configured school requires:
 
@@ -83,18 +84,17 @@ Each configured school requires:
 - teacher-reminder enablement state and local send time; and
 - administrator-digest enablement state and local send time.
 
-Each professional membership requires:
+Each professional account requires:
 
 - professional school email;
 - display name;
-- explicit school;
-- one or more approved roles;
-- active/inactive state; and
-- `is_home` so an account with more than one school membership has exactly one home school.
+- one explicit school;
+- one or more approved roles; and
+- active/inactive state.
 
-`profile_roles` remains the authoritative school-scoped role mapping. The legacy `profiles.school_id` is the account's home-school context; it is not authorization to other schools. A school administrator receives only the school-admin memberships explicitly provisioned. District/platform roles must be intentionally granted and do not silently create school-admin membership.
+The current session model intentionally remains one-school-per-account. A `school_admin` is authorized only for the account's assigned school. Existing `district_admin` and `platform_admin` roles provide intentionally broader reporting scope through the established authorization model; they do not require duplicate accounts or multiple simultaneous school memberships.
 
-A teacher should normally have one school membership. Cross-school professional accounts are supported for legitimate administrator/district/platform duties without creating duplicate authentication identities.
+Moving an existing account to another school is an explicit governed provisioning change because `school_id` is authorization context. Duplicate email rows are rejected by the protected configuration parser.
 
 New school records default automatic notification flags to disabled. Merely adding Anniston Middle School, its teachers, or its administrators must not cause email to start.
 
@@ -130,9 +130,9 @@ Every quarter hour, an isolated worker asks the database for enabled schools who
 
 The quarter-hour cadence is not a quarter-hour email cadence. If no enabled school is due, the worker sends nothing.
 
-For every due school, the worker makes an explicit `school_id`-scoped claim. The delivery ledger's at-most-once key includes school ID, recipient profile ID, notification type, and week. This prevents a professional account serving two schools from having one school's claim suppress the other school's separately authorized digest.
+For every due school, the worker makes an explicit `school_id`-scoped claim. The delivery ledger's at-most-once key includes school ID, recipient profile ID, notification type, and week as defense in depth against cross-school claims.
 
-Teachers with every required submission complete receive no reminder. Teachers with outstanding work receive one combined email **for that school**, naming the exact professional class/course and whether each is missing the current-week reflection/completed packet, following-week lesson plan, or both.
+Teachers with every required submission complete receive no reminder. Teachers with outstanding work receive one combined email for their assigned school, naming the exact professional class/course and whether each is missing the current-week reflection/completed packet, following-week lesson plan, or both.
 
 The administrator email contains aggregate school-scoped operational counts and an authenticated TPP link only. It must not contain teacher names, teacher/class exception lists, reflection text, lesson-plan content, generated instructional insight, student information, or teacher-quality/performance content.
 
@@ -141,7 +141,7 @@ The administrator email contains aggregate school-scoped operational counts and 
 The notification chain must be applied as a single reviewed forward sequence when email preparation is intentionally opened:
 
 1. `20260815013000_scheduled_friday_notifications.sql` — bounded delivery ledger and initial isolated-worker claim foundation.
-2. `20260815215500_multi_school_notification_controls.sql` — multi-school allowlist membership, school notification settings, school-scoped at-most-once key, and explicit school-scoped candidate claims.
+2. `20260815215500_multi_school_notification_controls.sql` — school notification settings, school-scoped at-most-once key, school-local window selector, and explicit school-scoped candidate claims.
 3. `20260815220500_harden_school_local_notification_windows.sql` — quarter-hour local-time constraints and hardened IANA-timezone dispatch-window calculation.
 
 Until that controlled target is approved and applied, the live migration head remains earlier and automatic delivery remains inactive.
@@ -198,8 +198,8 @@ At the first approved Friday window for each enabled school, verify:
 - a multi-class teacher receives one school-specific email with exact missing class(es)/item(s);
 - a fully complete teacher receives no reminder;
 - the admin worker processes the school at its configured 3:30 PM local window;
-- eligible active `school_admin` recipients receive only their authorized school's aggregate digest;
-- a professional account holding admin roles in two schools receives independently scoped notices only for schools where notification is enabled;
+- eligible active `school_admin` recipients receive only their assigned school's aggregate digest;
+- district/platform roles do not become email recipients unless the notification-recipient policy is explicitly expanded and reviewed;
 - a newly provisioned school with notification flags disabled receives no automatic email;
 - retries do not create duplicate sends because of at-most-once claims;
 - worker logs do not print recipient email, names, course names, school identifiers, message bodies, credentials, or SES MessageIds; and
@@ -219,6 +219,7 @@ At the first approved Friday window for each enabled school, verify:
 - The approved multi-school access configuration is active and unapproved accounts receive no application data.
 - Platform Owner retains both `platform_admin` and `teacher` in one session.
 - School Administrator reporting remains school-scoped and within the non-evaluative professional reporting boundary.
+- District Administrator reporting remains intentionally district-scoped.
 - Platform Administrator cost/adoption reporting remains restricted to the governed Platform Administrator role.
 - No student table, roster, student account, or student-specific field is used.
 
@@ -236,8 +237,9 @@ The following require human action or explicit approval:
 
 - selection/approval of the exact migration target for a mutating database run;
 - protected-environment approval for database, provisioning, infrastructure, TLS, deployment, preflight, and verification workflows;
-- real staff access-list/membership contents and academic-year dates;
+- real staff access-list contents and academic-year dates;
 - creation of a new school with real professional users;
+- moving an existing professional account to another school;
 - enabling automatic notifications for a school for the first time;
 - ACM/SES validation DNS records when required;
 - Supabase and Google console changes;
