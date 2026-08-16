@@ -1,5 +1,6 @@
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -9,7 +10,11 @@ from app.notification_email import (
     send_weekly_admin_digest,
     weekly_admin_digest_text,
 )
-from app.settings import APPROVED_SES_FROM_EMAIL, Settings
+from app.settings import (
+    APPROVED_SES_FROM_EMAIL,
+    APPROVED_SES_REPLY_TO_EMAIL,
+    Settings,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 API = ROOT / "backend" / "app" / "notifications_api.py"
@@ -77,6 +82,51 @@ def test_ses_delivery_rejects_unapproved_sender_identity() -> None:
             recipient_email="principal@anniston.k12.al.us",
             metrics=metrics(),
         )
+
+
+def test_ses_delivery_rejects_unapproved_reply_to_mailbox() -> None:
+    settings = Settings(
+        ses_from_email=APPROVED_SES_FROM_EMAIL,
+        ses_reply_to_email="someone-else@example.org",
+        allowed_email_domains="anniston.k12.al.us",
+    )
+    with pytest.raises(SesDeliveryError, match="approved TPP mailbox"):
+        send_weekly_admin_digest(
+            settings,
+            recipient_email="principal@anniston.k12.al.us",
+            metrics=metrics(),
+        )
+
+
+def test_ses_delivery_uses_exact_governed_from_and_reply_to(monkeypatch: pytest.MonkeyPatch) -> None:
+    sent: dict[str, Any] = {}
+
+    class FakeSesClient:
+        def send_email(self, **kwargs: Any) -> dict[str, str]:
+            sent.update(kwargs)
+            return {"MessageId": "bounded-provider-id"}
+
+    def fake_client(service_name: str, *, region_name: str) -> FakeSesClient:
+        assert service_name == "sesv2"
+        assert region_name == "us-east-2"
+        return FakeSesClient()
+
+    monkeypatch.setattr("app.notification_email.boto3.client", fake_client)
+    settings = Settings(
+        ses_from_email=APPROVED_SES_FROM_EMAIL,
+        allowed_email_domains="anniston.k12.al.us",
+    )
+
+    message_id = send_weekly_admin_digest(
+        settings,
+        recipient_email="principal@anniston.k12.al.us",
+        metrics=metrics(),
+    )
+
+    assert message_id == "bounded-provider-id"
+    assert sent["FromEmailAddress"] == APPROVED_SES_FROM_EMAIL
+    assert sent["ReplyToAddresses"] == [APPROVED_SES_REPLY_TO_EMAIL]
+    assert sent["Destination"] == {"ToAddresses": ["principal@anniston.k12.al.us"]}
 
 
 def test_ses_delivery_rejects_recipient_outside_governed_account_boundary() -> None:
