@@ -1,0 +1,130 @@
+name: Verify TPP SES Readiness
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/verify-ses-readiness.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  verify:
+    name: read-only SES identity and DKIM verification
+    runs-on: ubuntu-latest
+    environment: tpp-pilot
+    env:
+      AWS_REGION: ${{ vars.TPP_AWS_REGION || 'us-east-2' }}
+      AWS_ROLE_ARN: ${{ vars.TPP_AWS_ROLE_ARN }}
+      SES_IDENTITY: planner.guidedscholar.ai
+
+    steps:
+      - name: Validate protected AWS configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$AWS_REGION" = "us-east-2"
+          test -n "$AWS_ROLE_ARN"
+
+      - name: Configure AWS credentials through GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Confirm account and read SES identity state
+        shell: bash
+        run: |
+          set -euo pipefail
+          account="$(aws sts get-caller-identity --query Account --output text)"
+          test "$account" = "697091778129"
+
+          aws sesv2 get-email-identity \
+            --email-identity "$SES_IDENTITY" \
+            --region "$AWS_REGION" \
+            --output json > /tmp/ses-identity.json
+
+          aws sesv2 get-account \
+            --region "$AWS_REGION" \
+            --output json > /tmp/ses-account.json
+
+      - name: Verify three public DKIM CNAME records
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v dig
+          python3 - <<'PY'
+          import json
+          import subprocess
+          from pathlib import Path
+
+          identity = json.loads(Path('/tmp/ses-identity.json').read_text())
+          expected_tokens = sorted([
+              'iukyndlse3ejomezuxutk63f34pd2jfx',
+              'mqog2dqwbbydxayigzqggj6m3rqkq76w',
+              'w6cf27d2zcwxvty6m36fzcx5a3hbuh5m',
+          ])
+          observed_tokens = sorted(identity.get('DkimAttributes', {}).get('Tokens') or [])
+          if observed_tokens != expected_tokens:
+              raise SystemExit(f'Unexpected SES DKIM tokens: {observed_tokens}')
+
+          for token in expected_tokens:
+              name = f'{token}._domainkey.planner.guidedscholar.ai'
+              expected = f'{token}.dkim.amazonses.com.'
+              result = subprocess.run(
+                  ['dig', '+short', 'CNAME', name, '@8.8.8.8'],
+                  check=True,
+                  capture_output=True,
+                  text=True,
+              )
+              observed = [line.strip().lower() for line in result.stdout.splitlines() if line.strip()]
+              if observed != [expected.lower()]:
+                  raise SystemExit(f'{name}: observed {observed}, expected {[expected.lower()]}')
+              print(f'DKIM CNAME OK: {name} -> {expected}')
+          PY
+
+      - name: Validate SES Verified / Successful state
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          identity = json.loads(Path('/tmp/ses-identity.json').read_text())
+          account = json.loads(Path('/tmp/ses-account.json').read_text())
+
+          verified = identity.get('VerifiedForSendingStatus') is True
+          dkim_status = (identity.get('DkimAttributes') or {}).get('Status')
+          if not verified:
+              raise SystemExit('SES domain identity is not VerifiedForSendingStatus=true')
+          if dkim_status != 'SUCCESS':
+              raise SystemExit(f'SES DKIM status is {dkim_status!r}, expected SUCCESS')
+
+          print('SES identity verified: true')
+          print('SES DKIM status: SUCCESS')
+          print(f"SES production access enabled: {account.get('ProductionAccessEnabled')}")
+          print(f"SES sending enabled: {account.get('SendingEnabled')}")
+
+          with open('/tmp/ses-summary.md', 'w') as fh:
+              fh.write('## TPP SES read-only readiness\n')
+              fh.write('- Identity: `planner.guidedscholar.ai`\n')
+              fh.write('- Verified for sending: `true`\n')
+              fh.write('- DKIM status: `SUCCESS`\n')
+              fh.write('- DKIM CNAME records: `3/3 exact`\n')
+              fh.write(f"- Production access enabled: `{account.get('ProductionAccessEnabled')}`\n")
+              fh.write(f"- Sending enabled: `{account.get('SendingEnabled')}`\n")
+              fh.write('- Mutations performed: `none`\n')
+          PY
+
+      - name: Publish sanitized SES readiness summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f /tmp/ses-summary.md ]]; then
+            cat /tmp/ses-summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
