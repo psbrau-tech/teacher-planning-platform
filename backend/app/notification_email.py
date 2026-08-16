@@ -7,7 +7,11 @@ from typing import Any, cast
 import boto3  # type: ignore[import-untyped]
 from botocore.exceptions import BotoCoreError, ClientError  # type: ignore[import-untyped]
 
-from .settings import APPROVED_SES_FROM_EMAIL, Settings
+from .settings import (
+    APPROVED_SES_FROM_EMAIL,
+    APPROVED_SES_REPLY_TO_EMAIL,
+    Settings,
+)
 
 
 class SesDeliveryError(RuntimeError):
@@ -65,19 +69,22 @@ class FridayAdminDigestMetrics:
         return self.teachers_with_completed_packets >= 2
 
 
-def _validated_sender_and_recipient(
+def _validated_delivery_addresses(
     settings: Settings,
     recipient_email: str,
-) -> tuple[str, str]:
+) -> tuple[str, str, str]:
     sender = settings.ses_from_email.strip().lower()
+    reply_to = settings.ses_reply_to_email.strip().lower()
     recipient = recipient_email.strip().lower()
     if not sender:
         raise SesDeliveryError("Email notifications are not configured for this environment")
     if sender != APPROVED_SES_FROM_EMAIL:
         raise SesDeliveryError("Configured email sender does not match the approved TPP sender")
+    if reply_to != APPROVED_SES_REPLY_TO_EMAIL:
+        raise SesDeliveryError("Configured email Reply-To does not match the approved TPP mailbox")
     if not recipient or not settings.email_is_allowed(recipient):
         raise SesDeliveryError("Email recipient is outside the governed TPP account boundary")
-    return sender, recipient
+    return sender, reply_to, recipient
 
 
 def _send_text_email(
@@ -88,11 +95,12 @@ def _send_text_email(
     body: str,
     failure_label: str,
 ) -> str:
-    sender, recipient = _validated_sender_and_recipient(settings, recipient_email)
+    sender, reply_to, recipient = _validated_delivery_addresses(settings, recipient_email)
     try:
         client = boto3.client("sesv2", region_name=settings.ses_region)
         raw_response = client.send_email(
             FromEmailAddress=sender,
+            ReplyToAddresses=[reply_to],
             Destination={"ToAddresses": [recipient]},
             Content={
                 "Simple": {
