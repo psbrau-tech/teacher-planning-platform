@@ -98,7 +98,9 @@ def test_ses_delivery_rejects_unapproved_reply_to_mailbox() -> None:
         )
 
 
-def test_ses_delivery_uses_exact_governed_from_and_reply_to(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_ses_delivery_uses_exact_governed_from_and_reply_to(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     sent: dict[str, Any] = {}
 
     class FakeSesClient:
