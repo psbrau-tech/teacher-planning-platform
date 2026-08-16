@@ -31,6 +31,7 @@ def test_runbook_preserves_reflection_and_student_data_boundaries() -> None:
 def test_runbook_keeps_email_fail_closed_until_separate_activation() -> None:
     source = normalized()
     assert "notifications@planner.guidedscholar.ai" in source
+    assert "peter@brauconsulting.com" in source
     assert "enable tpp ses notifications" in source
     assert "activation workflow itself sends **no test email**" in source
     assert "email must never contain student information" in source
@@ -92,14 +93,26 @@ def test_runbook_uses_quarter_hour_dispatchers_but_school_scoped_claims() -> Non
     assert "does not mean an email is sent every 15 minutes" in source
 
 
-def test_runbook_splits_dashboard_and_notification_migration_chain() -> None:
+def test_runbook_records_applied_notification_chain_without_activating_email() -> None:
     source = normalized()
-    assert "20260815011000_friday_submission_status.sql" in source
     assert "20260815013000_scheduled_friday_notifications.sql" in source
     assert "20260815215500_multi_school_notification_controls.sql" in source
     assert "20260815220500_harden_school_local_notification_windows.sql" in source
-    assert "must remain unapplied" in source
-    assert "target-scoped database workflow" in source
+    assert "verified the live database up to date through `20260815220500`" in source
+    assert "school notification flags remain fail-closed" in source
+    assert "eventbridge scheduler dispatchers remain inactive" in source
+    assert "future migrations still require an exact target-scoped preview" in source
+    assert "must remain unapplied" not in source
+
+
+def test_runbook_records_ses_provider_readiness_without_overclaiming_access() -> None:
+    source = normalized()
+    assert "domain identity `planner.guidedscholar.ai` is verified" in source
+    assert "easy dkim is successful and enabled" in source
+    assert "authoritative route 53 zone" in source
+    assert "production-access approval has been requested" in source
+    assert "must remain treated as **pending**" in source
+    assert "peter@brauconsulting.com" in source
 
 
 def test_runbook_requires_exact_release_evidence_and_manual_stop_conditions() -> None:
