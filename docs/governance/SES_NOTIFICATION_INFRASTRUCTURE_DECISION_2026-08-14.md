@@ -1,16 +1,21 @@
 # SES Notification Infrastructure Decision
 
-**Date:** 2026-08-14  
-**Status:** Infrastructure prepared; activation remains a manual controlled release action  
+**Original date:** 2026-08-14  
+**Reconciled:** 2026-08-16  
+**Status:** Identity prepared; application activation remains a manual controlled release action  
 **Scope:** Teacher Planning Platform (TPP) controlled pilot
 
-## Approved sender
+## Approved delivery addresses
 
 The approved TPP notification From address is:
 
 `notifications@planner.guidedscholar.ai`
 
-The application code, infrastructure activation workflow, and release checks must reject or refuse activation for a different From address.
+The approved monitored Reply-To address is:
+
+`peter@brauconsulting.com`
+
+The application delivery path must reject a different From or Reply-To address. The Reply-To address is non-secret governed configuration and does not authorize or activate SES sending.
 
 ## Default state
 
@@ -18,7 +23,7 @@ SES delivery remains disabled by default.
 
 The CloudFormation parameters `SesFromEmail` and `SesIdentityArn` both default to an empty string. The ECS task role receives no SES send policy unless both parameters are nonblank. The runtime `TPP_SES_FROM_EMAIL` therefore remains blank until a controlled activation updates the stack.
 
-This means merging or deploying application code alone does not activate email delivery.
+The application carries the approved Reply-To as a non-secret default, but cannot send while the From address remains blank. This means merging or deploying application code alone does not activate email delivery.
 
 ## Least-privilege task permission
 
@@ -33,11 +38,11 @@ The identity ARN is restricted by the activation workflow to either:
 - `arn:aws:ses:us-east-2:697091778129:identity/notifications@planner.guidedscholar.ai`; or
 - `arn:aws:ses:us-east-2:697091778129:identity/planner.guidedscholar.ai`.
 
-The application still enforces the exact approved From address even when a verified domain identity is used.
+The application still enforces the exact approved From and Reply-To addresses even when a verified domain identity is used.
 
 ## Controlled activation workflow
 
-`.github/workflows/enable-ses-notifications.yml` is the only new activation path introduced by this slice.
+`.github/workflows/enable-ses-notifications.yml` remains the controlled activation path.
 
 It requires explicit confirmation that:
 
@@ -57,19 +62,29 @@ This is important because the existing deploy, bootstrap, and TLS workflows must
 
 A new stack remains fail-closed because both SES parameters have blank template defaults.
 
+## Current provider readiness
+
+As of the 2026-08-16 reconciliation:
+
+- the SES domain identity `planner.guidedscholar.ai` is verified in `us-east-2`;
+- DKIM is successful and enabled;
+- the three SES DKIM CNAME records are present in the authoritative Route 53 hosted zone; and
+- SES production-access approval has been requested but remains a provider gate until AWS reports approval.
+
+The monitored reply path is explicitly `peter@brauconsulting.com`; no inbound mailbox on `planner.guidedscholar.ai` is required for recipient replies.
+
 ## Data boundary
 
-The SES infrastructure does not expand TPP's data boundary. Email remains limited to adult professional operational communication. Student PII, student education records, identifiable student work, student assessment results, reflection text, generated instructional insight, and teacher-quality/performance content remain prohibited from the first-release admin digest.
+The SES infrastructure does not expand TPP's data boundary. Email remains limited to adult professional operational communication. Student PII, student education records, identifiable student work, student assessment results, reflection text, generated instructional insight, and teacher-quality/performance content remain prohibited from notification email.
 
 ## Still required before activation
 
-The following are deliberate human/release gates and are not satisfied by this code change:
+The following are deliberate human/release gates and are not satisfied merely by this source change:
 
-- verify the approved email or domain identity in AWS SES `us-east-2`;
-- complete any DNS records required by SES verification;
-- confirm SES sending access for intended recipients;
-- reconcile the enabled SES data flow with the final privacy policy/subprocessor disclosures and Help text;
+- receive and verify SES production sending access for intended professional recipients;
+- define and verify bounce/complaint/suppression-list handling;
+- reconcile the enabled SES data flow with the privacy policy/subprocessor disclosures and Help text;
 - run the controlled SES activation workflow against an accepted release candidate; and
-- perform a bounded authenticated admin delivery test after activation.
+- perform a bounded authenticated delivery test after activation.
 
 No SES activation or production/pilot email delivery is authorized merely by merging this infrastructure slice.
