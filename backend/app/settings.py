@@ -6,6 +6,7 @@ from pydantic import Field, HttpUrl
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 APPROVED_SES_FROM_EMAIL = "notifications@planner.guidedscholar.ai"
+APPROVED_SES_REPLY_TO_EMAIL = "peter@brauconsulting.com"
 
 
 class Settings(BaseSettings):
@@ -39,8 +40,10 @@ class Settings(BaseSettings):
 
     # Email notifications are opt-in runtime infrastructure. The approved sender identity is
     # notifications@planner.guidedscholar.ai, but a blank runtime value intentionally keeps
-    # delivery fail-closed until SES verification and IAM wiring are complete.
+    # delivery fail-closed until SES verification and IAM wiring are complete. Reply-To is a
+    # non-secret governed address and is locked separately by the delivery validation path.
     ses_from_email: str = ""
+    ses_reply_to_email: str = APPROVED_SES_REPLY_TO_EMAIL
     ses_region: str = "us-east-2"
     scheduled_digest_timezone: str = "America/Chicago"
 

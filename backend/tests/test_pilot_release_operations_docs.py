@@ -41,12 +41,29 @@ def test_operations_docs_match_exact_sha_and_target_scoped_migration_workflows()
     assert "dry_run_only=true" in preflight
     assert "apply_target_confirmed" in preflight
 
-    for source in (deployment, preflight, secrets):
+    for source in (deployment, preflight):
         assert "through" in source and "target" in source
         assert "20260815001500" in source
         assert "20260815011000_friday_submission_status.sql" in source
         assert "20260815013000_scheduled_friday_notifications.sql" in source
         assert "deferred" in source
+
+    assert "20260815013000_scheduled_friday_notifications.sql" in secrets
+    assert "20260815215500_multi_school_notification_controls.sql" in secrets
+    assert "20260815220500_harden_school_local_notification_windows.sql" in secrets
+    assert "verified live head `20260815220500" in secrets
+    assert "notification preparation chain is now applied" in secrets
+
+
+def test_operations_docs_record_route53_and_governed_reply_to() -> None:
+    secrets = normalized(SECRETS)
+
+    assert "authoritative dns in amazon route 53" in secrets
+    assert "domain identity is verified" in secrets
+    assert "dkim is successful and enabled" in secrets
+    assert "production-access request has been submitted" in secrets
+    assert "notifications@planner.guidedscholar.ai" in secrets
+    assert "peter@brauconsulting.com" in secrets
 
 
 def test_operations_docs_keep_scheduled_service_role_out_of_interactive_task() -> None:
@@ -62,8 +79,10 @@ def test_operations_docs_keep_scheduled_service_role_out_of_interactive_task() -
 def test_operations_docs_do_not_equate_repository_inventory_with_live_db_state() -> None:
     deployment = normalized(DEPLOYMENT)
     preflight = normalized(PREFLIGHT)
+    secrets = normalized(SECRETS)
 
     assert "repository source state and live database state are separate evidence" in deployment
     assert "does **not** prove" in preflight
     assert "live pilot database" in preflight
     assert "later intentionally deferred source migration" in deployment
+    assert "keep repository source state separate from live database evidence" in secrets

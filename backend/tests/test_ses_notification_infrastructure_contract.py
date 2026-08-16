@@ -12,6 +12,7 @@ DECISION = (
 )
 
 APPROVED_SENDER = "notifications@planner.guidedscholar.ai"
+APPROVED_REPLY_TO = "peter@brauconsulting.com"
 
 
 def test_cloudformation_keeps_ses_fail_closed_until_both_values_are_supplied() -> None:
@@ -79,13 +80,16 @@ def test_activation_preserves_exact_image_and_existing_runtime_secret_set() -> N
     assert "SES activation changed the accepted application image" in source
 
 
-def test_application_default_and_governance_keep_delivery_disabled_before_activation() -> None:
+def test_application_defaults_keep_sending_off_and_reply_to_governed() -> None:
     settings = SETTINGS.read_text(encoding="utf-8")
     decision = DECISION.read_text(encoding="utf-8").lower()
 
     assert 'ses_from_email: str = ""' in settings
+    assert 'APPROVED_SES_REPLY_TO_EMAIL = "peter@brauconsulting.com"' in settings
+    assert "ses_reply_to_email: str = APPROVED_SES_REPLY_TO_EMAIL" in settings
     assert APPROVED_SENDER in decision
+    assert APPROVED_REPLY_TO in decision
     assert "ses delivery remains disabled by default" in decision
     assert "does not send a test email" in decision
     assert "student pii" in decision
-    assert "no ses activation" in decision
+    assert "production-access approval" in decision

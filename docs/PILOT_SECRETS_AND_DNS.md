@@ -1,6 +1,6 @@
 # Teacher Planning Platform Pilot Secrets and DNS
 
-This is the controlled setup checklist for `planner.guidedscholar.ai` while authoritative DNS remains in Cloudflare and the isolated application stack is deployed in the existing AWS account in `us-east-2`.
+This is the controlled setup checklist for `planner.guidedscholar.ai` with authoritative DNS in Amazon Route 53 and the isolated application stack deployed in the existing AWS account in `us-east-2`.
 
 ## Security boundary
 
@@ -43,7 +43,9 @@ Database migration and staff provisioning workflows retrieve the database connec
 
 ### Notification and scheduled-worker credential boundary
 
-The approved SES sender is exactly `notifications@planner.guidedscholar.ai`. SES delivery uses AWS task-role permission for `ses:SendEmail` only after the sender is separately activated. `TPP_SES_FROM_EMAIL` and `TPP_SES_REGION` are non-secret runtime configuration.
+The approved SES From address is exactly `notifications@planner.guidedscholar.ai`. The approved monitored Reply-To address is exactly `peter@brauconsulting.com`. The Reply-To address is non-secret governed runtime configuration; delivery code rejects a different Reply-To value.
+
+SES delivery uses AWS task-role permission for `ses:SendEmail` only after the sender is separately activated. `TPP_SES_FROM_EMAIL` and `TPP_SES_REGION` are non-secret runtime configuration. The Reply-To default does not activate sending because `TPP_SES_FROM_EMAIL` remains blank until controlled SES activation.
 
 The approved automatic Friday workflow uses **separate scheduled one-shot ECS tasks**, not the interactive web task. Only those isolated worker tasks may receive `TPP_SUPABASE_SERVICE_ROLE_KEY`, together with `TPP_SUPABASE_URL`, after the scheduled notification database/AWS activation gates are approved.
 
@@ -170,43 +172,49 @@ The provisioning script temporarily remains backward-compatible with the legacy 
 ## Controlled workflow order
 
 1. Merge the reviewed release PR and record the exact resulting `main` SHA.
-2. Select the exact migration target required by the release. The earlier professional-learning/application baseline includes `20260815001500`; the current accepted Friday-status live head is `20260815011000_friday_submission_status.sql`.
-3. Automatic notification migrations remain deliberately **deferred** until email preparation is intentionally opened:
+2. Select the exact migration target required by the release and keep repository source state separate from live database evidence.
+3. The notification preparation chain is now applied through the verified live head `20260815220500_harden_school_local_notification_windows.sql`:
    - `20260815013000_scheduled_friday_notifications.sql`
    - `20260815215500_multi_school_notification_controls.sql`
    - `20260815220500_harden_school_local_notification_windows.sql`
-4. Run **Apply TPP Pilot Database Migrations** from `main` with exact `expected_main_sha`, exact `target_migration_head`, `dry_run_only=true`, and `apply_target_confirmed=false`; review the target-scoped pending list.
+4. For future database changes, run **Apply TPP Pilot Database Migrations** from `main` with exact `expected_main_sha`, exact `target_migration_head`, `dry_run_only=true`, and `apply_target_confirmed=false`; review the target-scoped pending list.
 5. Approve a mutating migration run only after the preview is accepted. Use the same exact SHA/head, `dry_run_only=false`, and `apply_target_confirmed=true`. The final dry run must show nothing pending **through that target**.
 6. Run **Preflight TPP Pilot Release** with the approved academic-year dates when required. The read-only preflight validates the district-to-school graph, each account's district/school assignment, role set, timezone, and notification settings before mutation.
-7. After the multi-school notification schema exists, update the protected `TPP_PILOT_ACCESS_JSON` only with approved district/school settings and professional accounts, then run **Provision TPP Pilot Access**. This is a human-controlled gate for real staff access, district/school reassignment, and first-time school notification enablement.
+7. With the multi-school notification schema now live, update the protected `TPP_PILOT_ACCESS_JSON` only with approved district/school settings and professional accounts, then run **Provision TPP Pilot Access**. This is a human-controlled gate for real staff access, district/school reassignment, and first-time school notification enablement.
 8. Run **Deploy TPP Pilot** for application changes using the exact accepted SHA and confirmed applied migration head.
 9. Run **Verify TPP Pilot Deployment** and complete release-specific acceptance.
 10. Prepare SES identity/sending activation separately; normal application deployment does not turn email on.
 11. Verify or create the dedicated service-role secret under the governed `tpp/pilot/supabase-service-role-key-*` path. Record only its ARN, never its value.
 12. Reconcile live IAM with accepted source.
 13. Run **Enable TPP SES Notifications** only after sender identity, production sending status, privacy/Help, and runtime-boundary confirmations are true.
-14. Run **Enable TPP Friday Notifications** only after the full notification migration chain is applied, SES is active, school-local settings are approved, the service-role secret is ready, and IAM/privacy/Help gates are true.
+14. Run **Enable TPP Friday Notifications** only after the notification schema is confirmed live, SES is active, school-local settings are approved, the service-role secret is ready, and IAM/privacy/Help gates are true.
 15. Accept the first live Friday execution on the recipient side and confirm no duplicates, no cross-school delivery, and no prohibited content.
 
-No workflow in this sequence changes Cloudflare or Route 53 directly.
+No workflow in this sequence changes public DNS directly.
 
 ## SES identity and DNS
 
-The approved identity is either:
+The approved SES identity is either:
 
 - exact address identity `notifications@planner.guidedscholar.ai`, or
 - approved domain identity `planner.guidedscholar.ai`.
 
-Verification must occur in SES `us-east-2`. Add only the DNS records actually returned by AWS. Do not invent DKIM, verification, MAIL FROM, SPF, or DMARC values.
+Verification occurs in SES `us-east-2`. As of the 2026-08-16 reconciliation, the `planner.guidedscholar.ai` domain identity is verified, DKIM is successful and enabled, and all three SES DKIM CNAME records are present in the authoritative Route 53 hosted zone.
 
-Confirm SES sending status supports the intended professional recipients. If the account is still restricted by the SES sandbox or another provider limitation, do not represent email as production-ready.
+The SES production-access request has been submitted. Until AWS reports approval, do not represent SES as ready to send to ordinary intended professional recipients and do not run the SES activation workflow with `production_access_confirmed=true`.
 
-Before routine automated sending, define operational handling for:
+The governed application delivery addresses are:
+
+- From: `notifications@planner.guidedscholar.ai`
+- Reply-To: `peter@brauconsulting.com`
+
+TPP does not require an inbound mailbox or MX record for `notifications@planner.guidedscholar.ai` because replies are explicitly directed to the monitored Reply-To mailbox.
+
+Before routine automated sending, define and verify operational handling for:
 
 - bounces;
-- complaints;
-- suppression-list events; and
-- Reply-To behavior / a monitored mailbox if users reply to notifications.
+- complaints; and
+- suppression-list events.
 
 These are operational controls; they do not change the no-student-data content boundary.
 
@@ -218,15 +226,3 @@ These are operational controls; they do not change the no-student-data content b
 - Add `https://planner.guidedscholar.ai` to allowed redirect URLs.
 - Add the application origin to the Google OAuth web-client configuration where required.
 - Keep the professional school-domain restriction and database allowlist in force.
-
-Authentication is not authorization. A valid Google school account receives no application data unless its lowercase email has an active governed row in `private.pilot_access_allowlist`; the database then creates/synchronizes the profile, its assigned school, and approved roles. School-to-district scope is determined by the assigned school's `district_id`.
-
-## Cloudflare and ACM
-
-The bootstrap workflow returns the ACM certificate ARN, validation CNAME, and ALB DNS name. Keep the ACM validation CNAME in place. Add the application CNAME only after the certificate is issued and the HTTPS listener is attached. Use DNS-only mode during direct AWS acceptance.
-
-SES DNS records are separate from ACM/TLS records. Preserve each verified identity/validation record for as long as the associated AWS identity/certificate requires it.
-
-## Route 53 migration rule
-
-Do not migrate `planner.guidedscholar.ai` by itself. If Cloudflare is later removed from the production path, move the complete `guidedscholar.ai` hosted zone in one coordinated action. Validate every application, email, OAuth, certificate-validation, SES, and verification record before changing registrar nameservers.

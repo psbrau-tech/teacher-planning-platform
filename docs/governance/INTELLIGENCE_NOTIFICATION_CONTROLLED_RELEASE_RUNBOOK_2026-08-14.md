@@ -1,7 +1,7 @@
 # Reflection Intelligence, Friday Status, and Notifications — Controlled Release Runbook
 
 **Original date:** 2026-08-14  
-**Reconciled:** 2026-08-15  
+**Reconciled:** 2026-08-16  
 **Status:** Controlled release runbook; no live mutation is authorized by this document alone  
 **Scope:** Teacher Planning Platform (TPP) pilot, AWS `us-east-2`
 
@@ -23,28 +23,29 @@ At every phase:
 
 ## Current release sequence
 
-The accepted Reflection Intelligence / PLC / formative-assessment and Friday-status application release is live through migration `20260815011000_friday_submission_status.sql`. Email remains separately governed and inactive.
+The accepted Reflection Intelligence / PLC / formative-assessment, Friday-status, and multi-school readiness release is live through migration `20260815220500_harden_school_local_notification_windows.sql`. SES application sending and the Friday dispatchers remain separately governed and inactive.
 
-The source-controlled notification sequence is intentionally staged:
+The notification database sequence was intentionally applied during the controlled notification-preparation gate:
 
 1. `20260815013000_scheduled_friday_notifications.sql`
-   - deferred automatic-delivery ledger and service-role-only candidate foundation;
+   - automatic-delivery ledger and service-role-only candidate foundation;
    - teacher Friday courtesy-reminder candidates;
-   - school-admin aggregate Friday digest candidates;
-   - at-most-once claims;
-   - remains deferred until SES and scheduler activation are being prepared.
+   - school-admin aggregate Friday digest candidates; and
+   - at-most-once claims.
 2. `20260815215500_multi_school_notification_controls.sql`
-   - adds required school-local notification settings that default to disabled;
-   - makes notification delivery uniqueness explicitly school-scoped;
-   - replaces global candidate RPCs with explicit `school_id`-scoped claims;
-   - adds the service-role-only school-local dispatch-window selector; and
-   - preserves the existing one-email/one-explicit-school professional-account model.
+   - required school-local notification settings that default to disabled;
+   - notification delivery uniqueness explicitly school-scoped;
+   - global candidate RPCs replaced with explicit `school_id`-scoped claims;
+   - service-role-only school-local dispatch-window selector; and
+   - the existing one-email/one-explicit-school professional-account model preserved.
 3. `20260815220500_harden_school_local_notification_windows.sql`
-   - limits configured local notification times to quarter-hour boundaries;
-   - hardens the school-local Friday dispatch calculation; and
-   - uses the IANA timezone stored on each school so daylight-saving changes are handled by the timezone database rather than hand-maintained UTC offsets.
+   - configured local notification times limited to quarter-hour boundaries;
+   - school-local Friday dispatch calculation hardened; and
+   - each school's IANA timezone used so daylight-saving changes are handled by the timezone database rather than hand-maintained UTC offsets.
 
-Repository source state and live database state are separate evidence. Use the target-scoped database workflow to stage only migrations through the specifically approved target. The three notification migrations above must remain unapplied until the notification preparation gate is intentionally opened.
+The controlled migration workflow verified the live database up to date through `20260815220500`. Applying this schema did **not** enable email: school notification flags remain fail-closed, SES sending is not yet activated in the TPP stack, and the EventBridge Scheduler dispatchers remain inactive.
+
+Repository source state and live database state are separate evidence. Future migrations still require an exact target-scoped preview and explicit mutating approval.
 
 ## District and school provisioning contract
 
@@ -82,7 +83,7 @@ For the current pilot, the intended district graph includes:
 
 ## Phase A — Friday status dashboard release
 
-The Friday status dashboard is already released through migration `20260815011000` and remains independent from email activation.
+The Friday status dashboard is already released and remains independent from email activation.
 
 The accepted behavior is:
 
@@ -98,25 +99,33 @@ The accepted behavior is:
 
 ## Phase B — SES identity and sending readiness
 
-This requires human AWS/provider evidence.
+This phase requires human AWS/provider evidence.
 
-The approved From address is exactly `notifications@planner.guidedscholar.ai` in `us-east-2`. Verify the exact email identity or approved `planner.guidedscholar.ai` domain identity in Amazon SES, including required DNS records. Do not invent verification or DKIM values.
+The approved From address is exactly `notifications@planner.guidedscholar.ai` in `us-east-2`. The approved monitored Reply-To address is exactly `peter@brauconsulting.com`. Application delivery must reject a different From or Reply-To address.
 
-Confirm SES account sending status supports the intended professional recipients. If production access is required, do not treat a request as approved until AWS reports approval.
+As of the 2026-08-16 reconciliation:
+
+- the SES domain identity `planner.guidedscholar.ai` is verified in `us-east-2`;
+- Easy DKIM is successful and enabled;
+- the three SES DKIM CNAME records are present in the authoritative Route 53 zone; and
+- SES production-access approval has been requested but must remain treated as **pending** until AWS reports approval.
 
 Before SES activation:
 
+- confirm AWS has granted production sending access for the intended professional recipients;
 - privacy/subprocessor and Help review must match the enabled email data flow;
 - live deployment-role policies must match the accepted source-controlled policies;
-- the approved From address and identity ARN must be recorded;
+- the approved From address and SES identity ARN must be recorded;
 - the interactive web task must still exclude the Supabase service-role credential; and
-- bounce/complaint/suppression handling and the monitored Reply-To behavior must be operationally defined before routine automated sending.
+- bounce/complaint/suppression handling must be operationally defined before routine automated sending.
+
+The monitored reply path is now explicit: replies generated by a recipient's mail client are directed to `peter@brauconsulting.com`; TPP does not require inbound mail service on `planner.guidedscholar.ai` for this purpose.
 
 The **Enable TPP SES Notifications** workflow updates the governed SES configuration without sending a test email. The activation workflow itself sends **no test email**.
 
 ## Phase C — Scheduled Friday delivery preparation
 
-Apply the notification migration chain through `20260815220500_harden_school_local_notification_windows.sql` only after automatic delivery is being prepared for activation. This intentionally includes the deferred `20260815013000` foundation first.
+The notification migration chain through `20260815220500_harden_school_local_notification_windows.sql` is already applied and verified. Do not re-run it merely as part of SES activation.
 
 Create/update the dedicated Secrets Manager secret for the existing Supabase service-role credential under the governed `tpp/pilot/supabase-service-role-key-*` path. Record only the ARN. Never place the value in source, chat, workflow inputs, browser configuration, or ordinary logs.
 
@@ -124,7 +133,7 @@ The scheduled worker receives only `TPP_SUPABASE_URL` and `TPP_SUPABASE_SERVICE_
 
 The delivery ledger persists bounded identifiers/status only. It does not retain recipient email, class/course reminder lists, email body, reflection text, lesson-plan content, student data, generated insight, or SES MessageId.
 
-After the notification-control migrations are applied, run governed provisioning with the approved district/school configuration before enabling dispatchers. Confirm every configured school has the intended district, IANA timezone, and notification flags. A school whose flags remain disabled must not produce candidates.
+Run governed provisioning with the approved district/school configuration before enabling dispatchers. Confirm every configured school has the intended district, IANA timezone, and notification flags. A school whose flags remain disabled must not produce candidates.
 
 ## Approved school-local delivery behavior
 
@@ -223,7 +232,7 @@ Keep bounded release evidence:
 - Help/privacy/subprocessor review evidence; and
 - acceptance/rollback results.
 
-Do not retain customer content, reflection text, lesson-plan text, student data, credentials, recipient email addresses, or message bodies when bounded identifiers/status are sufficient.
+Do not retain customer content, reflection text, lesson-plan text, student data, credentials, recipient email addresses, or message bodies when bounded identifiers/status are sufficient. The approved From and Reply-To control addresses may be retained as configuration evidence because they are infrastructure controls rather than customer recipient data.
 
 ## Stop conditions requiring human intervention
 
