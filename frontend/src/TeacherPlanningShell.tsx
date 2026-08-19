@@ -152,6 +152,24 @@ function addDays(isoDate: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
+function dashboardScheduleLabel(pattern: MeetingPattern): string {
+  const parseMinutes = (value: string): number | null => {
+    const match = /^(\d{2}):(\d{2})/.exec(value);
+    if (!match) return null;
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (hours > 23 || minutes > 59) return null;
+    return (hours * 60) + minutes;
+  };
+  const start = parseMinutes(pattern.start_time);
+  const end = parseMinutes(pattern.end_time);
+  const duration = start !== null && end !== null && end > start ? end - start : null;
+  const durationLabel = duration === null
+    ? ""
+    : ` · ${duration} minute${duration === 1 ? "" : "s"}`;
+  return `${pattern.start_time.slice(0, 5)}–${pattern.end_time.slice(0, 5)}${durationLabel}`;
+}
+
 function submissionLabel(status: SubmissionStatus): string {
   return status === "submitted"
     ? "Submitted"
@@ -317,6 +335,16 @@ export function TeacherPlanningShell() {
   const selectedAssignment = useMemo(
     () => assignments.find((assignment) => assignment.id === selectedAssignmentId) ?? null,
     [assignments, selectedAssignmentId],
+  );
+  const dashboardAssignments = useMemo(
+    () => [...assignments].sort((a, b) => {
+      const aTime = a.meeting_patterns[0]?.start_time ?? "";
+      const bTime = b.meeting_patterns[0]?.start_time ?? "";
+      if (!aTime && bTime) return 1;
+      if (aTime && !bTime) return -1;
+      return aTime.localeCompare(bTime) || a.course_name.localeCompare(b.course_name);
+    }),
+    [assignments],
   );
   const selectedAssignmentReady = Boolean(selectedAssignment?.curriculum_id);
   const savedForReview = Boolean(draftRevision && !draftDirty);
@@ -1312,7 +1340,7 @@ export function TeacherPlanningShell() {
                 </div>
               ) : (
                 <div className="grid">
-                  {assignments.map((assignment) => {
+                  {dashboardAssignments.map((assignment) => {
                     const curriculum = assignment.curriculum_id
                       ? curricula.find((item) => item.id === assignment.curriculum_id)
                       : null;
@@ -1330,7 +1358,7 @@ export function TeacherPlanningShell() {
                         <h3>{assignment.course_name}</h3>
                         <p>
                           {assignment.meeting_patterns
-                            .map((pattern) => `${pattern.start_time.slice(0, 5)}–${pattern.end_time.slice(0, 5)}`)
+                            .map((pattern) => dashboardScheduleLabel(pattern))
                             .join(", ")}
                         </p>
                         <small>
