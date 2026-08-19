@@ -336,6 +336,16 @@ export function TeacherPlanningShell() {
     () => assignments.find((assignment) => assignment.id === selectedAssignmentId) ?? null,
     [assignments, selectedAssignmentId],
   );
+  const dashboardAssignments = useMemo(
+    () => [...assignments].sort((a, b) => {
+      const aTime = a.meeting_patterns[0]?.start_time ?? "";
+      const bTime = b.meeting_patterns[0]?.start_time ?? "";
+      if (!aTime && bTime) return 1;
+      if (aTime && !bTime) return -1;
+      return aTime.localeCompare(bTime) || a.course_name.localeCompare(b.course_name);
+    }),
+    [assignments],
+  );
   const selectedAssignmentReady = Boolean(selectedAssignment?.curriculum_id);
   const savedForReview = Boolean(draftRevision && !draftDirty);
   const reflectionIsComplete = reflectionComplete(draft.reflection);
@@ -1330,7 +1340,7 @@ export function TeacherPlanningShell() {
                 </div>
               ) : (
                 <div className="grid">
-                  {assignments.map((assignment) => {
+                  {dashboardAssignments.map((assignment) => {
                     const curriculum = assignment.curriculum_id
                       ? curricula.find((item) => item.id === assignment.curriculum_id)
                       : null;
