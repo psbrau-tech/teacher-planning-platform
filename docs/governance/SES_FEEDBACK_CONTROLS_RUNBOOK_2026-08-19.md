@@ -1,12 +1,12 @@
 # TPP SES Feedback Controls Runbook
 
 **Date:** 2026-08-19  
-**Status:** Required provider configuration before TPP SES activation  
+**Status:** Provider feedback controls accepted; TPP SES application activation remains separate  
 **Scope:** Teacher Planning Platform controlled pilot, Amazon SES `us-east-2`
 
 ## Purpose
 
-Amazon SES production access is approved for the TPP AWS account in `us-east-2`. TPP application sending remains disabled until bounce and complaint handling is operational.
+Amazon SES production access is approved for the TPP AWS account in `us-east-2`. TPP application sending remains disabled until the controlled SES activation workflow is intentionally run.
 
 This runbook defines the minimum feedback controls required before the **Enable TPP SES Notifications** workflow may be run with `feedback_controls_confirmed=true`.
 
@@ -77,6 +77,26 @@ Reason: `notifications@planner.guidedscholar.ai` is a send-only application iden
 
 Do not disable email feedback forwarding unless SNS is configured for **both** Bounce and Complaint feedback.
 
+## Accepted provider evidence — 2026-08-19
+
+The operator reported and accepted the following provider-side state on 2026-08-19:
+
+- account-level suppression enabled for both `BOUNCE` and `COMPLAINT`;
+- SNS topic `tpp-pilot-ses-feedback` created in `us-east-2`;
+- monitored email subscription confirmed;
+- Bounce feedback bound to the SNS topic;
+- Complaint feedback bound to the same SNS topic;
+- SES Email Feedback Forwarding disabled; and
+- both Amazon SES mailbox-simulator Bounce and Complaint notifications received through the monitored SNS email subscription.
+
+This is bounded release evidence. No feedback payload, recipient list, customer content, or simulator message body is retained in this source record.
+
+Based on that provider evidence, the feedback-control gate is accepted and the controlled SES activation workflow may use:
+
+`feedback_controls_confirmed=true`
+
+This acceptance does not itself activate TPP SES application sending or the Friday notification schedulers.
+
 ## Optional defense in depth — CloudWatch reputation alarms
 
 Amazon SES publishes account reputation metrics to CloudWatch. Before material expansion beyond the controlled pilot, create alarms to the same monitored SNS topic using AWS's published warning thresholds:
@@ -112,9 +132,11 @@ That workflow still:
 - grants only the existing identity-scoped `ses:SendEmail` application permission; and
 - keeps the TPP no-student-data boundary unchanged.
 
-## First bounded test after SES activation
+## Bounded testing
 
-After SES infrastructure activation is verified, use the Amazon SES mailbox simulator for the first bounded bounce/complaint-path validation where appropriate. Simulator testing is preferred over intentionally sending to invalid or complaint-prone real addresses.
+The accepted feedback-path validation used the Amazon SES mailbox simulator for Bounce and Complaint events rather than intentionally sending to invalid or complaint-prone real addresses. Simulator testing is the required approach for repeat provider-path tests where appropriate.
+
+After SES application infrastructure activation is verified, any application-level delivery acceptance must remain bounded to an approved professional test recipient and must not contain student data, reflection text, lesson-plan content, generated instructional insight, or teacher-performance information.
 
 Routine school notifications remain disabled until their separate school-configuration and Friday-scheduler activation gates are intentionally opened.
 
@@ -124,6 +146,7 @@ Routine school notifications remain disabled until their separate school-configu
 - Amazon SES feedback notifications through Amazon SNS
 - Amazon SES identity notification configuration
 - Amazon SES email feedback forwarding documentation
+- Amazon SES mailbox simulator documentation
 - Amazon SES CloudWatch reputation alarm documentation
 
 Provider console labels can change. If the current AWS console differs from this runbook, use the current AWS documentation and preserve the controls described here rather than guessing from stale UI labels.
