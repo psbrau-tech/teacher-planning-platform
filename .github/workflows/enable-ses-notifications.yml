@@ -17,7 +17,12 @@ on:
         default: false
         type: boolean
       production_access_confirmed:
-        description: I confirmed the SES account can send to intended professional recipients
+        description: I confirmed the SES account is out of the sandbox and can send to intended professional recipients
+        required: true
+        default: false
+        type: boolean
+      feedback_controls_confirmed:
+        description: I confirmed BOUNCE and COMPLAINT suppression plus monitored bounce/complaint notifications are operational
         required: true
         default: false
         type: boolean
@@ -59,7 +64,11 @@ jobs:
             exit 1
           fi
           if [[ "${{ inputs.production_access_confirmed }}" != "true" ]]; then
-            echo "SES activation is blocked until sending access is confirmed." >&2
+            echo "SES activation is blocked until production sending access is confirmed." >&2
+            exit 1
+          fi
+          if [[ "${{ inputs.feedback_controls_confirmed }}" != "true" ]]; then
+            echo "SES activation is blocked until bounce/complaint suppression and monitored feedback notifications are confirmed." >&2
             exit 1
           fi
           if [[ "${{ inputs.privacy_help_review_confirmed }}" != "true" ]]; then
@@ -246,6 +255,8 @@ jobs:
             echo "- From address: \`$SES_FROM_EMAIL\`"
             echo "- Identity ARN: \`${{ inputs.ses_identity_arn }}\`"
             echo "- Region: \`$AWS_REGION\`"
+            echo "- Production access confirmed: \`${{ inputs.production_access_confirmed }}\`"
+            echo "- Bounce/complaint feedback controls confirmed: \`${{ inputs.feedback_controls_confirmed }}\`"
             echo "- Task definition: \`${{ steps.verify.outputs.task_definition }}\`"
             echo "- Existing immutable application image preserved: \`${{ steps.baseline.outputs.image }}\`"
             echo "- Email sent by this workflow: \`false\`"
