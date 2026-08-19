@@ -31,7 +31,7 @@ def test_privacy_help_readiness_is_narrow_and_not_legal_effectiveness() -> None:
     assert "pre-release draft / not yet effective" in source
     assert "does **not** make any customer-facing legal document effective" in source
     assert "qualified legal review" in source
-    assert "friday schedulers" in source
+    assert "friday dispatchers" in source
     assert "notifications@planner.guidedscholar.ai" in source
     assert "peter@brauconsulting.com" in source
     assert "student pii" in source
