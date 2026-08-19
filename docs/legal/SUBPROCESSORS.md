@@ -21,7 +21,7 @@ GitHub is used for source control, pull requests, CI/CD and deployment workflows
 
 DNS, certificate, analytics, monitoring, customer-support, payment, document-conversion, or other services are not listed as production subprocessors merely because they are contemplated or used elsewhere by Brau Consulting. The final list must reflect the actual TPP customer/account data flow.
 
-Professional operational email is treated here as part of the existing AWS relationship because the approved implementation uses Amazon SES. SES provider readiness does not establish that TPP application delivery is active: application activation and the later scheduled-worker/Friday-dispatcher activation remain separate controlled release steps.
+Professional operational email is treated here as part of the existing AWS relationship because the approved implementation uses Amazon SES. SES provider readiness does not establish that email delivery is active: TPP application activation and the later scheduled-worker/Friday-dispatcher activation remain separate controlled release steps.
 
 The current first-party active-interaction product telemetry and deterministic formative-assessment classification do not introduce a new third-party analytics vendor. If third-party analytics, session replay, advertising, or behavioral tracking is later added, it requires privacy/governance review and subprocessor evaluation before production use.
 
