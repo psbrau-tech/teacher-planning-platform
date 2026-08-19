@@ -75,7 +75,7 @@ def test_runbook_locks_school_local_friday_delivery_behavior() -> None:
     assert "friday at **2:00 pm local time**" in source
     assert "friday at **3:30 pm local time**" in source
     assert "america/chicago" in source
-    assert "stored independently on each school" in source
+    assert "stored independently on each anniston school" in source
     assert "90-minute courtesy window" in source
     assert "exact professional class/course" in source
     assert "new schools default" in source
@@ -105,14 +105,22 @@ def test_runbook_records_applied_notification_chain_without_activating_email() -
     assert "must remain unapplied" not in source
 
 
-def test_runbook_records_ses_provider_readiness_without_overclaiming_access() -> None:
+def test_runbook_records_ses_production_access_and_feedback_gate_without_activation() -> None:
     source = normalized()
     assert "domain identity `planner.guidedscholar.ai` is verified" in source
     assert "easy dkim is successful and enabled" in source
     assert "authoritative route 53 zone" in source
-    assert "production-access approval has been requested" in source
-    assert "must remain treated as **pending**" in source
+    assert "aws approved production sending access" in source
+    assert "moved the ses account out of the sandbox" in source
+    assert "50,000-message daily quota" in source
+    assert "14 messages per second" in source
+    assert "tpp ses application sending is still inactive" in source
+    assert "account-level suppression" in source
+    assert "`bounce`" in source
+    assert "`complaint`" in source
+    assert "sns topic" in source
     assert "peter@brauconsulting.com" in source
+    assert "feedback-controls confirmation" in source
 
 
 def test_runbook_requires_exact_release_evidence_and_manual_stop_conditions() -> None:
@@ -125,4 +133,5 @@ def test_runbook_requires_exact_release_evidence_and_manual_stop_conditions() ->
     assert "creating a new district or school with real professional users" in source
     assert "moving an existing professional account to another school or district" in source
     assert "enabling notifications for a school for the first time" in source
+    assert "configuring or materially changing ses suppression" in source
     assert "running the friday notification activation workflow" in source
