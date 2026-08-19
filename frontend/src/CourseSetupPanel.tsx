@@ -91,6 +91,29 @@ function weekdayLabel(weekdays: number[]): string {
   return weekdays.map((value) => labels[value - 1]).filter(Boolean).join(", ");
 }
 
+function classPeriodMinutes(startTime: string, endTime: string): number | null {
+  const parseMinutes = (value: string): number | null => {
+    const match = /^(\d{2}):(\d{2})/.exec(value);
+    if (!match) return null;
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (hours > 23 || minutes > 59) return null;
+    return (hours * 60) + minutes;
+  };
+  const start = parseMinutes(startTime);
+  const end = parseMinutes(endTime);
+  if (start === null || end === null || end <= start) return null;
+  return end - start;
+}
+
+function classScheduleLabel(pattern: MeetingPattern): string {
+  const start = pattern.start_time.slice(0, 5);
+  const end = pattern.end_time.slice(0, 5);
+  const minutes = classPeriodMinutes(pattern.start_time, pattern.end_time);
+  const duration = minutes === null ? "" : ` · ${minutes} minute${minutes === 1 ? "" : "s"}`;
+  return `${weekdayLabel(pattern.weekdays)} · ${start}–${end}${duration}`;
+}
+
 async function readError(response: Response, fallback: string): Promise<string> {
   try {
     const body = await response.json() as { detail?: unknown };
@@ -791,7 +814,7 @@ export function CourseSetupPanel({
                     <span className="status">{curriculum ? "Pacing added" : "Setup in progress"}</span>
                   </div>
                   <h3>{assignment.course_name}</h3>
-                  <p>{coursePattern ? `${weekdayLabel(coursePattern.weekdays)} · ${coursePattern.start_time.slice(0, 5)}–${coursePattern.end_time.slice(0, 5)}` : "Schedule not set"}</p>
+                  <p>{coursePattern ? classScheduleLabel(coursePattern) : "Schedule not set"}</p>
                   <small>{curriculum ? `${curriculum.name} · ${curriculum.version}` : "Curriculum & Pacing not added yet"}</small>
                   <div className="button-row">
                     <button type="button" className="secondary" onClick={() => onSelectAssignment(assignment.id)}>
