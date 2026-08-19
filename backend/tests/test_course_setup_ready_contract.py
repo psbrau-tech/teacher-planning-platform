@@ -24,3 +24,12 @@ def test_ready_step_exposes_weekly_plan_only_after_all_setup_steps() -> None:
     assert "step3Complete" in setup
     assert "is ready for weekly planning" in ready_block
     assert "Go to Weekly Plan" in ready_block
+
+
+def test_course_cards_show_calculated_class_period_minutes() -> None:
+    setup = (FRONTEND / "CourseSetupPanel.tsx").read_text(encoding="utf-8")
+
+    assert "function classPeriodMinutes(startTime: string, endTime: string)" in setup
+    assert "return end - start" in setup
+    assert 'minutes === 1 ? "" : "s"' in setup
+    assert "coursePattern ? classScheduleLabel(coursePattern)" in setup
