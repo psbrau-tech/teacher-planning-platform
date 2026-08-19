@@ -140,7 +140,7 @@ Resources:
             - -m
             - app.scheduled_digest_worker
             - teacher
-          Environment: &ScheduledEnvironment
+          Environment:
             - Name: TPP_ENVIRONMENT
               Value: pilot-scheduled-worker
             - Name: TPP_PUBLIC_BASE_URL
@@ -153,7 +153,7 @@ Resources:
               Value: !Ref SesFromEmail
             - Name: TPP_SES_REGION
               Value: !Ref AWS::Region
-          Secrets: &ScheduledSecrets
+          Secrets:
             - Name: TPP_SUPABASE_URL
               ValueFrom: !Ref SupabaseUrlSecretArn
             - Name: TPP_SUPABASE_SERVICE_ROLE_KEY
@@ -195,8 +195,24 @@ Resources:
             - -m
             - app.scheduled_digest_worker
             - admin
-          Environment: *ScheduledEnvironment
-          Secrets: *ScheduledSecrets
+          Environment:
+            - Name: TPP_ENVIRONMENT
+              Value: pilot-scheduled-worker
+            - Name: TPP_PUBLIC_BASE_URL
+              Value: !Ref PublicBaseUrl
+            - Name: TPP_DATA_BOUNDARY
+              Value: teacher-and-curriculum-only
+            - Name: TPP_ALLOWED_EMAIL_DOMAINS
+              Value: !Ref AllowedEmailDomains
+            - Name: TPP_SES_FROM_EMAIL
+              Value: !Ref SesFromEmail
+            - Name: TPP_SES_REGION
+              Value: !Ref AWS::Region
+          Secrets:
+            - Name: TPP_SUPABASE_URL
+              ValueFrom: !Ref SupabaseUrlSecretArn
+            - Name: TPP_SUPABASE_SERVICE_ROLE_KEY
+              ValueFrom: !Ref SupabaseServiceRoleSecretArn
           MountPoints:
             - SourceVolume: temp
               ContainerPath: /tmp
@@ -261,7 +277,7 @@ Resources:
           PlatformVersion: LATEST
           TaskCount: 1
           EnableECSManagedTags: true
-          NetworkConfiguration: &ScheduledNetwork
+          NetworkConfiguration:
             AwsvpcConfiguration:
               AssignPublicIp: ENABLED
               SecurityGroups:
@@ -290,7 +306,12 @@ Resources:
           PlatformVersion: LATEST
           TaskCount: 1
           EnableECSManagedTags: true
-          NetworkConfiguration: *ScheduledNetwork
+          NetworkConfiguration:
+            AwsvpcConfiguration:
+              AssignPublicIp: ENABLED
+              SecurityGroups:
+                - !Ref TaskSecurityGroupId
+              Subnets: !Ref PublicSubnetIds
 
 Outputs:
   TeacherScheduleName:
