@@ -10,6 +10,12 @@ DECISION = (
     / "governance"
     / "SES_NOTIFICATION_INFRASTRUCTURE_DECISION_2026-08-14.md"
 )
+FEEDBACK_RUNBOOK = (
+    ROOT
+    / "docs"
+    / "governance"
+    / "SES_FEEDBACK_CONTROLS_RUNBOOK_2026-08-19.md"
+)
 
 APPROVED_SENDER = "notifications@planner.guidedscholar.ai"
 APPROVED_REPLY_TO = "peter@brauconsulting.com"
@@ -52,13 +58,15 @@ def test_task_definition_receives_sender_and_region_without_new_secrets() -> Non
     assert "Name: TPP_AWS_SECRET_ACCESS_KEY" not in source
 
 
-def test_activation_workflow_locks_identity_and_manual_release_gates() -> None:
+def test_activation_workflow_locks_identity_and_all_manual_release_gates() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 
     assert f"SES_FROM_EMAIL: {APPROVED_SENDER}" in source
     assert "sender_identity_verified" in source
     assert "production_access_confirmed" in source
+    assert "feedback_controls_confirmed" in source
     assert "privacy_help_review_confirmed" in source
+    assert "BOUNCE and COMPLAINT suppression" in source
     assert "identity/notifications@planner.guidedscholar.ai" in source
     assert "identity/planner.guidedscholar.ai" in source
     assert 'SesFromEmail="$SES_FROM_EMAIL"' in source
@@ -92,4 +100,24 @@ def test_application_defaults_keep_sending_off_and_reply_to_governed() -> None:
     assert "ses delivery remains disabled by default" in decision
     assert "does not send a test email" in decision
     assert "student pii" in decision
-    assert "production-access approval" in decision
+    assert "approved production sending access" in decision
+    assert "out of the ses sandbox" in decision
+
+
+def test_feedback_runbook_requires_suppression_monitored_sns_and_send_only_feedback_path() -> None:
+    source = FEEDBACK_RUNBOOK.read_text(encoding="utf-8").lower()
+
+    assert "account-level suppression" in source
+    assert "`bounce`" in source
+    assert "`complaint`" in source
+    assert "tpp-pilot-ses-feedback" in source
+    assert APPROVED_REPLY_TO in source
+    assert "confirm subscription" in source
+    assert "bounce feedback" in source
+    assert "complaint feedback" in source
+    assert "do **not** include original email headers" in source
+    assert "disable ses **email feedback forwarding**" in source
+    assert "send-only" in source
+    assert "feedback_controls_confirmed=true" in source
+    assert "sends no test email" in source
+    assert "does not enable the friday schedulers" in source
