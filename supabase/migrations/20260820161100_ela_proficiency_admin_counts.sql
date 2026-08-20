@@ -1,6 +1,10 @@
 -- Platform Owner review queue counts for governed proficiency guidance.
+-- The return shape changes, so PostgreSQL requires a drop/recreate rather than
+-- CREATE OR REPLACE.
 
-create or replace function public.platform_admin_standard_snapshot_counts()
+drop function if exists public.platform_admin_standard_snapshot_counts();
+
+create function public.platform_admin_standard_snapshot_counts()
 returns table (
   snapshot_id uuid,
   course_count bigint,
