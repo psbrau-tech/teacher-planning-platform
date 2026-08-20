@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 FRONTEND = Path(__file__).resolve().parents[2] / "frontend" / "src"
 MAIN = FRONTEND / "main.tsx"
 OVERRIDES = FRONTEND / "standards-browser-overrides.css"
