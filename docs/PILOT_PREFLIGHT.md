@@ -93,7 +93,13 @@ Any merged branch that adds a migration requires a new protected migration revie
 
 The workflow temporarily removes migrations later than the approved target from the runner's Supabase migration directory. Its preview, apply, migration list, and final dry-run therefore concern only migrations through that target. A later source migration may remain intentionally deferred when the release runbook permits it.
 
-The Reflection Intelligence/formative-assessment pilot is live through `20260815001500`. For the approved Friday-status dashboard release, `20260815011000_friday_submission_status.sql` is the next intended application boundary. `20260815013000_scheduled_friday_notifications.sql` remains deferred until SES, the isolated worker, and the approved Friday 2:00 PM teacher / 3:30 PM administrator schedules are separately prepared for activation.
+The current live-accepted Pilot baseline is application SHA
+`b33bf905e98012b857c4434039fced08ff89137b` through migration
+`20260820020000_fix_ai_suggestion_decision_actor_ambiguity.sql`. It includes the earlier
+`20260815011000_friday_submission_status.sql` and
+`20260815013000_scheduled_friday_notifications.sql` schema. Applied schema does not prove SES
+application sending or either isolated Friday dispatcher is active; those operational states remain
+subject to their separate controlled activation and verification workflows.
 
 ## Controlled sequence
 

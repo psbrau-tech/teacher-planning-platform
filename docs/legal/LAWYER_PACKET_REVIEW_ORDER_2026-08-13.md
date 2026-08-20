@@ -1,6 +1,7 @@
 # TPP Lawyer Packet — Recommended Review Order
 
-**Date:** 2026-08-13  
+**Original date:** 2026-08-13
+**Latest reconciliation:** 2026-08-20
 **Provider:** Brau Consulting LLC
 
 For efficient counsel review, send or present the TPP packet in this order:
@@ -14,11 +15,12 @@ For efficient counsel review, send or present the TPP packet in this order:
 7. `SECURITY_AND_DATA_PRACTICES.md` — reconciled controlled-pilot architecture and security/data-handling overview.
 8. `SUBPROCESSORS.md` — deployed material providers and remaining configuration verification.
 9. `ACCESSIBILITY_STATEMENT.md` — WCAG/Title II posture and limitations on claims.
-10. `POST_PILOT_RECONCILIATION_2026-08-13.md` — implementation-to-policy reconciliation record.
+10. `POST_PILOT_RECONCILIATION_2026-08-20.md` — latest exact-baseline implementation-to-policy reconciliation, followed by `POST_PILOT_RECONCILIATION_2026-08-13.md` for the broader original pilot record.
 11. `DECISIONS_REQUIRED_BEFORE_PUBLICATION.md` — unresolved Brau Consulting/legal decisions.
 12. `DATA_RETENTION_AND_DELETION_POLICY.md` and `DATA_RETENTION_RECONCILIATION_2026-08-13.md` — retention framework and post-pilot additions.
 13. `INCIDENT_RESPONSE_POLICY.md` — internal security/privacy incident process.
 14. `../governance/LEGAL_COMPLIANCE_REQUIREMENTS.md` — engineering constraints if counsel wants implementation context.
 15. `../governance/LEGAL_COMPLIANCE_RELEASE_CHECKLIST.md` — evidence-based release gate.
+16. `../governance/PILOT_BASELINE_2026-08-20.md` — exact accepted application/migration state and live acceptance evidence.
 
 The customer-facing documents remain **Pre-Release Draft — Not Yet Effective** until Brau Consulting approval, technical verification, accessibility evidence where required, and legal review are complete.

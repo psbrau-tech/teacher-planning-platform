@@ -2,14 +2,14 @@
 
 **Provider:** Brau Consulting LLC  
 **Original date:** 2026-08-13  
-**Product reconciliation:** 2026-08-15  
+**Product reconciliation:** 2026-08-20
 **Status:** Pre-publication legal-review brief
 
 ## Purpose of this brief
 
 Brau Consulting LLC is preparing Teacher Planning Platform (TPP) for broader school/district use after deployment of a controlled pilot. This brief is intended to help counsel review the accompanying Terms of Use, Privacy Policy, Acceptable Use Policy, AI Use & Accuracy Notice, Institutional Services Agreement, Security & Data Practices overview, Subprocessor List, Accessibility Statement, and related internal governance documents efficiently.
 
-The customer-facing documents are drafts only and are not yet legally effective. This reconciliation distinguishes source-controlled product work from features actually activated in pilot infrastructure and incorporates the approved August 15 Friday professional-status/notification design.
+The customer-facing documents are drafts only and are not yet legally effective. This reconciliation distinguishes source-controlled product work from features actually activated in pilot infrastructure, incorporates the approved August 15 Friday professional-status/notification design, and reflects the live-accepted August 20 application baseline.
 
 ## Product summary
 
@@ -53,13 +53,13 @@ The deployed controlled-pilot baseline includes:
 
 The application/database model includes role/authorization data, professional curriculum and planning records, governed standards/source provenance, AI usage/decision metadata, teacher validation/reflection/submission records, bounded product analytics, and permitted administrative reporting data.
 
-### Source-controlled notification infrastructure not yet activated
+### Separately controlled notification infrastructure
 
-The repository contains fail-closed infrastructure for professional operational email through Amazon SES and isolated future scheduled workers. Source-controlled implementation does **not** by itself activate SES, apply the deferred scheduled-delivery migration, create/enable the Scheduler resources, create the scheduled worker's service-role secret in AWS, or send pilot/production email.
+The repository and accepted database baseline contain fail-closed infrastructure and schema for professional operational email through Amazon SES and isolated scheduled workers. Source-controlled implementation or schema application does **not** by itself prove that SES application sending is active, create/enable the Scheduler resources, create the scheduled worker's service-role secret in AWS, or send pilot/production email.
 
 The approved From address is `notifications@planner.guidedscholar.ai`. The approved Anniston Pilot cadence is Friday at 2:00 PM `America/Chicago` for teacher courtesy reminders and Friday at 3:30 PM for the school-administrator aggregate digest. Activation still requires separate human-controlled database, SES, AWS secret, IAM, privacy/Help, and scheduler gates.
 
-The dashboard/status database change is intentionally separable from delivery. TPP may expose authenticated Friday submission status while SES remains fail-closed and the scheduled-delivery migration remains unapplied.
+The dashboard/status and notification schema remain intentionally separable from delivery. TPP may expose authenticated Friday submission status while SES application sending and the isolated dispatchers remain subject to their separate activation evidence and controls.
 
 ## AI design
 
@@ -186,6 +186,8 @@ Primary customer-facing drafts:
 Useful internal context:
 
 - `POST_PILOT_RECONCILIATION_2026-08-13.md`
+- `POST_PILOT_RECONCILIATION_2026-08-20.md`
+- `../governance/PILOT_BASELINE_2026-08-20.md`
 - `DECISIONS_REQUIRED_BEFORE_PUBLICATION.md`
 - `DATA_RETENTION_AND_DELETION_POLICY.md`
 - `INCIDENT_RESPONSE_POLICY.md`

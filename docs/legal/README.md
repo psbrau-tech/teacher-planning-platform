@@ -3,7 +3,7 @@
 **Provider:** Brau Consulting LLC  
 **Status:** Pre-Release Draft — Not Yet Effective  
 **Original governance baseline:** 2026-08-08  
-**Post-pilot reconciliation:** 2026-08-13
+**Latest post-pilot reconciliation:** 2026-08-20
 
 This directory is the canonical repository location for the Teacher Planning Platform (TPP) legal, privacy, security, accessibility, and governance packet. The packet has been reconciled against the deployed controlled pilot and remains pre-release pending Brau Consulting review, qualified legal review, final publication decisions, and release-gate verification.
 
@@ -27,16 +27,18 @@ TPP is an adult educator/administrator productivity service. Its locked data bou
 11. `LEGAL_RESEARCH_NOTES.md`
 12. `DECISIONS_REQUIRED_BEFORE_PUBLICATION.md`
 13. `POST_PILOT_RECONCILIATION_2026-08-13.md`
-14. `COUNSEL_REVIEW_BRIEF_2026-08-13.md`
-15. `../governance/LEGAL_COMPLIANCE_REQUIREMENTS.md`
-16. `../governance/LEGAL_COMPLIANCE_RELEASE_CHECKLIST.md`
-17. `../governance/PRODUCT_ANALYTICS_DECISION_2026-08-13.md`
+14. `POST_PILOT_RECONCILIATION_2026-08-20.md`
+15. `COUNSEL_REVIEW_BRIEF_2026-08-13.md`
+16. `../governance/PILOT_BASELINE_2026-08-20.md`
+17. `../governance/LEGAL_COMPLIANCE_REQUIREMENTS.md`
+18. `../governance/LEGAL_COMPLIANCE_RELEASE_CHECKLIST.md`
+19. `../governance/PRODUCT_ANALYTICS_DECISION_2026-08-13.md`
 
 Repository-level `../../AGENTS.md` makes the legal/compliance governance documents mandatory context for future development work.
 
 ## Deployed pilot facts incorporated in the reconciliation
 
-As of the 2026-08-13 reconciliation, the repository and controlled-pilot implementation establish the following material facts:
+As of the 2026-08-20 reconciliation, the repository and controlled-pilot implementation establish the following material facts:
 
 - application hosting on AWS in `us-east-2` using ECS/Fargate behind an Application Load Balancer;
 - HTTPS/TLS support on the controlled pilot endpoint;
@@ -45,6 +47,8 @@ As of the 2026-08-13 reconciliation, the repository and controlled-pilot impleme
 - Amazon CloudWatch application logging with a verified 30-day application-log retention setting;
 - Supabase-backed database/authentication and role/authorization records;
 - teacher-invoked OpenAI generative-AI planning assistance with educator review/decision controls and bounded usage metadata;
+- live-accepted teacher accept/edit/reject and weekly-plan persistence for AI planning suggestions;
+- daily pacing in which one pacing lesson represents one class day and the saved schedule supplies that date's instructional minutes;
 - governed authoritative standards ingestion, provenance, snapshots, reconciliation, course mapping, and administration;
 - teacher, school-administrator, district-administrator, and Platform Owner role/reporting functionality within the no-student-data boundary;
 - weekly planning, validation/reflection, weekly/completed-packet submission, and PDF/other planning export workflows;
@@ -77,4 +81,6 @@ The post-pilot reconciliation resolves several architecture/feature uncertaintie
 - accessibility evidence against the applicable WCAG 2.1 Level AA baseline;
 - final dispute-resolution, venue, warranty, liability, and indemnity language after qualified legal review.
 
-See `DECISIONS_REQUIRED_BEFORE_PUBLICATION.md` for the controlled decision register and `COUNSEL_REVIEW_BRIEF_2026-08-13.md` for the recommended counsel handoff.
+See `DECISIONS_REQUIRED_BEFORE_PUBLICATION.md` for the controlled decision register,
+`POST_PILOT_RECONCILIATION_2026-08-20.md` for the latest implementation reconciliation, and
+`COUNSEL_REVIEW_BRIEF_2026-08-13.md` for the recommended counsel handoff.
