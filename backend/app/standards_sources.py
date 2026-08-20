@@ -57,8 +57,25 @@ class _AnchorParser(HTMLParser):
                 self._parts = []
             return
         if lowered in {"iframe", "embed"}:
-            src = next((value for key, value in attrs if key.lower() == "src"), None)
+            src = next(
+                (
+                    value
+                    for key, value in attrs
+                    if key.lower() in {"src", "data-src"} and value
+                ),
+                None,
+            )
             if src:
+                label = next(
+                    (
+                        value
+                        for key, value in attrs
+                        if key.lower() in {"aria-label", "title"} and value
+                    ),
+                    None,
+                )
+                if label:
+                    self._tokens.append(("text", label))
                 self._tokens.append(("embed", src))
 
     def handle_data(self, data: str) -> None:
@@ -258,9 +275,6 @@ def _resolve_alabama_ela_proficiency_grade(
         text = anchor.text.casefold()
         if not _is_drive_document(anchor):
             continue
-        # The ALSDE Google Site renders the grade label separately from the embedded
-        # Drive filename. This landing page is dedicated to proficiency scales, so the
-        # grade context is the stable discriminator for the current grade-specific file.
         if any(label in text for label in labels):
             matches.append(anchor)
 
