@@ -19,13 +19,20 @@
 
 ## Current accepted live baseline
 
-The accepted interactive pilot is deployed from the release that includes Friday status and Reflection Intelligence UX through database migration `20260815011000_friday_submission_status.sql`.
+The accepted interactive pilot baseline was established by live browser acceptance on
+2026-08-20. Its exact application commit is
+`b33bf905e98012b857c4434039fced08ff89137b`, and its applied database migration head is
+`20260820020000_fix_ai_suggestion_decision_actor_ambiguity.sql`.
 
-Earlier professional-learning/application functionality was already present through `20260815001500`. The source-controlled automatic-notification chain is intentionally later and remains **deferred** until its separately governed activation:
+The accepted release includes class-duration display and start-time ordering, one pacing lesson
+per class day, removal of pacing minute overrides, governed AI planning generation, explicit
+teacher accept/edit/reject controls, and persistence of accepted AI planning text after reopening
+the saved week. The live acceptance record is
+`docs/governance/PILOT_BASELINE_2026-08-20.md`.
 
-1. `20260815013000_scheduled_friday_notifications.sql`
-2. `20260815215500_multi_school_notification_controls.sql`
-3. `20260815220500_harden_school_local_notification_windows.sql`
+The source-controlled automatic-notification migrations are applied within this database baseline,
+but migration state does not activate SES sending or either Friday dispatcher. Those operational
+capabilities remain controlled by their separate activation workflows and governance gates.
 
 Repository source state and live database state are separate evidence. A merge or successful CI run does not prove that a migration is live. A later intentionally deferred source migration is expected when the controlled release target stops earlier.
 
