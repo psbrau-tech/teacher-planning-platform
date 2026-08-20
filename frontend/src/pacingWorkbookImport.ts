@@ -3,7 +3,6 @@ export type ImportedPacingRow = {
   lesson: string;
   targets: string;
   assessment: string;
-  minutes: string;
 };
 
 type ZipEntry = {
@@ -153,7 +152,6 @@ export async function readPacingWorkbook(file: File): Promise<ImportedPacingRow[
   const lessonColumn = findColumn(headers, ["lesson focus", "lesson"]);
   const targetColumn = findColumn(headers, ["learning target", "target"]);
   const assessmentColumn = findColumn(headers, ["assessment evidence", "assessment"]);
-  const minutesColumn = findColumn(headers, ["optional minutes", "minutes override", "minutes"]);
   if (unitColumn < 0 || lessonColumn < 0) {
     throw new Error("The workbook must include Unit / Topic and Lesson / Focus columns. Download the current TPP template and try again.");
   }
@@ -163,8 +161,7 @@ export async function readPacingWorkbook(file: File): Promise<ImportedPacingRow[
     lesson: row[lessonColumn]?.trim() ?? "",
     targets: targetColumn >= 0 ? row[targetColumn]?.trim() ?? "" : "",
     assessment: assessmentColumn >= 0 ? row[assessmentColumn]?.trim() ?? "" : "",
-    minutes: minutesColumn >= 0 ? row[minutesColumn]?.trim() ?? "" : "",
-  })).filter((row) => row.unit || row.lesson || row.targets || row.assessment || row.minutes);
+  })).filter((row) => row.unit || row.lesson || row.targets || row.assessment);
 
   if (!imported.length) throw new Error("No pacing lessons were found below the workbook header row.");
   return imported;
