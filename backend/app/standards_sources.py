@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
@@ -179,13 +180,14 @@ def _downloadable_document_url(url: str) -> str:
 
     match = re.search(r"/(?:file|document)/d/([^/]+)", parsed.path)
     if match:
-        query = urlencode({"export": "download", "id": match.group(1)})
-        return f"https://drive.google.com/uc?{query}"
+        download_query = urlencode({"export": "download", "id": match.group(1)})
+        return f"https://drive.google.com/uc?{download_query}"
 
-    query = parse_qs(parsed.query)
-    file_ids = query.get("id")
+    query_params = parse_qs(parsed.query)
+    file_ids = query_params.get("id")
     if file_ids:
-        return f"https://drive.google.com/uc?{urlencode({'export': 'download', 'id': file_ids[0]})}"
+        download_query = urlencode({"export": "download", "id": file_ids[0]})
+        return f"https://drive.google.com/uc?{download_query}"
 
     return urlunparse(parsed)
 
@@ -283,7 +285,9 @@ def _resolve_alabama_ela_proficiency_grade(
     )
 
 
-def _proficiency_resolver(grade: int):
+def _proficiency_resolver(
+    grade: int,
+) -> Callable[[str, tuple[_Anchor, ...]], ResolvedStandardsSource]:
     def resolver(
         landing_url: str,
         anchors: tuple[_Anchor, ...],
@@ -360,7 +364,10 @@ def _resolve_army_jrotc(
     )
 
 
-_RESOLVERS = {
+_RESOLVERS: dict[
+    str,
+    Callable[[str, tuple[_Anchor, ...]], ResolvedStandardsSource],
+] = {
     "alabama_ela_current": _resolve_alabama_ela,
     "alabama_bma_current": _resolve_alabama_bma,
     "army_jrotc_current": _resolve_army_jrotc,
