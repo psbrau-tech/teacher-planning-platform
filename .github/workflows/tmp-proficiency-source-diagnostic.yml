@@ -1,0 +1,58 @@
+name: Temporary Proficiency Source Diagnostic
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/tmp-proficiency-source-diagnostic.yml'
+      - 'backend/app/standards_sources.py'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-proficiency-page:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Inspect raw ALSDE Google Sites source structure
+        run: |
+          python - <<'PY'
+          import html
+          import re
+          import urllib.request
+
+          url = 'https://english-language-arts.alsde.edu/proficiency-scales'
+          request = urllib.request.Request(
+              url,
+              headers={'User-Agent': 'TeacherPlanningPlatform-Standards-Diagnostic/1.0'},
+          )
+          with urllib.request.urlopen(request, timeout=20) as response:
+              text = response.read().decode(response.headers.get_content_charset() or 'utf-8', 'replace')
+
+          print(f'raw_bytes={len(text.encode("utf-8"))}')
+          patterns = (
+              r'https?[^"\'<> ]*drive\.google\.com[^"\'<> ]*',
+              r'https?[^"\'<> ]*docs\.google\.com[^"\'<> ]*',
+              r'https?[^"\'<> ]*googleusercontent\.com[^"\'<> ]*',
+              r'[^"\'<> ]*(?:6th|Sixth|Grade%206|Grade\+6)[^"\'<> ]*',
+          )
+          seen = set()
+          for pattern in patterns:
+              for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+                  start = max(0, match.start() - 240)
+                  end = min(len(text), match.end() + 240)
+                  snippet = html.unescape(re.sub(r'\s+', ' ', text[start:end]))
+                  if snippet in seen:
+                      continue
+                  seen.add(snippet)
+                  print('candidate_context=' + snippet[:1000])
+                  if len(seen) >= 30:
+                      break
+              if len(seen) >= 30:
+                  break
+          print(f'candidate_context_count={len(seen)}')
+          PY
