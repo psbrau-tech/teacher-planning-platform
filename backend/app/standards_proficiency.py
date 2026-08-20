@@ -5,14 +5,23 @@ from dataclasses import dataclass
 
 from .standards_ingest import ExtractedDocument, StandardsIngestError
 
-PROFICIENCY_PARSER_VERSION = "gate-e-alabama-ela-proficiency-6-12-v1"
+PROFICIENCY_PARSER_VERSION = "gate-e-alabama-ela-proficiency-6-12-v2"
 
 _GRADE_BY_PARSER_KEY = {
     f"alabama_ela_proficiency_grade_{grade}": str(grade)
     for grade in range(6, 13)
 }
-_STANDARD = re.compile(r"^Standard:\s*(\d+)\.\s*(.*)$", flags=re.IGNORECASE)
-_GRADE = re.compile(r"^Grade:?\s*(6|7|8|9|10|11|12)$", flags=re.IGNORECASE)
+# ALSDE's live PDFs use "Standard 1: ..." while an earlier export used
+# "Standard: 1. ...". Support both documented source layouts without relaxing
+# the grade or core-level validation below.
+_STANDARD = re.compile(
+    r"^Standard(?:\s+(\d+)\s*:\s*|:\s*(\d+)\.\s*)(.*)$",
+    flags=re.IGNORECASE,
+)
+_GRADE = re.compile(
+    r"^Grade:?\s*(6|7|8|9|10|11|12)(?:st|nd|rd|th)?$",
+    flags=re.IGNORECASE,
+)
 _SCORE = re.compile(
     r"^(?:Score\s*)?(4\.0|3\.5|3\.0|2\.5|2\.0|1\.5|1\.0|0\.5|0\.0)"
     r"(?:\s+(.*))?$",
@@ -23,6 +32,14 @@ _META = {
     "focus_area": re.compile(r"^Focus Area:\s*(.*)$", flags=re.IGNORECASE),
     "category": re.compile(r"^Category:\s*(.*)$", flags=re.IGNORECASE),
 }
+_STANDARD_TEXT_BOUNDARIES = frozenset(
+    {
+        "sample",
+        "activities & resources",
+        "sample activities",
+        "sample activities & resources",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,14 +96,16 @@ def parse_alabama_ela_proficiency(
         match = _STANDARD.match(block[0])
         if match is None:
             continue
-        code = match.group(1)
+        code = match.group(1) or match.group(2)
+        if code is None:
+            continue
         if code in seen_codes:
             raise StandardsIngestError(
                 f"Alabama ELA Grade {grade_band} proficiency standard {code} is duplicated"
             )
         seen_codes.add(code)
 
-        standard_text = _standard_text(block, match.group(2))
+        standard_text = _standard_text(block, match.group(3))
         if not standard_text:
             raise StandardsIngestError(
                 f"Alabama ELA Grade {grade_band} proficiency standard {code} has no text"
@@ -132,7 +151,10 @@ def _coalesce_score_lines(lines: tuple[str, ...]) -> tuple[str, ...]:
         line = lines[index].strip()
         if line.casefold() == "score" and index + 1 < len(lines):
             next_line = lines[index + 1].strip()
-            if re.fullmatch(r"(?:4\.0|3\.5|3\.0|2\.5|2\.0|1\.5|1\.0|0\.5|0\.0)", next_line):
+            if re.fullmatch(
+                r"(?:4\.0|3\.5|3\.0|2\.5|2\.0|1\.5|1\.0|0\.5|0\.0)",
+                next_line,
+            ):
                 result.append(f"Score {next_line}")
                 index += 2
                 continue
@@ -146,7 +168,7 @@ def _standard_text(block: tuple[str, ...], first: str) -> str:
     for line in block[1:]:
         if _score_marker(line) is not None:
             break
-        if line.casefold() == "sample activities":
+        if line.strip().casefold() in _STANDARD_TEXT_BOUNDARIES:
             break
         if _is_header_noise(line):
             continue
