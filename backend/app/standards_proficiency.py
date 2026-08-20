@@ -219,6 +219,4 @@ def _is_header_noise(line: str) -> bool:
         return True
     if normalized.startswith("alabama course of study: english language arts"):
         return True
-    if re.fullmatch(r"\d{1,3}", normalized):
-        return True
-    return False
+    return bool(re.fullmatch(r"\d{1,3}", normalized))
