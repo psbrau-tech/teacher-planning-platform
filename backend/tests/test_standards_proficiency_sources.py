@@ -28,21 +28,21 @@ def test_grade_9_proficiency_resolver_prefers_revised_2024_source() -> None:
     assert "Rev. 2024" in resolved.anchor_text
 
 
-def test_grade_6_proficiency_resolver_stays_grade_specific() -> None:
+def test_grade_6_proficiency_resolver_uses_grade_context_from_google_site() -> None:
     resolved = resolve_from_anchors(
         "alabama_ela_proficiency_grade_6_current",
         "https://english-language-arts.alsde.edu/proficiency-scales",
         (
             _Anchor(
                 href="https://drive.google.com/file/d/grade6/preview",
-                text="6th Grade Proficiency Scales.docx - Google Docs.pdf",
+                text="Sixth Grade",
             ),
             _Anchor(
                 href="https://drive.google.com/file/d/grade7/preview",
-                text="7th Grade Proficiency Scales.docx - Google Docs.pdf",
+                text="Seventh Grade",
             ),
         ),
     )
 
     assert resolved.document_url.endswith("id=grade6")
-    assert "6th Grade" in resolved.anchor_text
+    assert resolved.anchor_text == "Sixth Grade"
