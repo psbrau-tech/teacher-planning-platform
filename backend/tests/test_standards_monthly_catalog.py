@@ -265,7 +265,7 @@ def test_event_driven_run_validates_only_named_sources(monkeypatch) -> None:
     assert result.requires_review
 
 
-def test_catalog_outage_is_recorded_while_quarterly_proficiency_checks_continue(monkeypatch) -> None:
+def test_catalog_outage_still_runs_quarterly_proficiency_checks(monkeypatch) -> None:
     error_run_id = uuid4()
     checked: list[str] = []
 
