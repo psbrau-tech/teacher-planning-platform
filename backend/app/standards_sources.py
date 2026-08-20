@@ -179,7 +179,8 @@ def _downloadable_document_url(url: str) -> str:
 
     match = re.search(r"/(?:file|document)/d/([^/]+)", parsed.path)
     if match:
-        return f"https://drive.google.com/uc?{urlencode({'export': 'download', 'id': match.group(1)})}"
+        query = urlencode({"export": "download", "id": match.group(1)})
+        return f"https://drive.google.com/uc?{query}"
 
     query = parse_qs(parsed.query)
     file_ids = query.get("id")
