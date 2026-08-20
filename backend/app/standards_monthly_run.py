@@ -29,6 +29,12 @@ from .standards_governed_validation import (
     validate_governed_source,
 )
 from .standards_maintenance import MaintenanceResult
+from .standards_proficiency_maintenance import (
+    ProficiencyMaintenanceError,
+    is_proficiency_source_key,
+    proficiency_source_keys,
+    validate_proficiency_source,
+)
 from .supabase_rest import SupabaseRestClient
 
 ReconciliationKind = Literal["annual_full", "quarterly_monitor", "event_driven", "manual"]
@@ -90,6 +96,38 @@ def _materialize_annual_catalog_candidates(
             ) from error
 
 
+def _validate_source_keys(
+    client: SupabaseRestClient,
+    source_keys: tuple[str, ...],
+    *,
+    check_date: date,
+) -> tuple[MaintenanceResult, ...]:
+    results: list[MaintenanceResult] = []
+    for source_key in source_keys:
+        try:
+            if is_proficiency_source_key(source_key):
+                results.append(
+                    validate_proficiency_source(
+                        client,
+                        source_key,
+                        check_month=check_date,
+                    )
+                )
+            else:
+                results.append(
+                    validate_governed_source(
+                        client,
+                        source_key,
+                        check_month=check_date,
+                    )
+                )
+        except (GovernedStandardsValidationError, ProficiencyMaintenanceError) as error:
+            raise StandardsReconciliationRunError(
+                f"Governed standards source could not be validated: {source_key}"
+            ) from error
+    return tuple(results)
+
+
 def run_standards_reconciliation(
     client: SupabaseRestClient,
     *,
@@ -98,13 +136,12 @@ def run_standards_reconciliation(
     trigger_kind: TriggerKind = "scheduled",
     source_keys: tuple[str, ...] | None = None,
 ) -> StandardsReconciliationRunResult:
-    """Run catalog monitoring and, when appropriate, authoritative source validation.
+    """Run catalog monitoring and governed source validation.
 
-    Quarterly monitoring intentionally reconciles catalog metadata only. Annual full
-    validation stages changed/new catalog candidates for review and revalidates every
-    governed source. Event-driven reconciliation validates only explicitly supplied
-    affected source keys. Manual runs validate explicitly supplied sources, or every
-    governed source when no restriction is supplied.
+    Quarterly monitoring keeps the catalog metadata check lightweight while also validating
+    the seven current ALSDE Grade 6-12 ELA proficiency-scale sources. July's annual full
+    validation replaces that quarter and validates every governed source. Event-driven and
+    manual reconciliation may target either authoritative standards or proficiency guidance.
     """
     if reconciliation_kind == "event_driven" and not source_keys:
         raise StandardsReconciliationRunError(
@@ -145,6 +182,11 @@ def run_standards_reconciliation(
         _materialize_annual_catalog_candidates(client, catalog_result)
 
     if reconciliation_kind == "quarterly_monitor":
+        source_results = _validate_source_keys(
+            client,
+            proficiency_source_keys(),
+            check_date=check_date,
+        )
         return StandardsReconciliationRunResult(
             check_date=check_date,
             trigger_kind=trigger_kind,
@@ -152,7 +194,7 @@ def run_standards_reconciliation(
             catalog_result=catalog_result,
             catalog_error_run_id=catalog_error_run_id,
             catalog_error=catalog_error,
-            source_results=(),
+            source_results=source_results,
         )
 
     try:
@@ -166,20 +208,11 @@ def run_standards_reconciliation(
     if not governed_keys:
         raise StandardsReconciliationRunError("No governed standards sources are configured")
 
-    source_results: list[MaintenanceResult] = []
-    for source_key in governed_keys:
-        try:
-            source_results.append(
-                validate_governed_source(
-                    client,
-                    source_key,
-                    check_month=check_date,
-                )
-            )
-        except GovernedStandardsValidationError as error:
-            raise StandardsReconciliationRunError(
-                f"Governed standards source could not be validated: {source_key}"
-            ) from error
+    source_results = _validate_source_keys(
+        client,
+        tuple(governed_keys),
+        check_date=check_date,
+    )
 
     return StandardsReconciliationRunResult(
         check_date=check_date,
@@ -188,7 +221,7 @@ def run_standards_reconciliation(
         catalog_result=catalog_result,
         catalog_error_run_id=catalog_error_run_id,
         catalog_error=catalog_error,
-        source_results=tuple(source_results),
+        source_results=source_results,
     )
 
 
@@ -202,7 +235,7 @@ def run_monthly_standards_validation(
     """Deprecated compatibility wrapper: perform a full governed validation.
 
     New scheduling code must call ``run_standards_reconciliation`` with an explicit
-    reconciliation kind so quarterly monitoring does not reprocess every source.
+    reconciliation kind so quarterly monitoring remains bounded.
     """
     return run_standards_reconciliation(
         client,
