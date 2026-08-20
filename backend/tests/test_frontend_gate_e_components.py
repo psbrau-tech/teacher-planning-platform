@@ -105,7 +105,8 @@ def test_course_setup_is_progressive_and_keeps_curriculum_out_of_step_one() -> N
     assert 'form.get("curriculum_id")' not in save_class
     assert "curriculum_id: editing?.curriculum_id ?? null" in save_class
     assert "estimated_minutes: number | null" in parser
-    assert "if (!value.trim()) return null" in parser
+    assert "estimated_minutes: null" in parser
+    assert "function optionalMinutes" not in parser
     assert "earlierSixColumn" in parser
     assert "legacyMinutes" in parser
     assert "parts.length >= 6" in parser
