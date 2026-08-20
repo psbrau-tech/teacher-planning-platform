@@ -9,6 +9,7 @@ alter table public.standard_sources
   add constraint standard_sources_source_kind check (
     source_kind in (
       'course_of_study',
+      'alternate_achievement_standards',
       'program_guide',
       'supplemental_curriculum',
       'proficiency_scale',
@@ -259,7 +260,7 @@ begin
         'status', 'rejected',
         'selected_snapshot_id', target_snapshot_id
       ),
-      'Platform owner approved a different reviewed candidate for the same authoritative source'
+      'Platform owner approved a different reviewed candidate for the same governed source'
     );
   end loop;
 
