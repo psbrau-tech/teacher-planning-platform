@@ -4,6 +4,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DEPLOYMENT = ROOT / "docs" / "PILOT_DEPLOYMENT.md"
 PREFLIGHT = ROOT / "docs" / "PILOT_PREFLIGHT.md"
 SECRETS = ROOT / "docs" / "PILOT_SECRETS_AND_DNS.md"
+BASELINE = ROOT / "docs" / "governance" / "PILOT_BASELINE_2026-08-20.md"
 
 
 def normalized(path: Path) -> str:
@@ -25,6 +26,22 @@ def test_operations_docs_describe_current_interactive_runtime_secret_set() -> No
     assert "interactive web task" in secrets
 
 
+def test_operations_docs_record_exact_accepted_august_20_baseline() -> None:
+    deployment = normalized(DEPLOYMENT)
+    baseline = normalized(BASELINE)
+
+    for source in (deployment, baseline):
+        assert "b33bf905e98012b857c4434039fced08ff89137b" in source
+        assert "20260820020000" in source
+
+    assert "new accepted tpp pilot baseline" in baseline
+    assert "589 tests" in baseline
+    assert "one class day" in baseline
+    assert "explicitly accept, edit, or reject" in baseline
+    assert "student pii and student education records remain prohibited" in baseline
+    assert "does not itself activate ses" in baseline
+
+
 def test_operations_docs_match_exact_sha_and_target_scoped_migration_workflows() -> None:
     deployment = normalized(DEPLOYMENT)
     preflight = normalized(PREFLIGHT)
@@ -43,10 +60,12 @@ def test_operations_docs_match_exact_sha_and_target_scoped_migration_workflows()
 
     for source in (deployment, preflight):
         assert "through" in source and "target" in source
-        assert "20260815001500" in source
-        assert "20260815011000_friday_submission_status.sql" in source
-        assert "20260815013000_scheduled_friday_notifications.sql" in source
-        assert "deferred" in source
+        assert "b33bf905e98012b857c4434039fced08ff89137b" in source
+        assert "20260820020000" in source
+        assert "separate" in source
+
+    assert "20260815011000_friday_submission_status.sql" in preflight
+    assert "20260815013000_scheduled_friday_notifications.sql" in preflight
 
     assert "20260815013000_scheduled_friday_notifications.sql" in secrets
     assert "20260815215500_multi_school_notification_controls.sql" in secrets
