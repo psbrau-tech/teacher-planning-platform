@@ -52,6 +52,27 @@ export type StandardEntry = {
   relationship?: string | null;
 };
 
+type ProficiencyScale = {
+  standard_code: string;
+  standard_text: string;
+  literacy_type: string | null;
+  focus_area: string | null;
+  category: string | null;
+  levels: Record<string, string>;
+};
+
+type ProficiencyGrade = {
+  grade_band: string;
+  available: boolean;
+  authority: string | null;
+  source_title: string | null;
+  source_version: string | null;
+  retrieved_at: string | null;
+  landing_url: string | null;
+  resolved_document_url: string | null;
+  scales: ProficiencyScale[];
+};
+
 type AssignmentStandards = {
   assignment_id: string;
   week_start: string;
@@ -88,6 +109,8 @@ const STOP_WORDS = new Set([
   "into", "lesson", "more", "other", "should", "that", "their", "these", "this",
   "through", "using", "what", "when", "where", "which", "with", "your",
 ]);
+
+const PROFICIENCY_LEVEL_ORDER = ["4.0", "3.5", "3.0", "2.5", "2.0", "1.5", "1.0", "0.5", "0.0"];
 
 async function readError(response: Response, fallback: string): Promise<string> {
   try {
@@ -137,6 +160,12 @@ function sourceLabel(source: StandardSource): string {
     : source.authority;
 }
 
+function eligibleElaGrade(catalog: AssignmentStandards): number | null {
+  if (catalog.catalog_category?.category_key !== "english_language_arts") return null;
+  const grade = Number(catalog.catalog_course?.grade_band ?? catalog.course?.grade_band ?? "");
+  return Number.isInteger(grade) && grade >= 6 && grade <= 12 ? grade : null;
+}
+
 export function StandardsPanel({
   accessToken,
   assignmentId,
@@ -146,6 +175,7 @@ export function StandardsPanel({
   onSelectionSaved,
 }: StandardsPanelProps) {
   const [catalog, setCatalog] = useState<AssignmentStandards | null>(null);
+  const [proficiency, setProficiency] = useState<ProficiencyGrade | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
   const [browseOpen, setBrowseOpen] = useState(false);
@@ -164,6 +194,7 @@ export function StandardsPanel({
   useEffect(() => {
     let active = true;
     setCatalog(null);
+    setProficiency(null);
     setSelected(new Set());
     setQuery("");
     setBrowseOpen(false);
@@ -188,6 +219,23 @@ export function StandardsPanel({
         setSelected(new Set(savedIds));
         resolvedCallback.current?.(savedEntries);
         savedCallback.current?.(savedEntries);
+
+        const elaGrade = eligibleElaGrade(body);
+        if (elaGrade !== null) {
+          try {
+            const proficiencyResponse = await fetch(
+              `/api/v1/standards/proficiency/grade/${elaGrade}`,
+              { headers: { Authorization: `Bearer ${accessToken}` } },
+            );
+            if (proficiencyResponse.ok) {
+              const proficiencyBody = await proficiencyResponse.json() as ProficiencyGrade;
+              if (active) setProficiency(proficiencyBody.available ? proficiencyBody : null);
+            }
+          } catch {
+            // Supplemental guidance must never block authoritative standards selection.
+            if (active) setProficiency(null);
+          }
+        }
       } catch (caught) {
         if (active) setError(caught instanceof Error ? caught.message : "Standards could not be loaded.");
       } finally {
@@ -197,6 +245,12 @@ export function StandardsPanel({
     void load();
     return () => { active = false; };
   }, [accessToken, assignmentId, weekStart]);
+
+  const proficiencyByCode = useMemo(() => {
+    const byCode = new Map<string, ProficiencyScale>();
+    for (const scale of proficiency?.scales ?? []) byCode.set(scale.standard_code, scale);
+    return byCode;
+  }, [proficiency]);
 
   const selectedEntries = useMemo(() => {
     if (!catalog) return [];
@@ -284,15 +338,40 @@ export function StandardsPanel({
     }
   };
 
-  const renderStandard = (standard: StandardEntry) => (
-    <label className="standard-option" key={standard.id}>
-      <input type="checkbox" checked={selected.has(standard.id)} onChange={() => toggle(standard.id)} />
-      <span>
-        <span className="standard-heading-row"><strong>{standard.code}</strong>{standard.strand ? <span className="badge">{standard.strand}</span> : null}</span>
-        <span className="standard-text">{standard.text}</span>
-      </span>
-    </label>
-  );
+  const renderStandard = (standard: StandardEntry) => {
+    const scale = proficiencyByCode.get(standard.code);
+    const sourceUrl = proficiency?.resolved_document_url ?? proficiency?.landing_url ?? undefined;
+    return (
+      <div className="standard-option-with-guidance" key={standard.id}>
+        <label className="standard-option">
+          <input type="checkbox" checked={selected.has(standard.id)} onChange={() => toggle(standard.id)} />
+          <span>
+            <span className="standard-heading-row"><strong>{standard.code}</strong>{standard.strand ? <span className="badge">{standard.strand}</span> : null}</span>
+            <span className="standard-text">{standard.text}</span>
+          </span>
+        </label>
+        {scale ? (
+          <details className="guidance-card proficiency-scale">
+            <summary><strong>View ALSDE proficiency scale</strong></summary>
+            <p className="guidance-text">Supplemental instructional guidance. The exact Course of Study standard above remains authoritative.</p>
+            <p className="guidance-text">
+              {[scale.literacy_type, scale.focus_area, scale.category].filter(Boolean).join(" · ")}
+            </p>
+            <dl className="proficiency-levels">
+              {PROFICIENCY_LEVEL_ORDER.filter((level) => scale.levels[level]).map((level) => (
+                <div className="proficiency-level" key={level}>
+                  <dt><strong>Level {level}</strong></dt>
+                  <dd>{scale.levels[level]}</dd>
+                </div>
+              ))}
+            </dl>
+            {sourceUrl ? <a className="source-link" href={sourceUrl} target="_blank" rel="noreferrer">View current ALSDE proficiency source</a> : null}
+            {proficiency?.source_version ? <p className="guidance-text">Source version: {proficiency.source_version}</p> : null}
+          </details>
+        ) : null}
+      </div>
+    );
+  };
 
   const sources = catalog?.sources?.length ? catalog.sources : catalog?.source ? [catalog.source] : [];
 
@@ -305,6 +384,7 @@ export function StandardsPanel({
       {catalog && !catalog.mapped ? <div className="guidance-card"><strong>Standards mapping required.</strong><p>Set the authoritative standards mapping in Course Setup.</p></div> : null}
       {catalog?.mapped ? <>
         <div className="standards-provenance">{sources.map((source) => <div className="provenance-row" key={`${source.id}-${source.snapshot_id}`}><strong>{sourceLabel(source)}</strong><span>{source.edition}</span><span>Snapshot retrieved {new Date(source.retrieved_at).toLocaleDateString()}</span><a className="source-link" href={source.landing_url} target="_blank" rel="noreferrer">View authoritative source</a></div>)}</div>
+        {proficiency ? <div className="guidance-card"><strong>ALSDE Grade {proficiency.grade_band} proficiency guidance available</strong><p>Open the proficiency scale beneath an ELA standard for mastery levels and instructional guidance. This supplemental source is tracked separately from authoritative standard text.</p></div> : null}
         <div className="guidance-card"><strong>Suggested for this week</strong><p>TPP compares this week&apos;s scheduled unit and lesson titles with the exact approved course standards. This is deterministic relevance matching, not AI-generated standards.</p></div>
         {weeklyLessons.length === 0 ? <p className="guidance-text">Build or reopen the week to receive lesson-based suggestions.</p> : suggestedStandards.length > 0 ? <div className="standard-list suggested-standard-list">{suggestedStandards.map(renderStandard)}</div> : <div className="empty-state"><p>No strong wording match was found. Browse or search the approved catalog below.</p></div>}
         {selectedEntries.length > 0 ? <p className="guidance-text"><strong>Selected for this week:</strong> {selectedEntries.map((item) => item.code).join(", ")}</p> : null}
