@@ -42,6 +42,49 @@ def _document(grade: int = 9) -> ExtractedDocument:
     )
 
 
+def _current_format_document(grade: int = 6) -> ExtractedDocument:
+    lines: list[str] = [
+        "Alabama Course of Study: English Language Arts",
+        "PROFICIENCY SCALES",
+        f"Grade: {grade}th",
+        "Literacy Type: Critical Literacy",
+        "Focus Area: Reception",
+        "Category: Reading",
+    ]
+    for code in range(1, 6):
+        lines.extend(
+            [
+                f"Standard {code}: Current Grade {grade} standard {code} exact wording",
+                "continued standard wording.",
+                "Sample",
+                "Activities & Resources",
+                "Score",
+                "4.0",
+                f"Extension application for current standard {code}.",
+                "3.5 In addition to score 3.0 performance with partial success.",
+                "Score",
+                "3.0",
+                f"Proficient performance for current standard {code}.",
+                "2.5 Partial knowledge of the 3.0 content.",
+                "Score",
+                "2.0",
+                f"Foundational knowledge for current standard {code}.",
+                "1.5 Partial success at the 2.0 content.",
+                "Score",
+                "1.0",
+                "With help, partial success.",
+                "Score",
+                "0.0",
+                "Even with help, no understanding demonstrated.",
+            ]
+        )
+    normalized = "\n".join(lines)
+    return ExtractedDocument(
+        lines=tuple(lines),
+        normalized_sha256=sha256(normalized.encode("utf-8")).hexdigest(),
+    )
+
+
 def test_proficiency_parser_preserves_standard_and_performance_levels() -> None:
     parsed = parse_alabama_ela_proficiency(
         "alabama_ela_proficiency_grade_9",
@@ -49,7 +92,7 @@ def test_proficiency_parser_preserves_standard_and_performance_levels() -> None:
     )
 
     assert parsed.grade_band == "9"
-    assert parsed.parser_version == "gate-e-alabama-ela-proficiency-6-12-v1"
+    assert parsed.parser_version == "gate-e-alabama-ela-proficiency-6-12-v2"
     assert len(parsed.scales) == 5
     first = parsed.scales[0]
     assert first.standard_code == "1"
@@ -60,6 +103,26 @@ def test_proficiency_parser_preserves_standard_and_performance_levels() -> None:
     assert first.levels["4.0"] == "Extension application for standard 1."
     assert first.levels["3.0"] == "Proficient performance for standard 1."
     assert first.levels["2.0"] == "Foundational knowledge for standard 1."
+
+
+def test_proficiency_parser_accepts_current_alsde_pdf_layout() -> None:
+    parsed = parse_alabama_ela_proficiency(
+        "alabama_ela_proficiency_grade_6",
+        _current_format_document(),
+    )
+
+    assert parsed.grade_band == "6"
+    assert len(parsed.scales) == 5
+    first = parsed.scales[0]
+    assert first.standard_code == "1"
+    assert first.standard_text == (
+        "Current Grade 6 standard 1 exact wording continued standard wording."
+    )
+    assert "Sample" not in first.standard_text
+    assert "Activities & Resources" not in first.standard_text
+    assert first.levels["4.0"] == "Extension application for current standard 1."
+    assert first.levels["3.0"] == "Proficient performance for current standard 1."
+    assert first.levels["2.0"] == "Foundational knowledge for current standard 1."
 
 
 def test_proficiency_parser_rejects_grade_mismatch() -> None:
