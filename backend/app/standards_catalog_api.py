@@ -307,7 +307,10 @@ def get_ela_proficiency_grade(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> ProficiencyGradeRead:
     if grade_band < 6 or grade_band > 12:
-        raise HTTPException(status_code=404, detail="ELA proficiency scales are available for grades 6-12")
+        raise HTTPException(
+            status_code=404,
+            detail="ELA proficiency scales are available for grades 6-12",
+        )
 
     client = _client(identity, settings)
     source_key = f"alabama_ela_proficiency_grade_{grade_band}"
