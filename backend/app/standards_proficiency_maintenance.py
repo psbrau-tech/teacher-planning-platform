@@ -70,7 +70,14 @@ def validate_proficiency_source(
             parser_succeeded=False,
             detail=str(error),
         )
-        _record_if_requested(client, source, approved, result, check_month, error_summary=str(error))
+        _record_if_requested(
+            client,
+            source,
+            approved,
+            result,
+            check_month,
+            error_summary=str(error),
+        )
         return result
 
     _update_resolved_url(client, source.id, fetched.resolved_url)
@@ -102,7 +109,14 @@ def validate_proficiency_source(
             parser_succeeded=False,
             detail=str(error),
         )
-        _record_if_requested(client, source, approved, result, check_month, error_summary=str(error))
+        _record_if_requested(
+            client,
+            source,
+            approved,
+            result,
+            check_month,
+            error_summary=str(error),
+        )
         return result
 
     if approved is not None and extracted.normalized_sha256 == approved.normalized_sha256:
@@ -403,7 +417,9 @@ def _request(
     try:
         return client.request(method, resource, params=params, payload=payload, prefer=prefer)
     except SupabaseRestError as error:
-        raise ProficiencyMaintenanceError("Proficiency maintenance database operation failed") from error
+        raise ProficiencyMaintenanceError(
+            "Proficiency maintenance database operation failed"
+        ) from error
 
 
 def _records(payload: object) -> list[JsonRecord]:
