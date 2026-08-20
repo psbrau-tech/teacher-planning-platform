@@ -288,11 +288,11 @@ def _normalize_lessons(
                 sequence=lesson.sequence,
                 unit_title=lesson.unit_title,
                 lesson_title=lesson.lesson_title,
-                estimated_minutes=lesson.estimated_minutes,
+                estimated_minutes=None,
                 standards=tuple(lesson.standards),
                 learning_targets=tuple(lesson.learning_targets),
                 assessment=lesson.assessment,
-                can_split=lesson.can_split,
+                can_split=False,
             )
             for lesson in lessons
         ]
@@ -363,14 +363,13 @@ def _locked_through_sequence(client: SupabaseRestClient, assignment_ids: list[st
 def _same_locked_content(old: _StoredLesson, new: CurriculumLessonImport) -> bool:
     """Compare only teacher-editable fields for already scheduled curriculum history.
 
-    The Course Setup editor does not expose ``can_split``. Locked lessons are copied from
-    the stored curriculum verbatim when a revision is saved, so an internal/default value
-    reconstructed by the browser must never make an unchanged historical lesson look edited.
+    Course Setup no longer exposes legacy minute or split fields. Locked lessons are copied
+    from the stored curriculum verbatim when a revision is saved, so those retired internal
+    values must never make unchanged historical content look edited.
     """
     return (
         old.unit_title.strip() == new.unit_title.strip()
         and old.lesson_title.strip() == new.lesson_title.strip()
-        and old.estimated_minutes == new.estimated_minutes
         and old.learning_targets == new.learning_targets
         and old.assessment.strip() == new.assessment.strip()
     )
@@ -505,7 +504,6 @@ def _xlsx_bytes(detail: CurriculumDetailRead) -> bytes:
         "Lesson / Focus",
         "Learning Target(s)",
         "Assessment / Evidence",
-        "Optional Minutes Override",
     ]
     data_rows = [
         [
@@ -513,7 +511,6 @@ def _xlsx_bytes(detail: CurriculumDetailRead) -> bytes:
             lesson.lesson_title,
             "; ".join(lesson.learning_targets),
             lesson.assessment,
-            "" if lesson.estimated_minutes is None else str(lesson.estimated_minutes),
         ]
         for lesson in detail.lessons
     ]
