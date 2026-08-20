@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
 type StandardSource = {
   id: string;
@@ -172,6 +172,10 @@ function eligibleElaGrade(catalog: AssignmentStandards): number | null {
   return Number.isInteger(grade) && grade >= 6 && grade <= 12 ? grade : null;
 }
 
+function isContentStandard(standard: StandardEntry): boolean {
+  return standard.strand?.trim().toLowerCase() === "content standards";
+}
+
 export function StandardsPanel({
   accessToken,
   assignmentId,
@@ -252,11 +256,13 @@ export function StandardsPanel({
     return () => { active = false; };
   }, [accessToken, assignmentId, weekStart]);
 
-  const proficiencyByCode = useMemo(() => {
-    const byCode = new Map<string, ProficiencyScale>();
-    for (const scale of proficiency?.scales ?? []) byCode.set(scale.standard_code, scale);
-    return byCode;
-  }, [proficiency]);
+  const proficiencyScalesForCourse = useMemo(() => {
+    if (!catalog || !proficiency) return [];
+    const sequenceByCode = new Map(catalog.standards.map((standard) => [standard.code, standard.sequence]));
+    return proficiency.scales
+      .filter((scale) => sequenceByCode.has(scale.standard_code))
+      .sort((a, b) => (sequenceByCode.get(a.standard_code) ?? 0) - (sequenceByCode.get(b.standard_code) ?? 0));
+  }, [catalog, proficiency]);
 
   const selectedEntries = useMemo(() => {
     if (!catalog) return [];
@@ -349,39 +355,55 @@ export function StandardsPanel({
     }
   };
 
-  const renderStandard = (standard: StandardEntry) => {
-    const scale = proficiencyByCode.get(standard.code);
-    const sourceUrl = proficiency?.resolved_document_url ?? proficiency?.landing_url ?? undefined;
+  const renderStandard = (standard: StandardEntry) => (
+    <label className="standard-option" key={standard.id}>
+      <input type="checkbox" checked={selected.has(standard.id)} onChange={() => toggle(standard.id)} />
+      <span>
+        <span className="standard-heading-row"><strong>{standard.code}</strong>{standard.strand ? <span className="badge">{standard.strand}</span> : null}</span>
+        <span className="standard-text">{standard.text}</span>
+      </span>
+    </label>
+  );
+
+  const renderProficiencyCollection = () => {
+    if (!proficiency || proficiencyScalesForCourse.length === 0) return null;
+    const sourceUrl = proficiency.resolved_document_url ?? proficiency.landing_url ?? undefined;
     return (
-      <div className="standard-option-with-guidance" key={standard.id}>
-        <label className="standard-option">
-          <input type="checkbox" checked={selected.has(standard.id)} onChange={() => toggle(standard.id)} />
-          <span>
-            <span className="standard-heading-row"><strong>{standard.code}</strong>{standard.strand ? <span className="badge">{standard.strand}</span> : null}</span>
-            <span className="standard-text">{standard.text}</span>
-          </span>
-        </label>
-        {scale ? (
-          <details className="guidance-card proficiency-scale">
-            <summary><strong>View ALSDE proficiency scale</strong></summary>
-            <p className="guidance-text">Supplemental instructional guidance. The exact Course of Study standard above remains authoritative.</p>
-            <p className="guidance-text">
-              {[scale.literacy_type, scale.focus_area, scale.category].filter(Boolean).join(" · ")}
-            </p>
-            <dl className="proficiency-levels">
-              {PROFICIENCY_LEVEL_ORDER.filter((level) => scale.levels[level]).map((level) => (
-                <div className="proficiency-level" key={level}>
-                  <dt><strong>Level {level}</strong></dt>
-                  <dd>{scale.levels[level]}</dd>
-                </div>
-              ))}
-            </dl>
-            {sourceUrl ? <a className="source-link" href={sourceUrl} target="_blank" rel="noreferrer">View current ALSDE proficiency source</a> : null}
-            {proficiency?.source_version ? <p className="guidance-text">Source version: {proficiency.source_version}</p> : null}
-          </details>
-        ) : null}
-      </div>
+      <details className="guidance-card proficiency-scale proficiency-scale-collection">
+        <summary><strong>View ALSDE proficiency scale</strong></summary>
+        <p className="guidance-text">Supplemental instructional guidance for this mapped ELA course. The Course of Study standards below remain authoritative.</p>
+        <div className="proficiency-scale-list">
+          {proficiencyScalesForCourse.map((scale) => (
+            <section className="proficiency-standard-block" key={scale.standard_code}>
+              <h4>Standard {scale.standard_code}</h4>
+              <p className="guidance-text">{[scale.literacy_type, scale.focus_area, scale.category].filter(Boolean).join(" · ")}</p>
+              <dl className="proficiency-levels">
+                {PROFICIENCY_LEVEL_ORDER.filter((level) => scale.levels[level]).map((level) => (
+                  <div className="proficiency-level" key={level}>
+                    <dt><strong>Level {level}</strong></dt>
+                    <dd>{scale.levels[level]}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          ))}
+        </div>
+        {sourceUrl ? <a className="source-link" href={sourceUrl} target="_blank" rel="noreferrer">View current ALSDE proficiency source</a> : null}
+        {proficiency.source_version ? <p className="guidance-text">Source version: {proficiency.source_version}</p> : null}
+      </details>
     );
+  };
+
+  const renderMappedStandards = (standards: StandardEntry[]) => {
+    const proficiencyInsertIndex = proficiencyScalesForCourse.length > 0
+      ? standards.findIndex(isContentStandard)
+      : -1;
+    return standards.map((standard, index) => (
+      <Fragment key={standard.id}>
+        {index === proficiencyInsertIndex ? renderProficiencyCollection() : null}
+        {renderStandard(standard)}
+      </Fragment>
+    ));
   };
 
   const sources = catalog?.sources?.length ? catalog.sources : catalog?.source ? [catalog.source] : [];
@@ -395,7 +417,7 @@ export function StandardsPanel({
       {catalog && !catalog.mapped ? <div className="guidance-card"><strong>Standards mapping required.</strong><p>Set the authoritative standards mapping in Course Setup.</p></div> : null}
       {catalog?.mapped ? <>
         <div className="standards-provenance">{sources.map((source) => <div className="provenance-row" key={`${source.id}-${source.snapshot_id}`}><strong>{sourceLabel(source)}</strong><span>{source.edition}</span><span>Snapshot retrieved {new Date(source.retrieved_at).toLocaleDateString()}</span><a className="source-link" href={source.landing_url} target="_blank" rel="noreferrer">View authoritative source</a></div>)}</div>
-        {proficiency ? <div className="guidance-card"><strong>ALSDE Grade {proficiency.grade_band} proficiency guidance available</strong><p>Open the proficiency scale beneath an ELA standard for mastery levels and instructional guidance. This supplemental source is tracked separately from authoritative standard text.</p></div> : null}
+        {proficiency ? <div className="guidance-card"><strong>ALSDE Grade {proficiency.grade_band} proficiency guidance available</strong><p>Open the single proficiency scale control before the content standards for mastery levels and instructional guidance. This supplemental source is tracked separately from authoritative standard text.</p></div> : null}
         <div className="guidance-card"><strong>Suggested for this week</strong><p>TPP compares this week&apos;s scheduled unit and lesson titles with the exact approved course standards. This is deterministic relevance matching, not AI-generated standards.</p></div>
         {weeklyLessons.length === 0 ? <p className="guidance-text">Build or reopen the week to receive lesson-based suggestions.</p> : suggestedStandards.length > 0 ? <div className="standard-list suggested-standard-list">{suggestedStandards.map(renderStandard)}</div> : <div className="empty-state"><p>No strong wording match was found. Browse or search the approved catalog below.</p></div>}
         {selectedEntries.length > 0 ? <p className="guidance-text"><strong>Selected for this week:</strong> {selectedEntries.map((item) => item.code).join(", ")}</p> : null}
@@ -403,7 +425,7 @@ export function StandardsPanel({
           <summary>Browse all approved standards ({catalog.standards.length})</summary>
           {browseOpen ? <>
             <label className="standards-search">Search standards<input type="search" value={query} placeholder="Search by code, wording, strand, or source" onChange={(event) => setQuery(event.target.value)} /></label>
-            {visibleStandards.length === 0 ? <div className="empty-state"><p>No standards match this search.</p></div> : standardsCourseLabel ? <details className="standard-group" open><summary>{standardsCourseLabel} ({visibleStandards.length})</summary><div className="standard-list">{visibleStandards.map(renderStandard)}</div></details> : groupedStandards.map(([group, standards]) => <details className="standard-group" key={group} open={Boolean(query.trim())}><summary>{group} ({standards.length})</summary><div className="standard-list">{standards.map(renderStandard)}</div></details>)}
+            {visibleStandards.length === 0 ? <div className="empty-state"><p>No standards match this search.</p></div> : standardsCourseLabel ? <details className="standard-group" open><summary>{standardsCourseLabel} ({visibleStandards.length})</summary><div className="standard-list">{renderMappedStandards(visibleStandards)}</div></details> : groupedStandards.map(([group, standards]) => <details className="standard-group" key={group} open={Boolean(query.trim())}><summary>{group} ({standards.length})</summary><div className="standard-list">{standards.map(renderStandard)}</div></details>)}
           </> : null}
         </details>
         <p className="guidance-text">Select only the standards that apply this week. Exact approved wording and source provenance are preserved.</p>

@@ -21,40 +21,56 @@
 }
 
 /*
- * Proficiency guidance belongs to the exact standard immediately above it. Treat
- * the collapsed scale control as the lower section of the same visual card instead
- * of a second standalone guidance card between standards.
+ * ALSDE proficiency guidance is one supplemental course-level resource. It is
+ * inserted once before the mapped Content Standards sequence rather than repeated
+ * beneath every standard that has a corresponding scale.
  */
-.standard-option-with-guidance:has(> .proficiency-scale) > .standard-option {
-  border-radius: 14px 14px 0 0;
-}
-
-.standard-option-with-guidance > .proficiency-scale {
-  margin: -1px 0 0;
+.proficiency-scale-collection {
+  margin: 0;
   padding: 0;
   border: 1px solid #dfe5ee;
-  border-top: 0;
-  border-radius: 0 0 14px 14px;
-  background: #fff;
+  border-radius: 14px;
+  background: #f8fafc;
 }
 
-.standard-option-with-guidance > .proficiency-scale > summary {
+.proficiency-scale-collection > summary {
   cursor: pointer;
-  padding: 10px 14px;
+  padding: 11px 14px;
   color: #17365d;
 }
 
-.standard-option-with-guidance > .proficiency-scale[open] > summary {
+.proficiency-scale-collection[open] > summary {
   border-bottom: 1px solid #e1e7ef;
 }
 
-.standard-option-with-guidance > .proficiency-scale > .guidance-text,
-.standard-option-with-guidance > .proficiency-scale > .proficiency-levels {
+.proficiency-scale-collection > .guidance-text,
+.proficiency-scale-collection > .proficiency-scale-list {
   margin-left: 14px;
   margin-right: 14px;
 }
 
-.standard-option-with-guidance > .proficiency-scale > .source-link {
+.proficiency-scale-list {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.proficiency-standard-block {
+  border-top: 1px solid #e1e7ef;
+  padding-top: 12px;
+}
+
+.proficiency-standard-block:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.proficiency-standard-block h4 {
+  margin: 0 0 7px;
+  color: #24344c;
+}
+
+.proficiency-scale-collection > .source-link {
   display: inline-block;
   margin: 0 14px 14px;
 }
