@@ -2,6 +2,7 @@ from pathlib import Path
 
 FRONTEND = Path(__file__).resolve().parents[2] / "frontend" / "src"
 MAIN = FRONTEND / "main.tsx"
+STANDARDS = FRONTEND / "StandardsPanel.tsx"
 OVERRIDES = FRONTEND / "standards-browser-overrides.css"
 
 
@@ -24,13 +25,17 @@ def test_flattening_rule_preserves_multi_group_fallback() -> None:
     assert ".standard-group:not(" not in css
 
 
-def test_proficiency_scale_is_visually_attached_to_exact_standard() -> None:
+def test_proficiency_guidance_has_one_course_level_control_before_content_standards() -> None:
+    source = STANDARDS.read_text(encoding="utf-8")
     css = OVERRIDES.read_text(encoding="utf-8")
 
-    assert ".standard-option-with-guidance:has(> .proficiency-scale) > .standard-option" in css
-    assert "border-radius: 14px 14px 0 0" in css
-    assert ".standard-option-with-guidance > .proficiency-scale" in css
-    assert "margin: -1px 0 0" in css
-    assert "border-top: 0" in css
-    assert "border-radius: 0 0 14px 14px" in css
-    assert ".proficiency-scale > summary" in css
+    assert "function isContentStandard" in source
+    assert "const renderProficiencyCollection" in source
+    assert "const renderMappedStandards" in source
+    assert "standards.findIndex(isContentStandard)" in source
+    assert "index === proficiencyInsertIndex ? renderProficiencyCollection() : null" in source
+    assert source.count("<summary><strong>View ALSDE proficiency scale</strong></summary>") == 1
+    assert "proficiencyByCode" not in source
+    assert "standard-option-with-guidance" not in source
+    assert ".proficiency-scale-collection" in css
+    assert ".standard-option-with-guidance" not in css
