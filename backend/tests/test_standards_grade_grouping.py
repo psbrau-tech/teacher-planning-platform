@@ -1,23 +1,24 @@
 from pathlib import Path
 
-
 LIVE_STANDARDS = (
     Path(__file__).resolve().parents[2] / "frontend" / "src" / "StandardsPanel.tsx"
 )
 
 
-def test_grade_mapped_standards_use_one_grade_group_and_keep_strand_badges() -> None:
+def test_mapped_standards_course_uses_one_group_and_keeps_strand_badges() -> None:
     source = LIVE_STANDARDS.read_text(encoding="utf-8")
 
-    assert "function mappedGradeLabel" in source
-    assert "Grade ${numericGrade} Standards" in source
-    assert "standardsGradeLabel" in source
-    assert 'standardsGradeLabel ? <details className="standard-group" open>' in source
+    assert "function mappedStandardsLabel" in source
+    assert "catalog.catalog_course?.display_name" in source
+    assert "standardsCourseLabel" in source
+    assert 'standardsCourseLabel ? <details className="standard-group" open>' in source
     assert "visibleStandards.map(renderStandard)" in source
     assert 'standard.strand ? <span className="badge">{standard.strand}</span>' in source
+    assert "catalog.catalog_category.display_name" in source
+    assert "catalog.catalog_course.display_name" in source
 
 
-def test_non_grade_courses_keep_existing_strand_or_unit_fallback_grouping() -> None:
+def test_legacy_unmapped_course_shape_keeps_existing_grouping_fallback() -> None:
     source = LIVE_STANDARDS.read_text(encoding="utf-8")
 
     assert "function standardGroup" in source
