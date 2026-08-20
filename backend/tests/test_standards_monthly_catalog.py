@@ -9,6 +9,7 @@ from app.standards_catalog_discovery import StandardsCatalogDiscoveryError
 from app.standards_catalog_reconcile import CatalogReconcileResult
 from app.standards_governed_sources import list_governed_source_keys
 from app.standards_maintenance import MaintenanceResult
+from app.standards_proficiency_maintenance import proficiency_source_keys
 
 
 class FakeRestClient:
@@ -186,7 +187,8 @@ def test_annual_full_run_validates_dynamic_governed_sources(monkeypatch) -> None
     assert not result.has_unavailable_error
 
 
-def test_quarterly_monitor_reconciles_catalog_without_refetching_sources(monkeypatch) -> None:
+def test_quarterly_monitor_validates_only_grade_6_12_proficiency_sources(monkeypatch) -> None:
+    checked: list[str] = []
     monkeypatch.setattr(standards_monthly_run, "fetch_current_alabama_catalog", lambda: ())
     monkeypatch.setattr(
         standards_monthly_run,
@@ -195,12 +197,23 @@ def test_quarterly_monitor_reconciles_catalog_without_refetching_sources(monkeyp
     )
 
     def unexpected_source_load(client):
-        raise AssertionError("quarterly monitor must not enumerate full source content")
+        raise AssertionError("quarterly monitor must not enumerate full standards source content")
 
     monkeypatch.setattr(
         standards_monthly_run,
         "list_governed_source_keys",
         unexpected_source_load,
+    )
+
+    def validate_proficiency(client, source_key, *, check_month):
+        checked.append(source_key)
+        assert check_month == date(2027, 10, 1)
+        return _maintenance(source_key)
+
+    monkeypatch.setattr(
+        standards_monthly_run,
+        "validate_proficiency_source",
+        validate_proficiency,
     )
 
     result = standards_monthly_run.run_standards_reconciliation(
@@ -210,7 +223,8 @@ def test_quarterly_monitor_reconciles_catalog_without_refetching_sources(monkeyp
     )
 
     assert result.reconciliation_kind == "quarterly_monitor"
-    assert result.source_results == ()
+    assert tuple(checked) == proficiency_source_keys()
+    assert tuple(item.source_key for item in result.source_results) == proficiency_source_keys()
 
 
 def test_event_driven_run_requires_explicit_affected_sources() -> None:
@@ -251,8 +265,9 @@ def test_event_driven_run_validates_only_named_sources(monkeypatch) -> None:
     assert result.requires_review
 
 
-def test_catalog_outage_is_recorded_and_quarterly_run_does_not_touch_sources(monkeypatch) -> None:
+def test_catalog_outage_is_recorded_while_quarterly_proficiency_checks_continue(monkeypatch) -> None:
     error_run_id = uuid4()
+    checked: list[str] = []
 
     def fail_fetch():
         raise StandardsCatalogDiscoveryError("Synthetic catalog outage")
@@ -264,13 +279,24 @@ def test_catalog_outage_is_recorded_and_quarterly_run_does_not_touch_sources(mon
         lambda client, **kwargs: error_run_id,
     )
 
+    def validate_proficiency(client, source_key, *, check_month):
+        checked.append(source_key)
+        return _maintenance(source_key)
+
+    monkeypatch.setattr(
+        standards_monthly_run,
+        "validate_proficiency_source",
+        validate_proficiency,
+    )
+
     result = standards_monthly_run.run_standards_reconciliation(
         object(),
         check_date=date(2027, 4, 1),
         reconciliation_kind="quarterly_monitor",
     )
 
-    assert result.source_results == ()
+    assert tuple(checked) == proficiency_source_keys()
+    assert len(result.source_results) == 7
     assert result.catalog_error_run_id == error_run_id
     assert result.catalog_error == "Synthetic catalog outage"
     assert result.has_unavailable_error
