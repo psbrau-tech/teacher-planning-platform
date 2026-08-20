@@ -75,8 +75,9 @@ class _AnchorParser(HTMLParser):
                     None,
                 )
                 if label:
-                    self._tokens.append(("text", label))
-                self._tokens.append(("embed", src))
+                    self.anchors.append(_Anchor(href=src, text=label))
+                else:
+                    self._tokens.append(("embed", src))
 
     def handle_data(self, data: str) -> None:
         cleaned = re.sub(r"\s+", " ", data).strip()
