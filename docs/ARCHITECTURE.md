@@ -20,7 +20,7 @@ District, school, academic year, calendar, schedule definitions, standards libra
 A teacher may have multiple assignments. Each assignment independently links a course, curriculum, standards framework, date range, and meeting pattern. One teacher may mix periods and blocks in the same day.
 
 ### Curriculum engine
-Curriculum contains units and ordered lessons. Lessons carry estimated minutes, split/compression rules, standards, objectives, Know–Understand–Do content, activities, assessments, resources, and dependencies.
+Curriculum contains units and ordered day-sized lessons. Each pacing lesson maps to one eligible class day; the assignment schedule supplies that day&apos;s instructional minutes. Legacy estimated-minute and split fields remain readable for historical compatibility but do not control new scheduling.
 
 ### Scheduling engine
 The engine intersects:
@@ -32,7 +32,7 @@ The engine intersects:
 - one-time exceptions;
 - teacher overrides.
 
-It returns proposed scheduled lesson segments. It never changes completed history.
+It returns one proposed pacing lesson per eligible class day. It never changes completed history.
 
 ### Weekly validation
 Teachers record completed, modified, missed, or not-needed outcomes. Missed segments remain at the front of that assignment's queue unless the teacher skips, combines, or manually resequences them.
