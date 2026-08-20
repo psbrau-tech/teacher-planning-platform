@@ -6,6 +6,9 @@ PRIVACY = ROOT / "docs" / "legal" / "PRIVACY_POLICY.md"
 SUBPROCESSORS = ROOT / "docs" / "legal" / "SUBPROCESSORS.md"
 SECURITY = ROOT / "docs" / "legal" / "SECURITY_AND_DATA_PRACTICES.md"
 COUNSEL = ROOT / "docs" / "legal" / "COUNSEL_REVIEW_BRIEF_2026-08-13.md"
+PILOT_RECONCILIATION = (
+    ROOT / "docs" / "legal" / "POST_PILOT_RECONCILIATION_2026-08-20.md"
+)
 HELP = ROOT / "frontend" / "src" / "HelpPage.tsx"
 
 
@@ -32,12 +35,27 @@ def test_counsel_brief_distinguishes_deployed_state_from_unactivated_email_work(
 
     assert "weekly reflection / plc discussion remains teacher-authored" in source
     assert "does not use generative ai to suggest, generate, complete, or rewrite" in source
-    assert "source-controlled notification infrastructure not yet activated" in source
+    assert "separately controlled notification infrastructure" in source
+    assert "schema application does **not** by itself prove" in source
     assert "send pilot/production email" in source
     assert "activation still requires separate human-controlled" in source
     assert "notifications@planner.guidedscholar.ai" in source
     assert "planned formative-assessment analytics" in source
     assert "personnel/evaluation boundary" in source
+
+
+def test_august_20_reconciliation_preserves_ai_and_data_boundaries() -> None:
+    source = normalized(PILOT_RECONCILIATION)
+
+    assert "b33bf905e98012b857c4434039fced08ff89137b" in source
+    assert "20260820020000" in source
+    assert "no legal/compliance boundary expansion was identified" in source
+    assert "student pii, or student education records" in source
+    assert "explicitly accepts, edits, or rejects" in source
+    assert "does not weaken row-level security" in source
+    assert "one instructional class day" in source
+    assert "schema application does not establish" in source
+    assert "no substantive customer-facing amendment was required" in source
 
 
 def test_privacy_draft_covers_professional_learning_and_minimized_notifications() -> None:
