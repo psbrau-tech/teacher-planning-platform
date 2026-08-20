@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from .standards_ingest import ExtractedDocument, StandardsIngestError
 
-PROFICIENCY_PARSER_VERSION = "gate-e-alabama-ela-proficiency-6-12-v2"
+PROFICIENCY_PARSER_VERSION = "gate-e-alabama-ela-proficiency-6-12-v3"
 
 _GRADE_BY_PARSER_KEY = {
     f"alabama_ela_proficiency_grade_{grade}": str(grade)
@@ -39,6 +39,11 @@ _STANDARD_TEXT_BOUNDARIES = frozenset(
         "sample activities",
         "sample activities & resources",
     }
+)
+_INLINE_STANDARD_TEXT_BOUNDARIES = (
+    "sample activities & resources",
+    "activities & resources",
+    "sample activities",
 )
 
 
@@ -164,18 +169,40 @@ def _coalesce_score_lines(lines: tuple[str, ...]) -> tuple[str, ...]:
 
 
 def _standard_text(block: tuple[str, ...], first: str) -> str:
-    parts = [first.strip()] if first.strip() else []
-    for line in block[1:]:
-        if _score_marker(line) is not None:
+    parts: list[str] = []
+    candidates = (first, *block[1:])
+    for index, line in enumerate(candidates):
+        if index > 0 and _score_marker(line) is not None:
             break
-        if line.strip().casefold() in _STANDARD_TEXT_BOUNDARIES:
+        stripped = line.strip()
+        if stripped.casefold() in _STANDARD_TEXT_BOUNDARIES:
             break
-        if _is_header_noise(line):
+        stripped, boundary_found = _trim_inline_standard_text_boundary(stripped)
+        if _is_header_noise(stripped):
+            if boundary_found:
+                break
             continue
-        if any(pattern.match(line) for pattern in _META.values()):
+        if any(pattern.match(stripped) for pattern in _META.values()):
+            if boundary_found:
+                break
             continue
-        parts.append(line.strip())
-    return " ".join(part for part in parts if part).strip()
+        if stripped:
+            parts.append(stripped)
+        if boundary_found:
+            break
+    return " ".join(parts).strip()
+
+
+def _trim_inline_standard_text_boundary(value: str) -> tuple[str, bool]:
+    for boundary in _INLINE_STANDARD_TEXT_BOUNDARIES:
+        match = re.search(
+            rf"\s+{re.escape(boundary)}\s*$",
+            value,
+            flags=re.IGNORECASE,
+        )
+        if match is not None:
+            return value[: match.start()].strip(), True
+    return value, False
 
 
 def _level_text(block: tuple[str, ...]) -> dict[str, str]:
