@@ -258,8 +258,9 @@ def _resolve_alabama_ela_proficiency_grade(
         text = anchor.text.casefold()
         if not _is_drive_document(anchor):
             continue
-        if "proficiency" not in text:
-            continue
+        # The ALSDE Google Site renders the grade label separately from the embedded
+        # Drive filename. This landing page is dedicated to proficiency scales, so the
+        # grade context is the stable discriminator for the current grade-specific file.
         if any(label in text for label in labels):
             matches.append(anchor)
 
