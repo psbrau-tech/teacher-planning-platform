@@ -1,0 +1,21 @@
+/*
+ * When the governed standards mapping resolves to one standards set, the mapped
+ * subject/course context is already shown above the browser. Remove the redundant
+ * nested group chrome so teachers see one continuous ordered standards list.
+ * Multiple fallback strand/unit groups keep their existing grouped presentation.
+ */
+.standards-browser > .standard-group:only-of-type {
+  margin: 0 16px 16px;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+  background: transparent;
+}
+
+.standards-browser > .standard-group:only-of-type > summary {
+  display: none;
+}
+
+.standards-browser > .standard-group:only-of-type > .standard-list {
+  padding: 0;
+}
