@@ -22,3 +22,15 @@ def test_flattening_rule_preserves_multi_group_fallback() -> None:
 
     assert ":only-of-type" in css
     assert ".standard-group:not(" not in css
+
+
+def test_proficiency_scale_is_visually_attached_to_exact_standard() -> None:
+    css = OVERRIDES.read_text(encoding="utf-8")
+
+    assert ".standard-option-with-guidance:has(> .proficiency-scale) > .standard-option" in css
+    assert "border-radius: 14px 14px 0 0" in css
+    assert ".standard-option-with-guidance > .proficiency-scale" in css
+    assert "margin: -1px 0 0" in css
+    assert "border-top: 0" in css
+    assert "border-radius: 0 0 14px 14px" in css
+    assert ".proficiency-scale > summary" in css
