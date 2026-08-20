@@ -12,7 +12,7 @@ def test_mapped_standards_course_uses_one_group_and_keeps_strand_badges() -> Non
     assert "catalog.catalog_course?.display_name" in source
     assert "standardsCourseLabel" in source
     assert 'standardsCourseLabel ? <details className="standard-group" open>' in source
-    assert "visibleStandards.map(renderStandard)" in source
+    assert "renderMappedStandards(visibleStandards)" in source
     assert 'standard.strand ? <span className="badge">{standard.strand}</span>' in source
     assert "catalog.catalog_category.display_name" in source
     assert "catalog.catalog_course.display_name" in source
