@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/tmp-proficiency-source-diagnostic.yml'
       - 'backend/app/standards_sources.py'
+      - 'backend/app/standards_proficiency.py'
 
 permissions:
   contents: read
@@ -18,41 +19,29 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Inspect raw ALSDE Google Sites source structure
+          cache: pip
+      - name: Install backend
+        working-directory: backend
+        run: python -m pip install -e '.[dev]'
+      - name: Inspect current Grade 6 extracted text
+        working-directory: backend
         run: |
           python - <<'PY'
-          import html
-          import re
-          import urllib.request
+          from app.standards_ingest import extract_document, fetch_source
+          from app.standards_sources import resolve_authoritative_document
 
-          url = 'https://english-language-arts.alsde.edu/proficiency-scales'
-          request = urllib.request.Request(
-              url,
-              headers={'User-Agent': 'TeacherPlanningPlatform-Standards-Diagnostic/1.0'},
+          resolved = resolve_authoritative_document(
+              'alabama_ela_proficiency_grade_6_current',
+              'https://english-language-arts.alsde.edu/proficiency-scales',
           )
-          with urllib.request.urlopen(request, timeout=20) as response:
-              text = response.read().decode(response.headers.get_content_charset() or 'utf-8', 'replace')
-
-          print(f'raw_bytes={len(text.encode("utf-8"))}')
-          patterns = (
-              r'https?[^"\'<> ]*drive\.google\.com[^"\'<> ]*',
-              r'https?[^"\'<> ]*docs\.google\.com[^"\'<> ]*',
-              r'https?[^"\'<> ]*googleusercontent\.com[^"\'<> ]*',
-              r'[^"\'<> ]*(?:6th|Sixth|Grade%206|Grade\+6)[^"\'<> ]*',
-          )
-          seen = set()
-          for pattern in patterns:
-              for match in re.finditer(pattern, text, flags=re.IGNORECASE):
-                  start = max(0, match.start() - 240)
-                  end = min(len(text), match.end() + 240)
-                  snippet = html.unescape(re.sub(r'\s+', ' ', text[start:end]))
-                  if snippet in seen:
-                      continue
-                  seen.add(snippet)
-                  print('candidate_context=' + snippet[:1000])
-                  if len(seen) >= 30:
-                      break
-              if len(seen) >= 30:
-                  break
-          print(f'candidate_context_count={len(seen)}')
+          print('resolved_url=' + resolved.document_url)
+          print('resolved_label=' + resolved.anchor_text)
+          fetched = fetch_source(resolved.document_url, 'pdf')
+          print('resolved_fetch_url=' + fetched.resolved_url)
+          print('source_sha256=' + fetched.source_sha256)
+          extracted = extract_document(fetched)
+          print('normalized_sha256=' + extracted.normalized_sha256)
+          print('extracted_line_count=' + str(len(extracted.lines)))
+          for index, line in enumerate(extracted.lines[:240], start=1):
+              print(f'LINE {index:03d}: {line}')
           PY
