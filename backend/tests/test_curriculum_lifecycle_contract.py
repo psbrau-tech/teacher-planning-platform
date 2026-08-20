@@ -1,7 +1,7 @@
+import re
 from base64 import b64decode
 from io import BytesIO
 from pathlib import Path
-import re
 from xml.etree import ElementTree
 from zipfile import ZipFile
 
