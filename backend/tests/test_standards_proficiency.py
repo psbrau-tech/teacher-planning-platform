@@ -85,7 +85,8 @@ def _current_format_document(grade: int = 6) -> ExtractedDocument:
     )
 
 
-def _inline_boundary_document(grade: int = 12) -> ExtractedDocument:
+def _inline_boundary_document(grade: int = 12, *, invisible: bool = False) -> ExtractedDocument:
+    separator = "\u200b " if invisible else " "
     lines: list[str] = [
         "Alabama Course of Study: English Language Arts",
         "PROFICIENCY SCALES",
@@ -99,7 +100,7 @@ def _inline_boundary_document(grade: int = 12) -> ExtractedDocument:
             [
                 (
                     f"Standard {code}: Grade {grade} standard {code} exact wording. "
-                    "Sample Activities & Resources"
+                    f"Sample{separator}Activities & Resources"
                 ),
                 "Score",
                 "4.0",
@@ -126,7 +127,7 @@ def test_proficiency_parser_preserves_standard_and_performance_levels() -> None:
     )
 
     assert parsed.grade_band == "9"
-    assert parsed.parser_version == "gate-e-alabama-ela-proficiency-6-12-v3"
+    assert parsed.parser_version == "gate-e-alabama-ela-proficiency-6-12-v4"
     assert len(parsed.scales) == 5
     first = parsed.scales[0]
     assert first.standard_code == "1"
@@ -171,6 +172,17 @@ def test_proficiency_parser_trims_inline_sample_activities_heading() -> None:
     assert first.levels["4.0"] == "Extension application for current standard 1."
     assert first.levels["3.0"] == "Proficient performance for current standard 1."
     assert first.levels["2.0"] == "Foundational knowledge for current standard 1."
+
+
+def test_proficiency_parser_trims_invisible_inline_sample_heading_artifact() -> None:
+    parsed = parse_alabama_ela_proficiency(
+        "alabama_ela_proficiency_grade_12",
+        _inline_boundary_document(invisible=True),
+    )
+
+    first = parsed.scales[0]
+    assert first.standard_text == "Grade 12 standard 1 exact wording."
+    assert "Activities & Resources" not in first.standard_text
 
 
 def test_proficiency_parser_rejects_grade_mismatch() -> None:
