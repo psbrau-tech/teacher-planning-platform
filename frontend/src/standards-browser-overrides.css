@@ -19,3 +19,42 @@
 .standards-browser > .standard-group:only-of-type > .standard-list {
   padding: 0;
 }
+
+/*
+ * Proficiency guidance belongs to the exact standard immediately above it. Treat
+ * the collapsed scale control as the lower section of the same visual card instead
+ * of a second standalone guidance card between standards.
+ */
+.standard-option-with-guidance:has(> .proficiency-scale) > .standard-option {
+  border-radius: 14px 14px 0 0;
+}
+
+.standard-option-with-guidance > .proficiency-scale {
+  margin: -1px 0 0;
+  padding: 0;
+  border: 1px solid #dfe5ee;
+  border-top: 0;
+  border-radius: 0 0 14px 14px;
+  background: #fff;
+}
+
+.standard-option-with-guidance > .proficiency-scale > summary {
+  cursor: pointer;
+  padding: 10px 14px;
+  color: #17365d;
+}
+
+.standard-option-with-guidance > .proficiency-scale[open] > summary {
+  border-bottom: 1px solid #e1e7ef;
+}
+
+.standard-option-with-guidance > .proficiency-scale > .guidance-text,
+.standard-option-with-guidance > .proficiency-scale > .proficiency-levels {
+  margin-left: 14px;
+  margin-right: 14px;
+}
+
+.standard-option-with-guidance > .proficiency-scale > .source-link {
+  display: inline-block;
+  margin: 0 14px 14px;
+}
