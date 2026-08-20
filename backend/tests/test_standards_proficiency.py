@@ -85,6 +85,40 @@ def _current_format_document(grade: int = 6) -> ExtractedDocument:
     )
 
 
+def _inline_boundary_document(grade: int = 12) -> ExtractedDocument:
+    lines: list[str] = [
+        "Alabama Course of Study: English Language Arts",
+        "PROFICIENCY SCALES",
+        f"Grade: {grade}th",
+        "Literacy Type: Critical Literacy",
+        "Focus Area: Reception",
+        "Category: Reading",
+    ]
+    for code in range(1, 6):
+        lines.extend(
+            [
+                (
+                    f"Standard {code}: Grade {grade} standard {code} exact wording. "
+                    "Sample Activities & Resources"
+                ),
+                "Score",
+                "4.0",
+                f"Extension application for current standard {code}.",
+                "Score",
+                "3.0",
+                f"Proficient performance for current standard {code}.",
+                "Score",
+                "2.0",
+                f"Foundational knowledge for current standard {code}.",
+            ]
+        )
+    normalized = "\n".join(lines)
+    return ExtractedDocument(
+        lines=tuple(lines),
+        normalized_sha256=sha256(normalized.encode("utf-8")).hexdigest(),
+    )
+
+
 def test_proficiency_parser_preserves_standard_and_performance_levels() -> None:
     parsed = parse_alabama_ela_proficiency(
         "alabama_ela_proficiency_grade_9",
@@ -92,7 +126,7 @@ def test_proficiency_parser_preserves_standard_and_performance_levels() -> None:
     )
 
     assert parsed.grade_band == "9"
-    assert parsed.parser_version == "gate-e-alabama-ela-proficiency-6-12-v2"
+    assert parsed.parser_version == "gate-e-alabama-ela-proficiency-6-12-v3"
     assert len(parsed.scales) == 5
     first = parsed.scales[0]
     assert first.standard_code == "1"
@@ -120,6 +154,20 @@ def test_proficiency_parser_accepts_current_alsde_pdf_layout() -> None:
     )
     assert "Sample" not in first.standard_text
     assert "Activities & Resources" not in first.standard_text
+    assert first.levels["4.0"] == "Extension application for current standard 1."
+    assert first.levels["3.0"] == "Proficient performance for current standard 1."
+    assert first.levels["2.0"] == "Foundational knowledge for current standard 1."
+
+
+def test_proficiency_parser_trims_inline_sample_activities_heading() -> None:
+    parsed = parse_alabama_ela_proficiency(
+        "alabama_ela_proficiency_grade_12",
+        _inline_boundary_document(),
+    )
+
+    first = parsed.scales[0]
+    assert first.standard_text == "Grade 12 standard 1 exact wording."
+    assert "Sample Activities & Resources" not in first.standard_text
     assert first.levels["4.0"] == "Extension application for current standard 1."
     assert first.levels["3.0"] == "Proficient performance for current standard 1."
     assert first.levels["2.0"] == "Foundational knowledge for current standard 1."
