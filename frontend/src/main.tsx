@@ -12,6 +12,7 @@ import { ReflectionIntelligenceExperience } from "./ReflectionIntelligenceExperi
 import { TeacherPlanningShell } from "./TeacherPlanningShell";
 import { UiConsistencyExperience } from "./UiConsistencyExperience";
 import "./workflow-overrides.css";
+import "./standards-browser-overrides.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
