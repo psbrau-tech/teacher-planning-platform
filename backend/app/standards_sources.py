@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from html.parser import HTMLParser
-from urllib.parse import urljoin, urlparse
+from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 
 import httpx
 
@@ -13,6 +14,9 @@ _ALLOWED_HOSTS = frozenset(
     {
         "www.alabamaachieves.org",
         "alabamaachieves.org",
+        "english-language-arts.alsde.edu",
+        "drive.google.com",
+        "docs.google.com",
         "usarmyjrotc.army.mil",
     }
 )
@@ -42,16 +46,43 @@ class _AnchorParser(HTMLParser):
         self.anchors: list[_Anchor] = []
         self._href: str | None = None
         self._parts: list[str] = []
+        self._tokens: list[tuple[str, str]] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag.lower() != "a":
+        lowered = tag.lower()
+        if lowered == "a":
+            href = next((value for key, value in attrs if key.lower() == "href"), None)
+            if href:
+                self._href = href
+                self._parts = []
             return
-        href = next((value for key, value in attrs if key.lower() == "href"), None)
-        if href:
-            self._href = href
-            self._parts = []
+        if lowered in {"iframe", "embed"}:
+            src = next(
+                (
+                    value
+                    for key, value in attrs
+                    if key.lower() in {"src", "data-src"} and value
+                ),
+                None,
+            )
+            if src:
+                label = next(
+                    (
+                        value
+                        for key, value in attrs
+                        if key.lower() in {"aria-label", "title"} and value
+                    ),
+                    None,
+                )
+                if label:
+                    self.anchors.append(_Anchor(href=src, text=label))
+                else:
+                    self._tokens.append(("embed", src))
 
     def handle_data(self, data: str) -> None:
+        cleaned = re.sub(r"\s+", " ", data).strip()
+        if cleaned:
+            self._tokens.append(("text", cleaned))
         if self._href is not None:
             self._parts.append(data)
 
@@ -62,6 +93,25 @@ class _AnchorParser(HTMLParser):
         self.anchors.append(_Anchor(href=self._href, text=text))
         self._href = None
         self._parts = []
+
+    def document_candidates(self) -> tuple[_Anchor, ...]:
+        candidates = list(self.anchors)
+        for index, (kind, value) in enumerate(self._tokens):
+            if kind != "embed":
+                continue
+            context_parts: list[str] = []
+            for direction in (-1, 1):
+                cursor = index + direction
+                collected = 0
+                while 0 <= cursor < len(self._tokens) and collected < 5:
+                    token_kind, token_value = self._tokens[cursor]
+                    if token_kind == "text":
+                        context_parts.append(token_value)
+                        collected += 1
+                    cursor += direction
+            context = re.sub(r"\s+", " ", " ".join(context_parts)).strip()
+            candidates.append(_Anchor(href=value, text=context))
+        return tuple(candidates)
 
 
 def resolve_authoritative_document(
@@ -111,7 +161,11 @@ def resolve_authoritative_document(
             "Authoritative standards landing page could not be parsed"
         ) from error
 
-    return resolve_from_anchors(resolver_key, resolved_landing, tuple(parser.anchors))
+    return resolve_from_anchors(
+        resolver_key,
+        resolved_landing,
+        parser.document_candidates(),
+    )
 
 
 def resolve_from_anchors(
@@ -134,7 +188,26 @@ def _require_allowed_url(url: str) -> None:
 def _absolute_document(landing_url: str, anchor: _Anchor) -> tuple[str, str]:
     document_url = urljoin(landing_url, anchor.href)
     _require_allowed_url(document_url)
-    return document_url, anchor.text
+    return _downloadable_document_url(document_url), anchor.text
+
+
+def _downloadable_document_url(url: str) -> str:
+    parsed = urlparse(url)
+    if parsed.hostname not in {"drive.google.com", "docs.google.com"}:
+        return url
+
+    match = re.search(r"/(?:file|document)/d/([^/]+)", parsed.path)
+    if match:
+        download_query = urlencode({"export": "download", "id": match.group(1)})
+        return f"https://drive.google.com/uc?{download_query}"
+
+    query_params = parse_qs(parsed.query)
+    file_ids = query_params.get("id")
+    if file_ids:
+        download_query = urlencode({"export": "download", "id": file_ids[0]})
+        return f"https://drive.google.com/uc?{download_query}"
+
+    return urlunparse(parsed)
 
 
 def _extract_year(value: str) -> int:
@@ -171,6 +244,73 @@ def _resolve_alabama_ela(
         anchor_text=text,
         observed_version=_observed_year(selected, document_url),
     )
+
+
+def _grade_labels(grade: int) -> tuple[str, ...]:
+    words = {
+        6: "sixth",
+        7: "seventh",
+        8: "eighth",
+        9: "ninth",
+        10: "tenth",
+        11: "eleventh",
+        12: "twelfth",
+    }
+    suffix = "th"
+    return (f"{grade}{suffix} grade", f"grade {grade}", f"{words[grade]} grade")
+
+
+def _is_drive_document(anchor: _Anchor) -> bool:
+    absolute = urlparse(anchor.href)
+    return absolute.hostname in {"drive.google.com", "docs.google.com"}
+
+
+def _resolve_alabama_ela_proficiency_grade(
+    grade: int,
+    landing_url: str,
+    anchors: tuple[_Anchor, ...],
+) -> ResolvedStandardsSource:
+    labels = _grade_labels(grade)
+    matches: list[_Anchor] = []
+    for anchor in anchors:
+        text = anchor.text.casefold()
+        if not _is_drive_document(anchor):
+            continue
+        if any(label in text for label in labels):
+            matches.append(anchor)
+
+    if not matches:
+        raise StandardsSourceResolutionError(
+            f"Current Alabama Grade {grade} ELA proficiency-scale document was not found"
+        )
+
+    selected = max(
+        matches,
+        key=lambda anchor: (
+            _extract_year(f"{anchor.text} {anchor.href}"),
+            "rev" in anchor.text.casefold(),
+            len(anchor.text),
+        ),
+    )
+    document_url, text = _absolute_document(landing_url, selected)
+    return ResolvedStandardsSource(
+        landing_url=landing_url,
+        document_url=document_url,
+        anchor_text=text or f"Grade {grade} ELA Proficiency Scales",
+        observed_version=_observed_year(selected, document_url),
+    )
+
+
+def _proficiency_resolver(
+    grade: int,
+) -> Callable[[str, tuple[_Anchor, ...]], ResolvedStandardsSource]:
+    def resolver(
+        landing_url: str,
+        anchors: tuple[_Anchor, ...],
+    ) -> ResolvedStandardsSource:
+        return _resolve_alabama_ela_proficiency_grade(grade, landing_url, anchors)
+
+    return resolver
 
 
 def _resolve_alabama_bma(
@@ -240,8 +380,15 @@ def _resolve_army_jrotc(
     )
 
 
-_RESOLVERS = {
+_RESOLVERS: dict[
+    str,
+    Callable[[str, tuple[_Anchor, ...]], ResolvedStandardsSource],
+] = {
     "alabama_ela_current": _resolve_alabama_ela,
     "alabama_bma_current": _resolve_alabama_bma,
     "army_jrotc_current": _resolve_army_jrotc,
 }
+for _grade in range(6, 13):
+    _RESOLVERS[f"alabama_ela_proficiency_grade_{_grade}_current"] = _proficiency_resolver(
+        _grade
+    )

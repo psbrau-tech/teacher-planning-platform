@@ -153,6 +153,11 @@ def test_quarterly_monitor_never_materializes_catalog_candidates(monkeypatch) ->
         "materialize_discovered_source",
         unexpected_materialization,
     )
+    monkeypatch.setattr(
+        standards_monthly_run,
+        "validate_proficiency_source",
+        lambda client, source_key, check_month: _maintenance(source_key),
+    )
 
     result = standards_monthly_run.run_standards_reconciliation(
         object(),
@@ -161,5 +166,6 @@ def test_quarterly_monitor_never_materializes_catalog_candidates(monkeypatch) ->
         trigger_kind="scheduled",
     )
 
-    assert result.source_results == ()
+    expected_keys = standards_monthly_run.proficiency_source_keys()
+    assert tuple(item.source_key for item in result.source_results) == expected_keys
     assert result.requires_review
