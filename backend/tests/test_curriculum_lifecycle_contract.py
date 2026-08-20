@@ -1,5 +1,7 @@
+from base64 import b64decode
 from io import BytesIO
 from pathlib import Path
+import re
 from xml.etree import ElementTree
 from zipfile import ZipFile
 
@@ -82,6 +84,22 @@ def test_saved_curriculum_export_is_a_real_xlsx_with_current_rows() -> None:
     assert "Cadet responsibilities" in sheet
     assert "Optional Minutes Override" not in sheet
     assert "75" not in sheet
+
+
+def test_downloadable_pacing_template_has_no_minutes_column() -> None:
+    source = (FRONTEND / "pacingTemplate.ts").read_text(encoding="utf-8")
+    encoded = re.search(r'PACING_TEMPLATE_BASE64 = "([^"]+)"', source)
+    assert encoded is not None
+
+    with ZipFile(BytesIO(b64decode(encoded.group(1)))) as archive:
+        assert archive.testzip() is None
+        sheet = archive.read("xl/worksheets/sheet1.xml").decode("utf-8")
+
+    assert "Unit / Topic" in sheet
+    assert "Lesson / Focus" in sheet
+    assert "Learning Target(s)" in sheet
+    assert "Assessment / Evidence" in sheet
+    assert "Minutes" not in sheet
 
 
 def test_noncontiguous_repeated_unit_titles_preserve_teacher_sequence() -> None:
