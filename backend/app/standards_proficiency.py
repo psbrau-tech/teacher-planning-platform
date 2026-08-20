@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from .standards_ingest import ExtractedDocument, StandardsIngestError
 
-PROFICIENCY_PARSER_VERSION = "gate-e-alabama-ela-proficiency-6-12-v3"
+PROFICIENCY_PARSER_VERSION = "gate-e-alabama-ela-proficiency-6-12-v4"
 
 _GRADE_BY_PARSER_KEY = {
     f"alabama_ela_proficiency_grade_{grade}": str(grade)
@@ -40,11 +40,11 @@ _STANDARD_TEXT_BOUNDARIES = frozenset(
         "sample activities & resources",
     }
 )
-_INLINE_STANDARD_TEXT_BOUNDARIES = (
-    "sample activities & resources",
-    "activities & resources",
-    "sample activities",
+_INLINE_STANDARD_TEXT_BOUNDARY = re.compile(
+    r"\s+(?:sample\s+)?activities\s*&\s*resources\s*$",
+    flags=re.IGNORECASE,
 )
+_INVISIBLE_TEXT = re.compile(r"[\u200b\u200c\u200d\ufeff]")
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,7 +174,7 @@ def _standard_text(block: tuple[str, ...], first: str) -> str:
     for index, line in enumerate(candidates):
         if index > 0 and _score_marker(line) is not None:
             break
-        stripped = line.strip()
+        stripped = _clean_boundary_text(line.strip())
         if stripped.casefold() in _STANDARD_TEXT_BOUNDARIES:
             break
         stripped, boundary_found = _trim_inline_standard_text_boundary(stripped)
@@ -190,19 +190,27 @@ def _standard_text(block: tuple[str, ...], first: str) -> str:
             parts.append(stripped)
         if boundary_found:
             break
-    return " ".join(parts).strip()
+    return _trim_standard_text_boundary_suffix(" ".join(parts).strip())
+
+
+def _clean_boundary_text(value: str) -> str:
+    return _INVISIBLE_TEXT.sub("", value)
 
 
 def _trim_inline_standard_text_boundary(value: str) -> tuple[str, bool]:
-    for boundary in _INLINE_STANDARD_TEXT_BOUNDARIES:
-        match = re.search(
-            rf"\s+{re.escape(boundary)}\s*$",
-            value,
-            flags=re.IGNORECASE,
-        )
-        if match is not None:
-            return value[: match.start()].strip(), True
-    return value, False
+    cleaned = _clean_boundary_text(value)
+    match = _INLINE_STANDARD_TEXT_BOUNDARY.search(cleaned)
+    if match is None:
+        return cleaned, False
+    return cleaned[: match.start()].strip(), True
+
+
+def _trim_standard_text_boundary_suffix(value: str) -> str:
+    cleaned = _clean_boundary_text(value)
+    match = _INLINE_STANDARD_TEXT_BOUNDARY.search(cleaned)
+    if match is None:
+        return cleaned.strip()
+    return cleaned[: match.start()].strip()
 
 
 def _level_text(block: tuple[str, ...]) -> dict[str, str]:
