@@ -4,7 +4,7 @@ from typing import Annotated, Any, NoReturn, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .auth import AuthenticatedTeacher, require_teacher
 from .settings import Settings, get_settings
@@ -56,6 +56,27 @@ class AssignmentCatalogMappingWriteResult(BaseModel):
     course: CatalogCourseRead
 
 
+class ProficiencyScaleRead(BaseModel):
+    standard_code: str
+    standard_text: str
+    literacy_type: str | None = None
+    focus_area: str | None = None
+    category: str | None = None
+    levels: dict[str, str] = Field(default_factory=dict)
+
+
+class ProficiencyGradeRead(BaseModel):
+    grade_band: str
+    available: bool
+    authority: str | None = None
+    source_title: str | None = None
+    source_version: str | None = None
+    retrieved_at: str | None = None
+    landing_url: str | None = None
+    resolved_document_url: str | None = None
+    scales: list[ProficiencyScaleRead] = Field(default_factory=list)
+
+
 def _records(payload: object) -> list[JsonRecord]:
     if not isinstance(payload, list):
         raise HTTPException(status_code=503, detail="Standards catalog returned invalid data")
@@ -86,6 +107,19 @@ def _required_int(record: JsonRecord, key: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise HTTPException(status_code=503, detail="Standards catalog data is invalid")
     return value
+
+
+def _levels(record: JsonRecord) -> dict[str, str]:
+    value = record.get("levels")
+    if not isinstance(value, dict):
+        raise HTTPException(status_code=503, detail="Proficiency scale data is invalid")
+    levels: dict[str, str] = {}
+    for key, text in value.items():
+        if isinstance(key, str) and isinstance(text, str) and text.strip():
+            levels[key] = text.strip()
+    if not all(level in levels for level in ("4.0", "3.0", "2.0")):
+        raise HTTPException(status_code=503, detail="Proficiency scale data is incomplete")
+    return levels
 
 
 def _raise_data_error(error: SupabaseRestError, operation: str) -> NoReturn:
@@ -261,6 +295,116 @@ def list_catalog_courses(
     except SupabaseRestError as error:
         _raise_data_error(error, "Standards course list")
     return [_course_read(row) for row in rows]
+
+
+@router.get(
+    "/proficiency/grade/{grade_band}",
+    response_model=ProficiencyGradeRead,
+)
+def get_ela_proficiency_grade(
+    grade_band: int,
+    identity: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> ProficiencyGradeRead:
+    if grade_band < 6 or grade_band > 12:
+        raise HTTPException(status_code=404, detail="ELA proficiency scales are available for grades 6-12")
+
+    client = _client(identity, settings)
+    source_key = f"alabama_ela_proficiency_grade_{grade_band}"
+    try:
+        source_rows = _records(
+            client.request(
+                "GET",
+                "standard_sources",
+                params={
+                    "source_key": f"eq.{source_key}",
+                    "source_kind": "eq.proficiency_scale",
+                    "is_active": "eq.true",
+                    "select": "id,authority,title,landing_url,approved_snapshot_id",
+                    "limit": "2",
+                },
+            )
+        )
+    except SupabaseRestError as error:
+        _raise_data_error(error, "Proficiency source load")
+
+    if len(source_rows) != 1:
+        return ProficiencyGradeRead(grade_band=str(grade_band), available=False)
+    source = source_rows[0]
+    snapshot_id = _optional_text(source, "approved_snapshot_id")
+    if snapshot_id is None:
+        return ProficiencyGradeRead(
+            grade_band=str(grade_band),
+            available=False,
+            authority=_required_text(source, "authority"),
+            source_title=_required_text(source, "title"),
+            landing_url=_required_text(source, "landing_url"),
+        )
+
+    try:
+        snapshot_rows = _records(
+            client.request(
+                "GET",
+                "standard_snapshots",
+                params={
+                    "id": f"eq.{snapshot_id}",
+                    "status": "eq.approved",
+                    "select": "id,source_version,retrieved_at,resolved_document_url",
+                    "limit": "2",
+                },
+            )
+        )
+    except SupabaseRestError as error:
+        _raise_data_error(error, "Approved proficiency snapshot load")
+    if len(snapshot_rows) != 1:
+        return ProficiencyGradeRead(
+            grade_band=str(grade_band),
+            available=False,
+            authority=_required_text(source, "authority"),
+            source_title=_required_text(source, "title"),
+            landing_url=_required_text(source, "landing_url"),
+        )
+    snapshot = snapshot_rows[0]
+
+    try:
+        scale_rows = _records(
+            client.request(
+                "GET",
+                "standard_proficiency_scales",
+                params={
+                    "snapshot_id": f"eq.{snapshot_id}",
+                    "grade_band": f"eq.{grade_band}",
+                    "select": (
+                        "standard_code,standard_text,literacy_type,focus_area,category,levels"
+                    ),
+                    "order": "standard_code.asc",
+                },
+            )
+        )
+    except SupabaseRestError as error:
+        _raise_data_error(error, "Approved proficiency scales load")
+
+    return ProficiencyGradeRead(
+        grade_band=str(grade_band),
+        available=bool(scale_rows),
+        authority=_required_text(source, "authority"),
+        source_title=_required_text(source, "title"),
+        source_version=_optional_text(snapshot, "source_version"),
+        retrieved_at=_required_text(snapshot, "retrieved_at"),
+        landing_url=_required_text(source, "landing_url"),
+        resolved_document_url=_required_text(snapshot, "resolved_document_url"),
+        scales=[
+            ProficiencyScaleRead(
+                standard_code=_required_text(row, "standard_code"),
+                standard_text=_required_text(row, "standard_text"),
+                literacy_type=_optional_text(row, "literacy_type"),
+                focus_area=_optional_text(row, "focus_area"),
+                category=_optional_text(row, "category"),
+                levels=_levels(row),
+            )
+            for row in scale_rows
+        ],
+    )
 
 
 @router.get(
