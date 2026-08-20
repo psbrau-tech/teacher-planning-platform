@@ -54,6 +54,40 @@ jobs:
                   f"{resolved.observed_version or ''}"
               )
           PY
+      - name: Resolve and parse current ALSDE ELA proficiency scales read-only
+        run: |
+          python - <<'PY'
+          from app.standards_ingest import extract_document, fetch_source
+          from app.standards_proficiency import parse_alabama_ela_proficiency
+          from app.standards_sources import resolve_authoritative_document
+
+          landing_url = "https://english-language-arts.alsde.edu/proficiency-scales"
+          print("proficiency_database_writes=0")
+          for grade in range(6, 13):
+              resolver_key = f"alabama_ela_proficiency_grade_{grade}_current"
+              parser_key = f"alabama_ela_proficiency_grade_{grade}"
+              resolved = resolve_authoritative_document(resolver_key, landing_url)
+              fetched = fetch_source(resolved.document_url, "pdf")
+              extracted = extract_document(fetched)
+              parsed = parse_alabama_ela_proficiency(parser_key, extracted)
+
+              if parsed.grade_band != str(grade):
+                  raise RuntimeError(
+                      f"Grade {grade} proficiency source parsed as {parsed.grade_band}"
+                  )
+              codes = [scale.standard_code for scale in parsed.scales]
+              if not codes or len(codes) != len(set(codes)):
+                  raise RuntimeError(
+                      f"Grade {grade} proficiency source has invalid standard codes"
+                  )
+
+              print(
+                  "verified_proficiency="
+                  f"grade_{grade}|{resolved.document_url}|"
+                  f"{resolved.observed_version or ''}|{fetched.source_sha256}|"
+                  f"{parsed.parser_version}|{len(parsed.scales)}"
+              )
+          PY
       - name: Discover and parse current Alabama standards read-only
         run: |
           python - <<'PY'
