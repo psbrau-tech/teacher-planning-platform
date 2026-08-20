@@ -154,6 +154,15 @@ function standardGroup(standard: StandardEntry): string {
   return "Additional standards";
 }
 
+function mappedGradeLabel(catalog: AssignmentStandards): string | null {
+  const rawGrade = (catalog.catalog_course?.grade_band ?? catalog.course?.grade_band ?? "").trim();
+  if (!rawGrade) return null;
+  const numericGrade = Number(rawGrade);
+  if (Number.isInteger(numericGrade) && numericGrade >= 0) return `Grade ${numericGrade} Standards`;
+  if (/^grade\s+/i.test(rawGrade)) return `${rawGrade} Standards`;
+  return null;
+}
+
 function sourceLabel(source: StandardSource): string {
   return source.relationship === "supplemental_authority"
     ? `${source.authority} · supplemental authoritative curriculum`
@@ -295,6 +304,11 @@ export function StandardsPanel({
     return Array.from(groups.entries());
   }, [visibleStandards]);
 
+  const standardsGradeLabel = useMemo(
+    () => (catalog ? mappedGradeLabel(catalog) : null),
+    [catalog],
+  );
+
   const toggle = (standardId: string) => {
     setSelected((current) => {
       const next = new Set(current);
@@ -390,7 +404,10 @@ export function StandardsPanel({
         {selectedEntries.length > 0 ? <p className="guidance-text"><strong>Selected for this week:</strong> {selectedEntries.map((item) => item.code).join(", ")}</p> : null}
         <details className="standards-browser" open={browseOpen} onToggle={(event) => setBrowseOpen(event.currentTarget.open)}>
           <summary>Browse all approved standards ({catalog.standards.length})</summary>
-          {browseOpen ? <><label className="standards-search">Search standards<input type="search" value={query} placeholder="Search by code, wording, strand, or source" onChange={(event) => setQuery(event.target.value)} /></label>{groupedStandards.length === 0 ? <div className="empty-state"><p>No standards match this search.</p></div> : groupedStandards.map(([group, standards]) => <details className="standard-group" key={group} open={Boolean(query.trim())}><summary>{group} ({standards.length})</summary><div className="standard-list">{standards.map(renderStandard)}</div></details>)}</> : null}
+          {browseOpen ? <>
+            <label className="standards-search">Search standards<input type="search" value={query} placeholder="Search by code, wording, strand, or source" onChange={(event) => setQuery(event.target.value)} /></label>
+            {visibleStandards.length === 0 ? <div className="empty-state"><p>No standards match this search.</p></div> : standardsGradeLabel ? <details className="standard-group" open><summary>{standardsGradeLabel} ({visibleStandards.length})</summary><div className="standard-list">{visibleStandards.map(renderStandard)}</div></details> : groupedStandards.map(([group, standards]) => <details className="standard-group" key={group} open={Boolean(query.trim())}><summary>{group} ({standards.length})</summary><div className="standard-list">{standards.map(renderStandard)}</div></details>)}
+          </> : null}
         </details>
         <p className="guidance-text">Select only the standards that apply this week. Exact approved wording and source provenance are preserved.</p>
         <div className="button-row"><button type="button" className="primary" onClick={() => void save()} disabled={saving}>{saving ? "Saving standards…" : "Save standards and continue"}</button><span>{selectedEntries.length} selected</span></div>
