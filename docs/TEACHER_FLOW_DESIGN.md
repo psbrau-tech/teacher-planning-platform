@@ -48,9 +48,8 @@ workflow, supports reuse, and integrates the planning steps into one coherent pr
    should be reused downstream.
 2. **The teacher owns instructional judgment.** TPP may organize, suggest, unpack, and draft; the
    teacher decides what becomes the plan.
-3. **The schedule is the normal source of instructional minutes.** A curriculum lesson does not need
-   a required duration when the teacher has already configured a period/block schedule. Duration is
-   an optional override for unusual lessons.
+3. **One pacing lesson equals one class day.** The configured period/block schedule supplies that
+   day&apos;s instructional minutes. Pacing rows are not split across meetings or combined within a day.
 4. **Standards should be relevant before they are exhaustive.** The weekly screen should surface
    likely standards based on the imported lessons actually scheduled that week while preserving
    searchable access to the full approved course catalog.
@@ -105,14 +104,12 @@ flowchart TD
 
 A curriculum establishes the instructional sequence. Normal lesson rows contain:
 
-`Unit | Lesson | Standards | Learning targets | Assessment | Optional minutes override`
+`Unit | Lesson | Standards | Learning targets | Assessment`
 
-The final duration field is optional. When it is blank, weekly planning uses the instructional time
-from the teaching assignment's meeting pattern. An explicit duration remains available for a lesson
-that intentionally spans multiple meetings or should consume a different amount of time.
-
-The importer continues to recognize the earlier pilot row format so teacher-prepared text is not
-silently broken during the transition.
+Each row represents one day the class meets. Weekly planning uses the instructional time from the
+teaching assignment&apos;s meeting pattern for that date. The importer continues to recognize earlier
+pilot workbooks, but any historical lesson-minute column is ignored so old files cannot reintroduce
+multi-day splitting.
 
 ## 2. Course schedule
 
@@ -124,9 +121,8 @@ The teaching assignment supplies the normal instructional-time contract:
 - effective dates;
 - rotation label where applicable.
 
-For a curriculum lesson without a duration override, one scheduled lesson consumes the available
-instructional time for that meeting and the next curriculum lesson advances to the next eligible
-instructional meeting.
+One scheduled lesson consumes the eligible class day and uses that day&apos;s available instructional
+minutes. The next curriculum lesson advances to the next eligible instructional day.
 
 ## 3. Weekly schedule and exceptions
 

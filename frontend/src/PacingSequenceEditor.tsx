@@ -8,7 +8,6 @@ export type PacingInitialRow = {
   lesson: string;
   targets: string;
   assessment: string;
-  minutes: string;
 };
 
 type PacingRow = PacingInitialRow & { id: number };
@@ -21,7 +20,7 @@ type Props = {
 };
 
 function blankRow(id: number): PacingRow {
-  return { id, unit: "", lesson: "", targets: "", assessment: "", minutes: "" };
+  return { id, unit: "", lesson: "", targets: "", assessment: "" };
 }
 
 function rowsFromInitial(initialRows: PacingInitialRow[] | undefined): PacingRow[] {
@@ -36,10 +35,9 @@ function serialize(rows: PacingRow[]): string {
       || row.lesson.trim()
       || row.targets.trim()
       || row.assessment.trim()
-      || row.minutes.trim()
     ))
     .map((row) => (
-      [row.unit, row.lesson, row.targets, row.assessment, row.minutes]
+      [row.unit, row.lesson, row.targets, row.assessment]
         .map((value) => value.trim())
         .join(" | ")
     ))
@@ -146,7 +144,7 @@ export function PacingSequenceEditor({
       <div className="section-heading compact">
         <div>
           <strong>Pacing sequence</strong>
-          <p className="supporting">Authoritative standards are selected later in Weekly Plan; you do not need standards codes here.</p>
+          <p className="supporting">Each pacing lesson equals one day of class. Authoritative standards are selected later in Weekly Plan; you do not need standards codes here.</p>
         </div>
         <div className="button-row">
           {allowExcelImport && (
@@ -206,7 +204,6 @@ export function PacingSequenceEditor({
                   <th>Lesson / Focus</th>
                   <th>Learning Target(s)</th>
                   <th>Assessment / Evidence</th>
-                  <th>Minutes override</th>
                 </tr>
               </thead>
               <tbody>
@@ -217,7 +214,6 @@ export function PacingSequenceEditor({
                     <td>{row.lesson || "—"}</td>
                     <td>{row.targets || "—"}</td>
                     <td>{row.assessment || "—"}</td>
-                    <td>{row.minutes || "Schedule"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -311,17 +307,6 @@ export function PacingSequenceEditor({
                       onChange={(event) => update(row.id, "assessment", event.target.value)}
                     />
                     <CharacterCounter id={assessmentCounterId} value={row.assessment} limit={PACING_LIMITS.assessment} />
-                  </label>
-                  <label>
-                    Optional minutes override
-                    <input
-                      type="number"
-                      min="1"
-                      value={row.minutes}
-                      disabled={disabled || locked}
-                      placeholder="Leave blank for normal class time"
-                      onChange={(event) => update(row.id, "minutes", event.target.value)}
-                    />
                   </label>
                 </div>
               </article>

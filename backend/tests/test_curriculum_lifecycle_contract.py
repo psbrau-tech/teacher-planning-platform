@@ -1,3 +1,5 @@
+import re
+from base64 import b64decode
 from io import BytesIO
 from pathlib import Path
 from xml.etree import ElementTree
@@ -80,8 +82,24 @@ def test_saved_curriculum_export_is_a_real_xlsx_with_current_rows() -> None:
     sheet = sheet_xml.decode("utf-8")
     assert "Introduction to JROTC" in sheet
     assert "Cadet responsibilities" in sheet
-    assert "Optional Minutes Override" in sheet
-    assert "75" in sheet
+    assert "Optional Minutes Override" not in sheet
+    assert "75" not in sheet
+
+
+def test_downloadable_pacing_template_has_no_minutes_column() -> None:
+    source = (FRONTEND / "pacingTemplate.ts").read_text(encoding="utf-8")
+    encoded = re.search(r'PACING_TEMPLATE_BASE64 = "([^"]+)"', source)
+    assert encoded is not None
+
+    with ZipFile(BytesIO(b64decode(encoded.group(1)))) as archive:
+        assert archive.testzip() is None
+        sheet = archive.read("xl/worksheets/sheet1.xml").decode("utf-8")
+
+    assert "Unit / Topic" in sheet
+    assert "Lesson / Focus" in sheet
+    assert "Learning Target(s)" in sheet
+    assert "Assessment / Evidence" in sheet
+    assert "Minutes" not in sheet
 
 
 def test_noncontiguous_repeated_unit_titles_preserve_teacher_sequence() -> None:
@@ -101,7 +119,7 @@ def test_noncontiguous_repeated_unit_titles_preserve_teacher_sequence() -> None:
     ] == [1, 2, 3]
 
 
-def test_locked_curriculum_comparison_ignores_internal_can_split_default() -> None:
+def test_locked_curriculum_comparison_ignores_retired_minutes_and_split_fields() -> None:
     stored = _StoredLesson(
         sequence=1,
         unit_title="Introduction",
@@ -116,7 +134,7 @@ def test_locked_curriculum_comparison_ignores_internal_can_split_default() -> No
         sequence=1,
         unit_title="Introduction",
         lesson_title="Course orientation and expectations",
-        estimated_minutes=50,
+        estimated_minutes=None,
         standards=(),
         learning_targets=("Explain course expectations",),
         assessment="Exit ticket",
@@ -139,14 +157,20 @@ def test_locked_curriculum_comparison_ignores_internal_can_split_default() -> No
     )
 
 
-def test_blank_pacing_minutes_are_persisted_as_schedule_derived() -> None:
-    migration = (
-        MIGRATIONS / "20260811030300_curriculum_pacing_optional_minutes.sql"
-    ).read_text(encoding="utf-8")
+def test_pacing_ui_and_exports_use_one_lesson_per_class_day() -> None:
     setup = (FRONTEND / "CourseSetupPanel.tsx").read_text(encoding="utf-8")
-    assert "alter column estimated_minutes drop not null" in migration.lower()
-    assert "NULL means use the teaching assignment schedule" in migration
-    assert "Leave the optional minutes override blank to use the saved class schedule" in setup
+    editor = (FRONTEND / "PacingSequenceEditor.tsx").read_text(encoding="utf-8")
+    importer = (FRONTEND / "pacingWorkbookImport.ts").read_text(encoding="utf-8")
+    parser = (FRONTEND / "curriculumRows.ts").read_text(encoding="utf-8")
+    api = (ROOT / "backend" / "app" / "curriculum_api.py").read_text(encoding="utf-8")
+
+    assert "Each pacing lesson equals one day of class." in setup
+    assert "Each pacing lesson equals one day of class." in editor
+    assert "Optional minutes override" not in editor
+    assert "Minutes override" not in editor
+    assert "minutesColumn" not in importer
+    assert "estimated_minutes: null" in parser
+    assert '"Optional Minutes Override"' not in api
 
 
 def test_current_year_curriculum_edit_uses_copy_on_write_and_teacher_owned_switch() -> None:

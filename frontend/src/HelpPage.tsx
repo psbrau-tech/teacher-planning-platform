@@ -64,8 +64,8 @@ export function HelpPage({ roles }: Props) {
               <strong> Upload Excel</strong>, <strong>Build in TPP</strong>, or
               <strong> Reuse mine</strong>. Upload Excel reads the workbook into a compact review;
               then choose <strong>Save Curriculum & Pacing & Continue</strong>. Nothing is saved
-              merely by selecting the file. Leave Optional Minutes Override blank to use the class
-              schedule.
+              merely by selecting the file. Each pacing lesson equals one day the class meets;
+              TPP uses that day&apos;s saved class schedule for instructional minutes.
             </p>
             <p>
               <strong>If you build pacing in TPP.</strong> Start with a complete first instructional

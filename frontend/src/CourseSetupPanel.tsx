@@ -159,7 +159,6 @@ function detailRows(detail: CurriculumDetail): PacingInitialRow[] {
     lesson: lesson.lesson_title,
     targets: lesson.learning_targets.join("; "),
     assessment: lesson.assessment,
-    minutes: lesson.estimated_minutes === null ? "" : String(lesson.estimated_minutes),
   }));
 }
 
@@ -743,10 +742,11 @@ export function CourseSetupPanel({
           </label>
           <PacingSequenceEditor disabled={disabled || working} />
           <div className="guidance-card full-width">
-            <strong>Normal lesson minutes come from the class schedule.</strong>
+            <strong>Each pacing lesson equals one day of class.</strong>
             <p>
-              Leave the optional minutes override blank to use the saved class schedule. Enter a
-              value only when a lesson intentionally uses a different duration.
+              Add one lesson row for every day the class should meet. TPP uses the saved class
+              schedule for that day&apos;s instructional minutes and does not split one row across
+              multiple days.
             </p>
           </div>
           <div className="form-actions full-width">
