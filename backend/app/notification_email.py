@@ -17,6 +17,10 @@ from .settings import (
 class SesDeliveryError(RuntimeError):
     """A bounded SES delivery failure safe to surface without leaking provider details."""
 
+    def __init__(self, message: str, *, provider_code: str) -> None:
+        super().__init__(message)
+        self.provider_code = provider_code
+
 
 @dataclass(frozen=True, slots=True)
 class WeeklyAdminDigestMetrics:
@@ -77,13 +81,25 @@ def _validated_delivery_addresses(
     reply_to = settings.ses_reply_to_email.strip().lower()
     recipient = recipient_email.strip().lower()
     if not sender:
-        raise SesDeliveryError("Email notifications are not configured for this environment")
+        raise SesDeliveryError(
+            "Email notifications are not configured for this environment",
+            provider_code="SenderNotConfigured",
+        )
     if sender != APPROVED_SES_FROM_EMAIL:
-        raise SesDeliveryError("Configured email sender does not match the approved TPP sender")
+        raise SesDeliveryError(
+            "Configured email sender does not match the approved TPP sender",
+            provider_code="SenderNotApproved",
+        )
     if reply_to != APPROVED_SES_REPLY_TO_EMAIL:
-        raise SesDeliveryError("Configured email Reply-To does not match the approved TPP mailbox")
+        raise SesDeliveryError(
+            "Configured email Reply-To does not match the approved TPP mailbox",
+            provider_code="ReplyToNotApproved",
+        )
     if not recipient or not settings.email_is_allowed(recipient):
-        raise SesDeliveryError("Email recipient is outside the governed TPP account boundary")
+        raise SesDeliveryError(
+            "Email recipient is outside the governed TPP account boundary",
+            provider_code="RecipientNotAllowed",
+        )
     return sender, reply_to, recipient
 
 
@@ -109,13 +125,30 @@ def _send_text_email(
                 }
             },
         )
-    except (BotoCoreError, ClientError) as error:
-        raise SesDeliveryError(f"{failure_label} could not be delivered") from error
+    except ClientError as error:
+        raw_code = error.response.get("Error", {}).get("Code", "SesClientError")
+        provider_code = (
+            raw_code
+            if isinstance(raw_code, str) and raw_code.replace("_", "").isalnum()
+            else "SesClientError"
+        )
+        raise SesDeliveryError(
+            f"{failure_label} could not be delivered",
+            provider_code=provider_code,
+        ) from error
+    except BotoCoreError as error:
+        raise SesDeliveryError(
+            f"{failure_label} could not be delivered",
+            provider_code=type(error).__name__,
+        ) from error
 
     response = cast(dict[str, Any], raw_response)
     message_id = response.get("MessageId")
     if not isinstance(message_id, str) or not message_id.strip():
-        raise SesDeliveryError(f"{failure_label} returned no delivery identifier")
+        raise SesDeliveryError(
+            f"{failure_label} returned no delivery identifier",
+            provider_code="MissingMessageId",
+        )
     return message_id.strip()
 
 
@@ -283,7 +316,8 @@ def send_teacher_friday_reminder(
 ) -> str:
     if not items:
         raise SesDeliveryError(
-            "Teacher Friday reminder has no outstanding professional submissions"
+            "Teacher Friday reminder has no outstanding professional submissions",
+            provider_code="NoOutstandingItems",
         )
     return _send_text_email(
         settings,

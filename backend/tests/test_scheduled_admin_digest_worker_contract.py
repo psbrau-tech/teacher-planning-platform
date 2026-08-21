@@ -223,6 +223,75 @@ def test_teacher_worker_sends_only_claimed_outstanding_courses(
     assert result["failed"] == 0
 
 
+def test_teacher_worker_logs_only_aggregate_ses_failure_code(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    settings = Settings(
+        ses_from_email=APPROVED_SES_FROM_EMAIL,
+        supabase_url="https://example.supabase.co",
+        supabase_service_role_key="service-role-placeholder",
+        allowed_email_domains="anniston.k12.al.us",
+    )
+    candidate: dict[str, Any] = {
+        "delivery_id": "claim-1",
+        "school_id": SCHOOL_ID,
+        "recipient_email": "teacher@anniston.k12.al.us",
+        "recipient_display_name": "Teacher Example",
+        "outstanding_items": [
+            {
+                "course_name": "Course Six",
+                "missing_current_closeout": False,
+                "missing_next_plan": True,
+            }
+        ],
+    }
+    fake_client = object()
+    week_start = datetime(2026, 8, 10).date()
+
+    monkeypatch.setattr(worker, "_service_client", lambda _settings: fake_client)
+    monkeypatch.setattr(
+        worker,
+        "_dispatch_windows",
+        lambda _client, *, mode, now: (
+            worker.SchoolDispatchWindow(
+                school_id=SCHOOL_ID,
+                timezone="America/Chicago",
+                week_start=week_start,
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        worker,
+        "_claim_teacher_candidates",
+        lambda _client, *, school_id, week_start: [candidate],
+    )
+    monkeypatch.setattr(
+        worker,
+        "send_teacher_friday_reminder",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            worker.SesDeliveryError(
+                "bounded delivery failure",
+                provider_code="AccessDeniedException",
+            )
+        ),
+    )
+    monkeypatch.setattr(worker, "_complete_delivery", lambda *args, **kwargs: None)
+
+    result = worker.run_teacher_friday_reminders(
+        settings,
+        now=datetime(2026, 8, 14, 19, 0, tzinfo=UTC),
+    )
+    output = capsys.readouterr().out
+
+    assert result["failed"] == 1
+    assert "candidate_data_failed=0" in output
+    assert "ses_failure_codes=AccessDeniedException:1" in output
+    assert "teacher@anniston.k12.al.us" not in output
+    assert "Teacher Example" not in output
+    assert "Course Six" not in output
+
+
 def test_delivery_ledger_becomes_school_scoped_and_content_minimized() -> None:
     foundation = DELIVERY_MIGRATION.read_text(encoding="utf-8")
     multi_school = MULTI_SCHOOL_MIGRATION.read_text(encoding="utf-8")

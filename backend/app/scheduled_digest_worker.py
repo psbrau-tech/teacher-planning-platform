@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, cast
@@ -287,6 +288,8 @@ def run_teacher_friday_reminders(
     claimed = 0
     sent = 0
     failed = 0
+    ses_failure_codes: Counter[str] = Counter()
+    candidate_data_failures = 0
     for window in windows:
         candidates = _claim_teacher_candidates(
             client,
@@ -311,7 +314,13 @@ def run_teacher_friday_reminders(
                     next_week_start=window.week_start + timedelta(days=7),
                     items=_teacher_items(row),
                 )
-            except (SesDeliveryError, ScheduledDigestWorkerError):
+            except SesDeliveryError as error:
+                ses_failure_codes[error.provider_code] += 1
+                _complete_delivery(client, delivery_id=delivery_id, success=False)
+                failed += 1
+                continue
+            except ScheduledDigestWorkerError:
+                candidate_data_failures += 1
                 _complete_delivery(client, delivery_id=delivery_id, success=False)
                 failed += 1
                 continue
@@ -325,6 +334,14 @@ def run_teacher_friday_reminders(
         f"claimed={claimed}",
         f"sent={sent}",
         f"failed={failed}",
+        f"candidate_data_failed={candidate_data_failures}",
+        "ses_failure_codes="
+        + (
+            ",".join(
+                f"{code}:{count}" for code, count in sorted(ses_failure_codes.items())
+            )
+            or "none"
+        ),
     )
     return {
         "school_windows": len(windows),
@@ -349,6 +366,8 @@ def run_scheduled_admin_digest(
     claimed = 0
     sent = 0
     failed = 0
+    ses_failure_codes: Counter[str] = Counter()
+    candidate_data_failures = 0
     for window in windows:
         candidates = _claim_admin_candidates(
             client,
@@ -369,7 +388,13 @@ def run_scheduled_admin_digest(
                     recipient_email=recipient,
                     metrics=_admin_metrics(row, week_start=window.week_start),
                 )
-            except (SesDeliveryError, ScheduledDigestWorkerError):
+            except SesDeliveryError as error:
+                ses_failure_codes[error.provider_code] += 1
+                _complete_delivery(client, delivery_id=delivery_id, success=False)
+                failed += 1
+                continue
+            except ScheduledDigestWorkerError:
+                candidate_data_failures += 1
                 _complete_delivery(client, delivery_id=delivery_id, success=False)
                 failed += 1
                 continue
@@ -382,6 +407,14 @@ def run_scheduled_admin_digest(
         f"claimed={claimed}",
         f"sent={sent}",
         f"failed={failed}",
+        f"candidate_data_failed={candidate_data_failures}",
+        "ses_failure_codes="
+        + (
+            ",".join(
+                f"{code}:{count}" for code, count in sorted(ses_failure_codes.items())
+            )
+            or "none"
+        ),
     )
     return {
         "school_windows": len(windows),
