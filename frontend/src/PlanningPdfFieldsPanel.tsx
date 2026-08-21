@@ -1,3 +1,5 @@
+import { useState, type PointerEvent as ReactPointerEvent } from "react";
+
 type Props = {
   draft: Record<string, string>;
   disabled?: boolean;
@@ -20,6 +22,66 @@ const COMPONENTS = [
   ["sic", "Strong instructional culture"],
   ["esl", "Evidence of student learning"],
 ] as const;
+
+const MIN_MATRIX_ROW_HEIGHT = 92;
+const RESIZE_GRIP_SIZE = 20;
+
+type WeekAtGlanceRowProps = Props & {
+  label: string;
+  prefix: string;
+};
+
+function WeekAtGlanceRow({ draft, disabled = false, label, onChange, prefix }: WeekAtGlanceRowProps) {
+  const [rowHeight, setRowHeight] = useState<number | null>(null);
+
+  function setField(key: string, value: string) {
+    onChange({ ...draft, [key]: value });
+  }
+
+  function beginRowResize(event: ReactPointerEvent<HTMLTextAreaElement>) {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const isResizeGrip = bounds.right - event.clientX <= RESIZE_GRIP_SIZE
+      && bounds.bottom - event.clientY <= RESIZE_GRIP_SIZE;
+    if (!isResizeGrip) return;
+
+    const startY = event.clientY;
+    const startHeight = bounds.height;
+    const resizeRow = (pointerEvent: PointerEvent) => {
+      setRowHeight(Math.max(MIN_MATRIX_ROW_HEIGHT, startHeight + pointerEvent.clientY - startY));
+    };
+    const finishResize = () => {
+      window.removeEventListener("pointermove", resizeRow);
+      window.removeEventListener("pointerup", finishResize);
+      window.removeEventListener("pointercancel", finishResize);
+    };
+
+    window.addEventListener("pointermove", resizeRow);
+    window.addEventListener("pointerup", finishResize);
+    window.addEventListener("pointercancel", finishResize);
+  }
+
+  return (
+    <tr className="week-at-glance-component-row" style={rowHeight ? { height: `${rowHeight}px` } : undefined}>
+      <th scope="row">{label}</th>
+      {DAYS.map(([suffix, dayLabel]) => {
+        const key = `${prefix}_${suffix}`;
+        return (
+          <td key={key}>
+            <textarea
+              aria-label={`${dayLabel} — ${label}`}
+              rows={4}
+              value={draft[key] ?? ""}
+              disabled={disabled}
+              style={rowHeight ? { height: `${rowHeight}px` } : undefined}
+              onPointerDown={beginRowResize}
+              onChange={(event) => setField(key, event.target.value)}
+            />
+          </td>
+        );
+      })}
+    </tr>
+  );
+}
 
 export function PlanningPdfFieldsPanel({ draft, disabled = false, onChange }: Props) {
   function setField(key: string, value: string) {
@@ -68,23 +130,14 @@ export function PlanningPdfFieldsPanel({ draft, disabled = false, onChange }: Pr
             </thead>
             <tbody>
               {COMPONENTS.map(([prefix, label]) => (
-                <tr key={prefix}>
-                  <th scope="row">{label}</th>
-                  {DAYS.map(([suffix, dayLabel]) => {
-                    const key = `${prefix}_${suffix}`;
-                    return (
-                      <td key={key}>
-                        <textarea
-                          aria-label={`${dayLabel} — ${label}`}
-                          rows={4}
-                          value={draft[key] ?? ""}
-                          disabled={disabled}
-                          onChange={(event) => setField(key, event.target.value)}
-                        />
-                      </td>
-                    );
-                  })}
-                </tr>
+                <WeekAtGlanceRow
+                  key={prefix}
+                  draft={draft}
+                  disabled={disabled}
+                  label={label}
+                  prefix={prefix}
+                  onChange={onChange}
+                />
               ))}
             </tbody>
           </table>

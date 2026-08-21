@@ -1,7 +1,9 @@
 import json
+from datetime import date
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException
 
 from app.reflection_intelligence import (
     ReflectionBoundaryError,
@@ -12,6 +14,7 @@ from app.reflection_intelligence import (
     teacher_ai_context,
     validate_school_brief,
 )
+from app.reflection_intelligence_api import _require_complete_teacher_week
 
 ROOT = Path(__file__).resolve().parents[2]
 MIGRATION = (
@@ -32,6 +35,43 @@ def reflection_json(**overrides: str) -> str:
     values = {f"reflect_{index}": f"Class-level response {index}" for index in range(1, 13)}
     values.update(overrides)
     return json.dumps(values)
+
+
+class FridayStatusClient:
+    def __init__(self, rows: list[dict[str, object]]) -> None:
+        self.rows = rows
+
+    def request(
+        self,
+        method: str,
+        path: str,
+        *,
+        payload: dict[str, object],
+    ) -> list[dict[str, object]]:
+        assert method == "POST"
+        assert path == "rpc/teacher_friday_submission_status"
+        assert payload == {"target_week_start": "2026-08-17"}
+        return self.rows
+
+
+def test_teacher_recap_waits_for_every_required_class_packet() -> None:
+    complete = FridayStatusClient(
+        [
+            {"current_week_required": True, "current_packet_submitted": True},
+            {"current_week_required": True, "current_packet_submitted": True},
+            {"current_week_required": False, "current_packet_submitted": False},
+        ]
+    )
+    _require_complete_teacher_week(complete, date(2026, 8, 17))  # type: ignore[arg-type]
+
+    incomplete = FridayStatusClient(
+        [
+            {"current_week_required": True, "current_packet_submitted": True},
+            {"current_week_required": True, "current_packet_submitted": False},
+        ]
+    )
+    with pytest.raises(HTTPException, match="every required class"):
+        _require_complete_teacher_week(incomplete, date(2026, 8, 17))  # type: ignore[arg-type]
 
 
 def test_reflection_source_is_immutable_submitted_teacher_content_only() -> None:

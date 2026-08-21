@@ -33,7 +33,7 @@ The **PLC Meeting Guide** follows the summary and uses it as the evidence base f
 
 ## Teacher Friday Reflection Insights
 
-Private Reflection Insights remain optional **Step 4** after the Completed Weekly Packet has been reviewed and before **Step 5 Continue**. The controls and generated recap now render inline inside Step 4 rather than opening a separate right-side panel.
+Private Reflection Insights remain optional **Step 4** after all required class closeouts for the selected week have been submitted and before **Step 5 Continue**. Earlier class closeouts retain **Step 4 Continue** without recommending or enabling a recap. The controls and generated combined recap render inline only on the final required closeout rather than opening a separate right-side panel or creating redundant AI requests.
 
 The privacy and professional-learning boundary is unchanged. The recap uses only the teacher's own submitted professional reflections, requires the existing no-student-data confirmation, does not alter the teacher-authored reflection, and is not a teacher-performance score.
 

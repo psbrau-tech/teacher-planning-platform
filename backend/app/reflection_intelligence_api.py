@@ -118,6 +118,26 @@ def _boundary_error(error: ReflectionBoundaryError) -> HTTPException:
     )
 
 
+def _require_complete_teacher_week(client: SupabaseRestClient, week_start: date) -> None:
+    """Prevent a recap request until every required class packet for the week is submitted."""
+    rows = _source_rows(
+        client,
+        "teacher_friday_submission_status",
+        {"target_week_start": week_start.isoformat()},
+    )
+    required_rows = [row for row in rows if row.get("current_week_required") is True]
+    if not required_rows or any(
+        row.get("current_packet_submitted") is not True for row in required_rows
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Submit the Friday closeout for every required class before generating the "
+                "combined private reflection recap."
+            ),
+        )
+
+
 @router.post("/teacher/{week_start}", response_model=TeacherInsightRead)
 def generate_teacher_insight(
     week_start: date,
@@ -127,6 +147,7 @@ def generate_teacher_insight(
 ) -> TeacherInsightRead:
     """Generate a private recap from the teacher's own immutable submitted reflections."""
     client = _client(identity, settings)
+    _require_complete_teacher_week(client, week_start)
     rows = _source_rows(
         client,
         "teacher_reflection_intelligence_source",

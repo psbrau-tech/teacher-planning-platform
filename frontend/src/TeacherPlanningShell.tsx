@@ -243,2143 +243,719 @@ function StepMarker({
 }) {
   return (
     <div className={`setup-step-marker ${complete ? "complete" : ""} ${active ? "active" : ""}`}>
-      <span className="step-number" aria-hidden="true">{complete ? "âœ“" : number}</span>
-      <span><strong>Step {number}</strong><small>{title}</small></span>
-    </div>
-  );
-}
-
-function WeekSelector({
-  value,
-  disabled,
-  onChange,
-}: {
-  value: string;
-  disabled?: boolean;
-  onChange: (week: string) => void;
-}) {
-  return (
-    <div className="week-selector">
-      <button
-        type="button"
-        className="secondary"
-        disabled={disabled}
-        onClick={() => onChange(addDays(value, -7))}
-      >
-        â† Previous week
-      </button>
-      <label>
-        Week of (Monday)
-        <input
-          type="date"
-          value={value}
-          disabled={disabled}
-          onChange={(event) => onChange(mondayForIso(event.target.value))}
-        />
-      </label>
-      <button
-        type="button"
-        className="secondary"
-        disabled={disabled}
-        onClick={() => onChange(addDays(value, 7))}
-      >
-        Next week â†’
-      </button>
-    </div>
-  );
-}
-
-export function TeacherPlanningShell() {
-  const initialView: View = window.location.pathname.replace(/\/+$/, "") === "/help"
-    ? "help"
-    : "dashboard";
-  const [session, setSession] = useState<Session | null>(null);
-  const [identity, setIdentity] = useState<Identity | null>(null);
-  const [curricula, setCurricula] = useState<Curriculum[]>([]);
-  const [assignments, setAssignments] = useState<Assignment[]>([]);
-  const [view, setView] = useState<View>(initialView);
-  const [selectedAssignmentId, setSelectedAssignmentId] = useState("");
-  const [weekStart, setWeekStart] = useState(mondayFor());
-  const [plan, setPlan] = useState<PlannedLesson[]>([]);
-  const [weekCurriculumConfirmed, setWeekCurriculumConfirmed] = useState(false);
-  const [carryForwardLessonIds, setCarryForwardLessonIds] = useState<string[]>([]);
-  const [scheduleExceptions, setScheduleExceptions] = useState<ScheduleException[]>([]);
-  const [savedStandardsCount, setSavedStandardsCount] = useState(0);
-  const [weekStandardsEditing, setWeekStandardsEditing] = useState(false);
-  const [planningAssistComplete, setPlanningAssistComplete] = useState(false);
-  const [planningAssistEditing, setPlanningAssistEditing] = useState(false);
-  const [planReviewOpen, setPlanReviewOpen] = useState(true);
-  const [pdfReviewed, setPdfReviewed] = useState(false);
-  const [completedPacketSubmitted, setCompletedPacketSubmitted] = useState(false);
-  const [completedPacketReviewed, setCompletedPacketReviewed] = useState(false);
-  const [draft, setDraftState] = useState<Record<string, string>>(emptyDraft);
-  const [draftRevision, setDraftRevision] = useState<number | null>(null);
-  const [draftDirty, setDraftDirty] = useState(false);
-  const [draftSubmissionStatus, setDraftSubmissionStatus] = useState<SubmissionStatus>("not_submitted");
-  const [draftSubmittedAt, setDraftSubmittedAt] = useState<string | null>(null);
-  const [validations, setValidations] = useState<Record<string, ValidationEntry>>({});
-  const [validationFinalized, setValidationFinalized] = useState(false);
-  const [validationRevision, setValidationRevision] = useState<number | null>(null);
-  const [standardsMappingVersion, setStandardsMappingVersion] = useState(0);
-  const [documentWorking, setDocumentWorking] = useState<DocumentKind | null>(null);
-  const [pdfPreview, setPdfPreview] = useState<{ url: string; title: string } | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-
-  const isTeacher = identity?.roles.includes("teacher") ?? false;
-  const isSchoolAdmin = identity?.roles.includes("school_admin") ?? false;
-  const isDistrictAdmin = identity?.roles.includes("district_admin") ?? false;
-  const isPlatformAdmin = identity?.roles.includes("platform_admin") ?? false;
-  const canViewAdministration = isSchoolAdmin || isDistrictAdmin || isPlatformAdmin;
-  const selectedAssignment = useMemo(
-    () => assignments.find((assignment) => assignment.id === selectedAssignmentId) ?? null,
-    [assignments, selectedAssignmentId],
-  );
-  const dashboardAssignments = useMemo(
-    () => [...assignments].sort((a, b) => {
-      const aTime = a.meeting_patterns[0]?.start_time ?? "";
-      const bTime = b.meeting_patterns[0]?.start_time ?? "";
-      if (!aTime && bTime) return 1;
-      if (aTime && !bTime) return -1;
-      return aTime.localeCompare(bTime) || a.course_name.localeCompare(b.course_name);
-    }),
-    [assignments],
-  );
-  const selectedAssignmentReady = Boolean(selectedAssignment?.curriculum_id);
-  const savedForReview = Boolean(draftRevision && !draftDirty);
-  const reflectionIsComplete = reflectionComplete(draft.reflection);
-
-  function updateDraft(next: React.SetStateAction<Record<string, string>>) {
-    setDraftDirty(true);
-    setPdfReviewed(false);
-    setPlanReviewOpen(true);
-    setDraftState(next);
-  }
-
-  function clearPlanningContext(assignment: Assignment | null, nextWeek: string) {
-    setPlan([]);
-    setWeekCurriculumConfirmed(false);
-    setCarryForwardLessonIds([]);
-    setScheduleExceptions([]);
-    setSavedStandardsCount(0);
-    setWeekStandardsEditing(false);
-    setPlanningAssistComplete(false);
-    setPlanningAssistEditing(false);
-    setPlanReviewOpen(true);
-    setPdfReviewed(false);
-    setCompletedPacketSubmitted(false);
-    setCompletedPacketReviewed(false);
-    setValidations({});
-    setValidationFinalized(false);
-    setValidationRevision(null);
-    setDraftRevision(null);
-    setDraftSubmissionStatus("not_submitted");
-    setDraftSubmittedAt(null);
-    setDraftState({
-      ...emptyDraft,
-      teacher: identity?.display_name ?? "",
-      course: assignment?.course_name ?? "",
-      grade: assignment?.grade_band ?? "",
-      week_of: nextWeek,
-    });
-    setDraftDirty(false);
-  }
-
-  function selectPlanningAssignment(assignmentId: string) {
-    const assignment = assignments.find((item) => item.id === assignmentId) ?? null;
-    setSelectedAssignmentId(assignmentId);
-    clearPlanningContext(assignment, weekStart);
-    setError("");
-    setMessage("");
-  }
-
-  function selectPlanningWeek(nextWeek: string) {
-    const monday = mondayForIso(nextWeek);
-    setWeekStart(monday);
-    clearPlanningContext(selectedAssignment, monday);
-    setError("");
-    setMessage(nextWeek !== monday ? `Planning weeks always begin Monday. Week set to ${monday}.` : "");
-  }
-
-  function openFridayCloseout(assignmentId = selectedAssignmentId) {
-    const assignment = assignments.find((item) => item.id === assignmentId) ?? null;
-    const currentWeek = mondayFor();
-    setSelectedAssignmentId(assignmentId);
-    setWeekStart(currentWeek);
-    clearPlanningContext(assignment, currentWeek);
-    setError("");
-    setMessage("");
-    setView("validation");
-  }
-
-  function openPlanningWeek(targetWeek: string, assignmentId = selectedAssignmentId) {
-    const assignment = assignments.find((item) => item.id === assignmentId) ?? null;
-    const monday = mondayForIso(targetWeek);
-    setSelectedAssignmentId(assignmentId);
-    setWeekStart(monday);
-    clearPlanningContext(assignment, monday);
-    setError("");
-    setMessage("");
-    setView("plan");
-  }
-
-  function closePdfPreview() {
-    if (pdfPreview) URL.revokeObjectURL(pdfPreview.url);
-    setPdfPreview(null);
-  }
-
-  useEffect(() => {
-    if (!supabase) return;
-    void supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession);
-      if (!nextSession) {
-        setIdentity(null);
-        setAssignments([]);
-        setCurricula([]);
-      }
-    });
-    return () => data.subscription.unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    if (session) void bootstrap(session);
-  }, [session]);
-
-  useEffect(() => {
-    if (!selectedAssignment) return;
-    setDraftState((current) => ({
-      ...current,
-      teacher: identity?.display_name ?? current.teacher,
-      course: selectedAssignment.course_name,
-      grade: selectedAssignment.grade_band ?? current.grade,
-      week_of: weekStart,
-    }));
-  }, [identity, selectedAssignment, weekStart]);
-
-  useEffect(() => () => {
-    if (pdfPreview) URL.revokeObjectURL(pdfPreview.url);
-  }, [pdfPreview]);
-
-  useEffect(() => {
-    if (
-      view !== "validation"
-      || !session?.access_token
-      || !selectedAssignmentId
-    ) return;
-    let cancelled = false;
-    void (async () => {
-      const response = await fetch(
-        `/api/v1/teacher-submissions/${encodeURIComponent(selectedAssignmentId)}/completed-packet?week_start=${encodeURIComponent(weekStart)}`,
-        { headers: { Authorization: `Bearer ${session.access_token}` } },
-      );
-      if (cancelled) return;
-      if (response.ok) {
-        setCompletedPacketSubmitted(true);
-        setCompletedPacketReviewed(false);
-        setValidationFinalized(true);
-        setMessage(
-          "This Friday closeout was already submitted. Review the completed weekly packet to continue.",
-        );
-        return;
-      }
-      if (response.status === 404) {
-        setCompletedPacketSubmitted(false);
-        return;
-      }
-      setError(await responseDetail(response, "Friday closeout status could not be restored."));
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [session?.access_token, selectedAssignmentId, view, weekStart]);
-
-  const resolveSelectedStandards = useCallback((selected: StandardEntry[]) => {
-    const exactText = selected
-      .map((standard) => `${standard.code} â€” ${standard.text}`)
-      .join("\n");
-    setDraftState((current) => {
-      if (current.standards === exactText) return current;
-      setDraftDirty(true);
-      setPdfReviewed(false);
-      return { ...current, standards: exactText };
-    });
-  }, []);
-
-  const applyAiPlanningField = useCallback((field: PlanningFieldKey, value: string) => {
-    const draftKey = field === "do_statement" ? "do" : field;
-    updateDraft((current) => ({ ...current, [draftKey]: value }));
-  }, []);
-
-  async function api<T>(path: string, init?: RequestInit): Promise<T> {
-    if (!session?.access_token) throw new Error("Your authenticated session is unavailable.");
-    const headers = new Headers(init?.headers);
-    headers.set("Authorization", `Bearer ${session.access_token}`);
-    if (init?.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-    const response = await fetch(path, { ...init, headers });
-    if (!response.ok) {
-      throw new Error(await responseDetail(response, `${response.status} ${response.statusText}`));
-    }
-    return await response.json() as T;
-  }
-
-  async function bootstrap(activeSession: Session) {
-    setBusy(true);
-    setError("");
-    try {
-      const headers = { Authorization: `Bearer ${activeSession.access_token}` };
-      const identityResponse = await fetch("/api/v1/session", { headers });
-      if (!identityResponse.ok) {
-        throw new Error(await responseDetail(identityResponse, "Pilot access could not be loaded."));
-      }
-      const nextIdentity = await identityResponse.json() as Identity;
-      setIdentity(nextIdentity);
-      if (nextIdentity.roles.includes("teacher")) {
-        const [curriculaResponse, assignmentsResponse] = await Promise.all([
-          fetch("/api/v1/curricula", { headers }),
-          fetch("/api/v1/teaching-assignments", { headers }),
-        ]);
-        for (const response of [curriculaResponse, assignmentsResponse]) {
-          if (!response.ok) {
-            throw new Error(await responseDetail(response, "Teacher planning data could not be loaded."));
-          }
-        }
-        const nextCurricula = await curriculaResponse.json() as Curriculum[];
-        const nextAssignments = await assignmentsResponse.json() as Assignment[];
-        setCurricula(nextCurricula);
-        setAssignments(nextAssignments);
-        if (!selectedAssignmentId && nextAssignments.length > 0) {
-          setSelectedAssignmentId(nextAssignments[0].id);
-        }
-      } else {
-        setCurricula([]);
-        setAssignments([]);
-        setSelectedAssignmentId("");
-      }
-      if (!nextIdentity.roles.includes("teacher") && view !== "help") {
-        setView("administration");
-      }
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Pilot access could not be loaded.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function signIn() {
-    if (!supabase) return;
-    setError("");
-    const { error: signInError } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: window.location.origin },
-    });
-    if (signInError) setError(signInError.message);
-  }
-
-  async function signOut() {
-    if (!supabase) return;
-    await supabase.auth.signOut();
-    setView("dashboard");
-  }
-
-  async function loadCarryForwardContext(targetWeek = weekStart) {
-    if (!selectedAssignmentId) return;
-    try {
-      const previous = addDays(targetWeek, -7);
-      const saved = await api<FridayValidationRead>(
-        `/api/v1/friday-validations?assignment_id=${encodeURIComponent(selectedAssignmentId)}&week_start=${encodeURIComponent(previous)}`,
-      );
-      setCarryForwardLessonIds(saved.carry_forward_curriculum_lesson_ids);
-    } catch (caught) {
-      const text = caught instanceof Error ? caught.message.toLowerCase() : "";
-      if (text.includes("not found")) setCarryForwardLessonIds([]);
-      else throw caught;
-    }
-  }
-
-  async function generatePlan() {
-    if (!selectedAssignmentId) return;
-    if (!selectedAssignment?.curriculum_id) {
-      setError("Finish Course Setup Step 2 by adding Curriculum & Pacing before building this week.");
-      return;
-    }
-    setBusy(true);
-    setError("");
-    setMessage("");
-    setWeekCurriculumConfirmed(false);
-    setSavedStandardsCount(0);
-    setWeekStandardsEditing(false);
-    setPlanningAssistComplete(false);
-    setPlanningAssistEditing(false);
-    setPdfReviewed(false);
-    try {
-      const generated = await api<PlannedLesson[]>("/api/v1/plans/generate", {
-        method: "POST",
-        body: JSON.stringify({ assignment_id: selectedAssignmentId, week_start: weekStart }),
-      });
-      setPlan(sortPlan(generated));
-      setValidations(Object.fromEntries(
-        generated.map((lesson) => [
-          lesson.scheduled_lesson_id,
-          { status: "", reason: "", teacherNote: "", carryForward: false },
-        ]),
-      ));
-      setValidationRevision(null);
-      await loadCarryForwardContext();
-      await loadDraft(false);
-      await loadExistingValidation(generated);
-      setMessage(
-        generated.length
-          ? `Built ${generated.length} scheduled lesson${generated.length === 1 ? "" : "s"}. Review this week's curriculum and confirm Step 1 before continuing.`
-          : "No curriculum lessons were available for this week. Review Curriculum & Pacing in Course Setup, then build the week again.",
-      );
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Weekly plan generation failed.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function loadExistingValidation(loadedPlan: PlannedLesson[]) {
-    if (!selectedAssignmentId) return;
-    try {
-      const saved = await api<FridayValidationRead>(
-        `/api/v1/friday-validations?assignment_id=${encodeURIComponent(selectedAssignmentId)}&week_start=${encodeURIComponent(weekStart)}`,
-      );
-      const byId = new Map(saved.lessons.map((lesson) => [lesson.scheduled_lesson_id, lesson]));
-      setValidations(Object.fromEntries(
-        loadedPlan.map((lesson) => {
-          const stored = byId.get(lesson.scheduled_lesson_id);
-          return [
-            lesson.scheduled_lesson_id,
-            stored
-              ? {
-                  status: stored.status,
-                  reason: stored.reason ?? "",
-                  teacherNote: stored.teacher_note ?? "",
-                  carryForward: stored.carry_forward,
-                }
-              : { status: "", reason: "", teacherNote: "", carryForward: false },
-          ];
-        }),
-      ));
-      setValidationRevision(saved.revision);
-      setValidationFinalized(true);
-    } catch (caught) {
-      const text = caught instanceof Error ? caught.message.toLowerCase() : "";
-      if (!text.includes("not found")) throw caught;
-      setValidationRevision(null);
-      setValidationFinalized(false);
-    }
-  }
-
-  async function loadPlan() {
-    if (!selectedAssignmentId) return;
-    if (!selectedAssignment?.curriculum_id) {
-      setError("Finish Course Setup Step 2 by adding Curriculum & Pacing before reopening a week.");
-      return;
-    }
-    setBusy(true);
-    setError("");
-    setWeekCurriculumConfirmed(false);
-    try {
-      const loaded = await api<PlannedLesson[]>(
-        `/api/v1/plans?assignment_id=${encodeURIComponent(selectedAssignmentId)}&week_start=${weekStart}`,
-      );
-      setPlan(sortPlan(loaded));
-      setValidations(Object.fromEntries(
-        loaded.map((lesson) => [
-          lesson.scheduled_lesson_id,
-          { status: "", reason: "", teacherNote: "", carryForward: false },
-        ]),
-      ));
-      await loadCarryForwardContext();
-      await loadDraft(false);
-      await loadExistingValidation(loaded);
-      setMessage(
-        loaded.length
-          ? `Reopened ${loaded.length} scheduled lesson${loaded.length === 1 ? "" : "s"}. Review and confirm this week's curriculum before continuing.`
-          : "No saved week was found for this Monday-starting week.",
-      );
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Weekly plan could not be loaded.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function loadDraft(showNotFound = true) {
-    if (!selectedAssignmentId) return;
-    try {
-      const loaded = await api<WeeklyDraft>(
-        `/api/v1/weekly-drafts?assignment_id=${encodeURIComponent(selectedAssignmentId)}&week_start=${weekStart}`,
-      );
-      setDraftState({ ...emptyDraft, ...loaded.content });
-      setDraftRevision(loaded.revision);
-      setDraftSubmissionStatus(loaded.submission_status);
-      setDraftSubmittedAt(loaded.submitted_at);
-      setDraftDirty(false);
-      setPlanningAssistComplete(true);
-      setPlanningAssistEditing(false);
-      setPlanReviewOpen(false);
-      if (showNotFound) {
-        setMessage(
-          `Draft revision ${loaded.revision} reopened Â· ${submissionLabel(loaded.submission_status)}.`,
-        );
-      }
-    } catch (caught) {
-      const text = caught instanceof Error ? caught.message : "Weekly draft could not be loaded.";
-      if (text.toLowerCase().includes("not found")) {
-        setDraftRevision(null);
-        setDraftSubmissionStatus("not_submitted");
-        setDraftSubmittedAt(null);
-        setDraftState({
-          ...emptyDraft,
-          teacher: identity?.display_name ?? "",
-          course: selectedAssignment?.course_name ?? "",
-          grade: selectedAssignment?.grade_band ?? "",
-          week_of: weekStart,
-        });
-        setDraftDirty(false);
-        setPlanningAssistComplete(false);
-        setPlanningAssistEditing(false);
-        setPlanReviewOpen(true);
-        if (showNotFound) setMessage("No saved draft exists for this week yet.");
-      } else {
-        throw caught;
-      }
-    }
-  }
-
-  async function saveDraft(): Promise<WeeklyDraft | null> {
-    if (!selectedAssignmentId) return null;
-    if (!draft.literacy_standards.trim()) {
-      setError("Add or select a Literacy Standards entry before saving the weekly plan.");
-      return null;
-    }
-    if (!draft.act_preparation.trim()) {
-      setError(
-        "Complete ACT Preparation before saving the weekly plan. Enter a teacher-selected note such as N/A when no ACT focus applies this week.",
-      );
-      return null;
-    }
-    setBusy(true);
-    setError("");
-    try {
-      const saved = await api<WeeklyDraft>("/api/v1/weekly-drafts", {
-        method: "PUT",
-        body: JSON.stringify({
-          assignment_id: selectedAssignmentId,
-          week_start: weekStart,
-          content: draft,
-          expected_revision: draftRevision,
-        }),
-      });
-      setDraftRevision(saved.revision);
-      setDraftState(saved.content);
-      setDraftSubmissionStatus(saved.submission_status);
-      setDraftSubmittedAt(saved.submitted_at);
-      setDraftDirty(false);
-      setPlanReviewOpen(false);
-      setPdfReviewed(false);
-      setMessage(
-        `Draft revision ${saved.revision} saved Â· ${submissionLabel(saved.submission_status)}. Step 4 complete â€” review the PDF next.`,
-      );
-      return saved;
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Weekly draft save failed.");
-      return null;
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function saveCloseoutDraft(): Promise<WeeklyDraft | null> {
-    if (!selectedAssignmentId) return null;
-    setBusy(true);
-    setError("");
-    try {
-      const saved = await api<WeeklyDraft>("/api/v1/weekly-drafts/closeout", {
-        method: "PUT",
-        body: JSON.stringify({
-          assignment_id: selectedAssignmentId,
-          week_start: weekStart,
-          content: draft,
-          expected_revision: draftRevision,
-        }),
-      });
-      setDraftRevision(saved.revision);
-      setDraftState(saved.content);
-      setDraftSubmissionStatus(saved.submission_status);
-      setDraftSubmittedAt(saved.submitted_at);
-      setDraftDirty(false);
-      setMessage(`Friday closeout saved at revision ${saved.revision}.`);
-      return saved;
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Friday closeout save failed.");
-      return null;
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function submitDraft(revisionOverride?: number): Promise<WeeklyDraft | null> {
-    const revision = revisionOverride ?? draftRevision;
-    if (!selectedAssignmentId || !revision || (draftDirty && revisionOverride === undefined)) {
-      return null;
-    }
-    setBusy(true);
-    setError("");
-    try {
-      const submitted = await api<WeeklyDraft>("/api/v1/weekly-drafts/submit", {
-        method: "POST",
-        body: JSON.stringify({
-          assignment_id: selectedAssignmentId,
-          week_start: weekStart,
-          expected_revision: revision,
-        }),
-      });
-      setDraftRevision(submitted.revision);
-      setDraftState(submitted.content);
-      setDraftSubmissionStatus(submitted.submission_status);
-      setDraftSubmittedAt(submitted.submitted_at);
-      setDraftDirty(false);
-      setMessage(`Weekly plan revision ${submitted.revision} submitted successfully.`);
-      return submitted;
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Weekly plan submission failed.");
-      return null;
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function documentBlob(
-    document: Exclude<DocumentKind, "completed-packet">,
-  ): Promise<Blob> {
-    if (!session?.access_token) throw new Error("Your authenticated session is unavailable.");
-    if (!draftRevision || draftDirty) {
-      throw new Error("Save the current plan before reviewing or exporting PDFs.");
-    }
-    const path = document === "lesson-plan"
-      ? "/api/v1/documents/anniston-lesson-plan-packet"
-      : `/api/v1/documents/anniston-hqi/${document}`;
-    const response = await fetch(path, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${session.access_token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(draft),
-    });
-    if (!response.ok) {
-      throw new Error(await responseDetail(response, "The planning document could not be generated."));
-    }
-    return await response.blob();
-  }
-
-  async function completedPacketBlob(): Promise<Blob> {
-    if (!session?.access_token || !selectedAssignmentId) {
-      throw new Error("Your authenticated session is unavailable.");
-    }
-    const response = await fetch(
-      `/api/v1/teacher-submissions/${encodeURIComponent(selectedAssignmentId)}/completed-packet?week_start=${encodeURIComponent(weekStart)}`,
-      { headers: { Authorization: `Bearer ${session.access_token}` } },
-    );
-    if (!response.ok) {
-      throw new Error(
-        await responseDetail(response, "The completed weekly packet could not be loaded."),
-      );
-    }
-    return await response.blob();
-  }
-
-  function presentPdf(
-    blob: Blob,
-    title: string,
-    filename: string,
-    action: DocumentAction,
-  ) {
-    if (action === "download") {
-      downloadBlob(blob, filename);
-      return;
-    }
-    const url = URL.createObjectURL(blob);
-    if (action === "view") {
-      closePdfPreview();
-      setPdfPreview({ url, title });
-      return;
-    }
-    const frame = window.document.createElement("iframe");
-    frame.style.position = "fixed";
-    frame.style.width = "0";
-    frame.style.height = "0";
-    frame.style.border = "0";
-    frame.src = url;
-    frame.onload = () => {
-      window.setTimeout(() => {
-        frame.contentWindow?.focus();
-        frame.contentWindow?.print();
-        window.setTimeout(() => {
-          URL.revokeObjectURL(url);
-          frame.remove();
-        }, 5_000);
-      }, 500);
-    };
-    window.document.body.appendChild(frame);
-  }
-
-  async function exportDocument(
-    document: Exclude<DocumentKind, "completed-packet">,
-    action: DocumentAction,
-  ) {
-    setDocumentWorking(document);
-    setBusy(true);
-    setError("");
-    setMessage(
-      document === "lesson-plan"
-        ? "Building the weekly lesson plan PDFâ€¦"
-        : `Preparing ${documentTitle(document)}â€¦`,
-    );
-    try {
-      const blob = await documentBlob(document);
-      presentPdf(blob, documentTitle(document), `anniston-${document}-${weekStart}.pdf`, action);
-      if (document === "lesson-plan" && action === "view") setPdfReviewed(true);
-      setMessage(
-        `${documentTitle(document)} ${
-          action === "download"
-            ? "downloaded"
-            : action === "print"
-              ? "opened for printing"
-              : "ready for review"
-        }.${document === "lesson-plan" && action === "view" ? " Viewing the PDF does not submit the weekly plan; submission remains a separate Step 6 action." : ""}`,
-      );
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Document export failed.");
-    } finally {
-      setDocumentWorking(null);
-      setBusy(false);
-    }
-  }
-
-  async function exportCompletedPacket(action: DocumentAction) {
-    setDocumentWorking("completed-packet");
-    setBusy(true);
-    setError("");
-    setMessage("Preparing completed weekly packetâ€¦");
-    try {
-      const blob = await completedPacketBlob();
-      presentPdf(
-        blob,
-        "Completed Weekly Packet",
-        `completed-weekly-packet-${weekStart}.pdf`,
-        action,
-      );
-      setCompletedPacketReviewed(true);
-      setMessage(
-        `Completed Weekly Packet ${
-          action === "download"
-            ? "downloaded"
-            : action === "print"
-              ? "opened for printing"
-              : "ready for review"
-        }.`,
-      );
-    } catch (caught) {
-      setError(
-        caught instanceof Error ? caught.message : "Completed weekly packet could not be opened.",
-      );
-    } finally {
-      setDocumentWorking(null);
-      setBusy(false);
-    }
-  }
-
-  function updateValidation(id: string, patch: Partial<ValidationEntry>) {
-    setValidations((current) => ({
-      ...current,
-      [id]: { ...current[id], ...patch },
-    }));
-  }
-
-  async function saveValidation(): Promise<FridayValidationRead | null> {
-    if (!selectedAssignmentId) return null;
-    if (plan.some((lesson) => !validations[lesson.scheduled_lesson_id]?.status)) {
-      setError("Every scheduled lesson must have a Friday validation status.");
-      return null;
-    }
-    if (plan.some((lesson) => {
-      const entry = validations[lesson.scheduled_lesson_id];
-      return entry.status === "missed" && !entry.reason.trim();
-    })) {
-      setError("Every missed lesson requires a reason before Friday validation is completed.");
-      return null;
-    }
-    setBusy(true);
-    setError("");
-    try {
-      let expectedRevision = validationRevision;
-      if (expectedRevision === null) {
-        try {
-          const existing = await api<FridayValidationRead>(
-            `/api/v1/friday-validations?assignment_id=${encodeURIComponent(selectedAssignmentId)}&week_start=${encodeURIComponent(weekStart)}`,
-          );
-          expectedRevision = existing.revision;
-          setValidationRevision(existing.revision);
-        } catch (caught) {
-          const text = caught instanceof Error ? caught.message.toLowerCase() : "";
-          if (!text.includes("not found")) throw caught;
-        }
-      }
-      const saved = await api<FridayValidationRead>("/api/v1/friday-validations", {
-        method: "PUT",
-        body: JSON.stringify({
-          assignment_id: selectedAssignmentId,
-          week_start: weekStart,
-          expected_revision: expectedRevision,
-          lessons: plan.map((lesson) => {
-            const entry = validations[lesson.scheduled_lesson_id];
-            return {
-              scheduled_lesson_id: lesson.scheduled_lesson_id,
-              curriculum_lesson_id: lesson.curriculum_lesson_id,
-              lesson_date: lesson.lesson_date,
-              sequence: lesson.sequence,
-              status: entry.status,
-              reason: entry.reason || null,
-              teacher_note: entry.teacherNote || null,
-              carry_forward: entry.carryForward,
-            };
-          }),
-        }),
-      });
-      setValidationRevision(saved.revision);
-      setValidationFinalized(true);
-      setMessage(
-        `Friday validation complete. ${saved.carry_forward_curriculum_lesson_ids.length} lesson${saved.carry_forward_curriculum_lesson_ids.length === 1 ? "" : "s"} selected to carry forward. Step 1 complete â€” finish the teacher reflection next.`,
-      );
-      return saved;
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Friday validation failed.");
-      return null;
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function submitFridayCloseout() {
-    if (!validationFinalized) {
-      setError("Complete Friday validation before closing the week.");
-      return;
-    }
-    if (!reflectionIsComplete) {
-      setError(
-        "Complete all 12 Weekly Reflection / PLC Discussion prompts before submitting the Friday closeout.",
-      );
-      return;
-    }
-    const saved = await saveCloseoutDraft();
-    if (!saved) return;
-    const submitted = await submitDraft(saved.revision);
-    if (!submitted) return;
-    setCompletedPacketSubmitted(true);
-    setCompletedPacketReviewed(false);
-    setMessage(
-      "Friday closeout submitted. Step 2 complete â€” review the completed weekly packet before continuing to next week.",
-    );
-  }
-
-  function continueToNextWeek() {
-    if (!completedPacketSubmitted || !completedPacketReviewed) {
-      setError("Review the completed weekly packet before continuing to next week.");
-      return;
-    }
-    const next = addDays(weekStart, 7);
-    setWeekStart(next);
-    clearPlanningContext(selectedAssignment, next);
-    setView("plan");
-    setMessage(`Friday closeout complete. Build or reconcile the week of ${next}.`);
-  }
-
-  const meetingDates = useMemo(() => {
-    if (!selectedAssignment) return [];
-    const unavailable = new Set(
-      scheduleExceptions
-        .filter((exception) => !exception.is_available)
-        .map((exception) => exception.exception_date),
-    );
-    return Array.from({ length: 5 }, (_item, index) => addDays(weekStart, index)).filter(
-      (iso) => {
-        const date = new Date(`${iso}T12:00:00`);
-        const weekday = date.getDay() === 0 ? 7 : date.getDay();
-        return !unavailable.has(iso)
-          && selectedAssignment.meeting_patterns.some(
-            (pattern) => pattern.weekdays.includes(weekday)
-              && iso >= pattern.effective_start
-              && iso <= pattern.effective_end,
-          );
-      },
-    );
-  }, [scheduleExceptions, selectedAssignment, weekStart]);
-
-  async function movePlannedLesson(lesson: PlannedLesson, nextDate: string) {
-    if (nextDate === lesson.lesson_date) return;
-    setBusy(true);
-    setError("");
-    try {
-      await api<unknown>(
-        `/api/v1/plans/lessons/${encodeURIComponent(lesson.scheduled_lesson_id)}`,
-        { method: "PATCH", body: JSON.stringify({ lesson_date: nextDate }) },
-      );
-      setPlan((current) => sortPlan(
-        current.map((item) => (
-          item.scheduled_lesson_id === lesson.scheduled_lesson_id
-            ? { ...item, lesson_date: nextDate }
-            : item
-        )),
-      ));
-      setWeekCurriculumConfirmed(false);
-      setSavedStandardsCount(0);
-      setWeekStandardsEditing(false);
-      setPlanningAssistComplete(false);
-      setPlanningAssistEditing(false);
-      setPdfReviewed(false);
-      setMessage(
-        `${lesson.lesson_title} moved to ${nextDate}. Confirm this week's curriculum again, then review standards and planning assistance.`,
-      );
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Lesson day could not be changed.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (!supabase) {
-    return (
-      <main className="centered-state">
-        <div className="state-card">
-          <p className="eyebrow">Teacher Planning Platform</p>
-          <h1>Pilot configuration required</h1>
-          <p>The Supabase public URL and anon key were not supplied to the frontend build.</p>
-        </div>
-      </main>
-    );
-  }
-
-  if (!session) {
-    return (
-      <main className="login-shell">
-        <section className="login-card">
-          <p className="eyebrow">Anniston City Schools controlled pilot</p>
-          <h1>Teacher Planning Platform</h1>
-          <p>
-            Close the current week, carry forward what needs attention, and prepare next week
-            without losing curriculum sequence.
-          </p>
-          <button className="primary large" onClick={() => void signIn()}>
-            Continue with Google
-          </button>
-          <div className="boundary-notice">
-            Teacher and curriculum data only. Do not enter student names, IDs, grades, IEP/504,
-            health, discipline, identifiable student work, or other student-specific information.
-          </div>
-          {error && <p className="error-message">{error}</p>}
-        </section>
-      </main>
-    );
-  }
-
-  const weekStep1 = plan.length > 0 && weekCurriculumConfirmed;
-  const weekStep2 = weekStep1 && savedStandardsCount > 0;
-  const weekStep3 = weekStep2 && planningAssistComplete;
-  const weekStep4 = weekStep3 && savedForReview;
-  const weekStep5 = weekStep4 && pdfReviewed;
-  const weekStep6 = weekStep5 && draftSubmissionStatus === "submitted" && !draftDirty;
-
-  return (
-    <div className="shell">
-      <header className="topbar">
-        <div>
-          <p className="eyebrow">Anniston City Schools Pilot</p>
-          <h1>Teacher Planning Platform</h1>
-        </div>
-        <div className="identity-block">
-          <strong>{identity?.display_name ?? session.user.email}</strong>
-          <span>{identity?.roles.join(" Â· ") ?? "Loading governed roles"}</span>
-          <button className="link-button" onClick={() => void signOut()}>Sign out</button>
-        </div>
-      </header>
-      <div className="boundary-strip">
-        <strong>
-          Teacher and curriculum data only. Use class- or group-level instructional observations;
-          do not enter student-specific information.
-        </strong>
-      </div>
-      <nav className="workflow-nav" aria-label="Planning workflow">
-        <button
-          className={view === "dashboard" ? "active" : ""}
-          onClick={() => setView("dashboard")}
-        >
-          Dashboard
-        </button>
-        {isTeacher && (
-          <button
-            className={view === "assignment" ? "active" : ""}
-            onClick={() => setView("assignment")}
-          >
-            Course Setup
-          </button>
-        )}
-        {isTeacher && (
-          <button
-            className={view === "validation" ? "active" : ""}
-            onClick={() => openFridayCloseout()}
-          >
-            Friday validation
-          </button>
-        )}
-        {isTeacher && (
-          <button
-            className={view === "plan" ? "active" : ""}
-            onClick={() => setView("plan")}
-          >
-            Weekly plan
-          </button>
-        )}
-        {canViewAdministration && (
-          <button
-            className={view === "administration" ? "active" : ""}
-            onClick={() => setView("administration")}
-          >
-            Administration
-          </button>
-        )}
-        <button
-          className={view === "help" ? "active" : ""}
-          onClick={() => setView("help")}
-        >
-          Help
-        </button>
-      </nav>
-
-      <main>
-        {(message || error) && (
-          <div
-            className={error ? "alert error toast-alert" : "alert success toast-alert"}
-            role={error ? "alert" : "status"}
-            aria-live={error ? "assertive" : "polite"}
-          >
-            {error || message}
-            <button
-              aria-label="Dismiss"
-              onClick={() => {
-                setError("");
-                setMessage("");
-              }}
-            >
-              Ã—
-            </button>
-          </div>
-        )}
-        {busy && <div className="progress-bar" aria-label="Working" />}
-
-        {view === "dashboard" && isTeacher && (
-          <>
-            <section className="hero">
-              <div>
-                <p className="eyebrow">Weekly workflow</p>
-                <h2>Close this week. Then build the next one.</h2>
-                <p>
-                  Normal routine: Friday validation â†’ teacher reflection â†’ review completed packet
-                  â†’ reconcile carry-forward â†’ plan â†’ review PDF â†’ submit.
-                </p>
-              </div>
-              <div className="hero-actions">
-                <button
-                  className="primary"
-                  disabled={!selectedAssignmentId}
-                  onClick={() => openFridayCloseout()}
-                >
-                  Complete Friday validation
-                </button>
-                <button
-                  className="secondary"
-                  disabled={!selectedAssignmentId}
-                  onClick={() => openPlanningWeek(mondayFor())}
-                >
-                  Open weekly plan
-                </button>
-                <button
-                  className="secondary"
-                  disabled={!selectedAssignmentId}
-                  onClick={() => openPlanningWeek(addDays(mondayFor(), 7))}
-                >
-                  Plan next week early
-                </button>
-              </div>
-            </section>
-            <section>
-              <div className="section-heading">
-                <div>
-                  <p className="eyebrow">Course setup</p>
-                  <h2>Your classes</h2>
-                  <p className="supporting">
-                    Each card is a separate teaching section. Finish Course Setup before weekly
-                    planning.
-                  </p>
-                </div>
-                <button className="secondary" onClick={() => setView("assignment")}>Add class</button>
-              </div>
-              {assignments.length === 0 ? (
-                <div className="empty-state">
-                  <h3>No classes configured yet</h3>
-                  <p>Create your first Class & Schedule. Curriculum & Pacing is Step 2.</p>
-                  <button className="primary" onClick={() => setView("assignment")}>
-                    Create class
-                  </button>
-                </div>
-              ) : (
-                <div className="grid">
-                  {dashboardAssignments.map((assignment) => {
-                    const curriculum = assignment.curriculum_id
-                      ? curricula.find((item) => item.id === assignment.curriculum_id)
-                      : null;
-                    return (
-                      <article
-                        className={`card ${selectedAssignmentId === assignment.id ? "selected" : ""}`}
-                        key={assignment.id}
-                      >
-                        <div className="card-row">
-                          <span className="badge">Revision {assignment.revision}</span>
-                          <span className="status">
-                            {curriculum ? "Pacing added" : "Setup in progress"}
-                          </span>
-                        </div>
-                        <h3>{assignment.course_name}</h3>
-                        <p>
-                          {assignment.meeting_patterns
-                            .map((pattern) => dashboardScheduleLabel(pattern))
-                            .join(", ")}
-                        </p>
-                        <small>
-                          {curriculum
-                            ? `${curriculum.name} Â· ${curriculum.version}`
-                            : "Curriculum & Pacing not added"}
-                        </small>
-                        <div className="button-row">
-                          {curriculum ? (
-                            <button
-                              className="link-button"
-                              onClick={() => openPlanningWeek(mondayFor(), assignment.id)}
-                            >
-                              Open weekly plan
-                            </button>
-                          ) : (
-                            <button
-                              className="link-button"
-                              onClick={() => {
-                                setSelectedAssignmentId(assignment.id);
-                                setView("assignment");
-                              }}
-                            >
-                              Finish setup
-                            </button>
-                          )}
-                          <button
-                            className="link-button"
-                            onClick={() => {
-                              setSelectedAssignmentId(assignment.id);
-                              setView("assignment");
-                            }}
-                          >
-                            Manage class
-                          </button>
-                        </div>
-                      </article>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
-          </>
-        )}
-
-        {view === "dashboard" && !isTeacher && canViewAdministration && (
-          <section className="hero">
-            <div>
-              <p className="eyebrow">Governed administration</p>
-              <h2>School and district planning operations</h2>
-              <p>Review professional teacher-planning adoption and weekly submission status.</p>
-            </div>
-            <div className="hero-actions">
-              <button className="primary" onClick={() => setView("administration")}>
-                Open administration
-              </button>
-            </div>
-          </section>
-        )}
-
-        {view === "assignment" && isTeacher && identity && (
-          <CourseSetupPanel
-            accessToken={session.access_token}
-            schoolId={identity.school_id}
-            assignments={assignments}
-            curricula={curricula}
-            selectedAssignmentId={selectedAssignmentId}
-            disabled={busy}
-            onSelectAssignment={selectPlanningAssignment}
-            onAssignmentsChanged={setAssignments}
-            onCurriculaChanged={setCurricula}
-            onMessage={setMessage}
-            onError={setError}
-            onStandardsMappingSaved={() => {
-              setStandardsMappingVersion((current) => current + 1);
-            }}
-            onOpenWeeklyPlan={(assignmentId) => openPlanningWeek(mondayFor(), assignmentId)}
-          />
-        )}
-        {view === "administration" && canViewAdministration && (
-          <AdministrationOverview
-            accessToken={session.access_token}
-            roles={identity?.roles ?? []}
-            disabled={busy}
-          />
-        )}
-        {view === "help" && identity && <HelpPage roles={identity.roles} />}
-
-        {view === "validation" && isTeacher && (
-          <section className="panel">
-            <div className="section-heading compact">
-              <div>
-                <p className="eyebrow">Friday closeout</p>
-                <h2>Close one Mondayâ€“Friday week at a time</h2>
-                <p className="supporting">
-                  Validate instruction, complete the teacher-authored reflection, review the
-                  completed packet, then continue to the following week.
-                </p>
-              </div>
-            </div>
-            <div className="setup-stepper closeout-stepper">
-              <StepMarker
-                number={1}
-                title="Validate"
-                complete={validationFinalized}
-                active={!validationFinalized}
-              />
-              <StepMarker
-                number={2}
-                title="Reflect & Submit"
-                complete={completedPacketSubmitted}
-                active={validationFinalized && !completedPacketSubmitted}
-              />
-              <StepMarker
-                number={3}
-                title="Review Packet"
-                complete={completedPacketReviewed}
-                active={completedPacketSubmitted && !completedPacketReviewed}
-              />
-              <StepMarker
-                number={4}
-                title="Continue"
-                complete={false}
-                active={completedPacketReviewed}
-              />
-            </div>
-
-            {!validationFinalized && (
-              <section className="setup-step-card active-step">
-                <div className="step-heading">
-                  <span className="step-number">1</span>
-                  <div>
-                    <p className="eyebrow">Step 1</p>
-                    <h2>Friday validation</h2>
-                    <p className="supporting">
-                      Confirm what actually happened. You decide whether missed or modified
-                      instruction carries forward.
-                    </p>
-                  </div>
-                </div>
-                <div className="toolbar">
-                  <label>
-                    Course
-                    <select
-                      value={selectedAssignmentId}
-                      onChange={(event) => selectPlanningAssignment(event.target.value)}
-                    >
-                      <option value="">Select a class</option>
-                      {assignments
-                        .filter((assignment) => assignment.curriculum_id)
-                        .map((assignment) => (
-                          <option value={assignment.id} key={assignment.id}>
-                            {assignment.course_name}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-                  <WeekSelector value={weekStart} disabled={busy} onChange={selectPlanningWeek} />
-                  <button
-                    className="secondary"
-                    disabled={!selectedAssignmentId || busy}
-                    onClick={() => void loadPlan()}
-                  >
-                    Load week
-                  </button>
-                </div>
-                {plan.length === 0 ? (
-                  <div className="empty-state">
-                    <p>Load the scheduled Mondayâ€“Friday week before completing validation.</p>
-                  </div>
-                ) : (
-                  <div className="validation-list">
-                    {plan.map((lesson) => {
-                      const entry = validations[lesson.scheduled_lesson_id] ?? {
-                        status: "",
-                        reason: "",
-                        teacherNote: "",
-                        carryForward: false,
-                      };
-                      return (
-                        <article className="validation-row" key={lesson.scheduled_lesson_id}>
-                          <div className="day-block">
-                            <strong>{lesson.lesson_date}</strong>
-                            <span>{lesson.planned_minutes} minutes</span>
-                          </div>
-                          <div className="lesson-block">
-                            <small>{lesson.unit_title}</small>
-                            <strong>{lesson.lesson_title}</strong>
-                            <label>
-                              Status
-                              <select
-                                value={entry.status}
-                                onChange={(event) => {
-                                  const status = event.target.value as LessonStatus | "";
-                                  updateValidation(lesson.scheduled_lesson_id, {
-                                    status,
-                                    carryForward: status === "missed"
-                                      ? true
-                                      : (status === "completed" || status === "skipped")
-                                        ? false
-                                        : entry.carryForward,
-                                  });
-                                }}
-                              >
-                                <option value="">Select outcome</option>
-                                <option value="completed">Completed</option>
-                                <option value="modified">Modified</option>
-                                <option value="missed">Missed</option>
-                                <option value="skipped">Skipped / not needed</option>
-                              </select>
-                            </label>
-                            <label>
-                              Reason or note
-                              <input
-                                value={entry.reason}
-                                required={entry.status === "missed"}
-                                placeholder={
-                                  entry.status === "missed"
-                                    ? "Required for a missed lesson"
-                                    : "Optional"
-                                }
-                                onChange={(event) => updateValidation(
-                                  lesson.scheduled_lesson_id,
-                                  { reason: event.target.value },
-                                )}
-                              />
-                            </label>
-                            <label>
-                              Planning note
-                              <input
-                                value={entry.teacherNote}
-                                placeholder="Optional note for future planning"
-                                onChange={(event) => updateValidation(
-                                  lesson.scheduled_lesson_id,
-                                  { teacherNote: event.target.value },
-                                )}
-                              />
-                            </label>
-                            <label className="check">
-                              <input
-                                type="checkbox"
-                                checked={entry.carryForward}
-                                disabled={
-                                  entry.status === "completed"
-                                  || entry.status === "skipped"
-                                  || !entry.status
-                                }
-                                onChange={(event) => updateValidation(
-                                  lesson.scheduled_lesson_id,
-                                  { carryForward: event.target.checked },
-                                )}
-                              />
-                              Carry this lesson forward
-                            </label>
-                          </div>
-                        </article>
-                      );
-                    })}
-                  </div>
-                )}
-                <div className="action-bar">
-                  <div>
-                    <strong>
-                      {plan.filter(
-                        (lesson) => !validations[lesson.scheduled_lesson_id]?.status,
-                      ).length} lessons still pending
-                    </strong>
-                    <span>Nothing carries forward unless you select it.</span>
-                  </div>
-                  <button
-                    className="primary"
-                    disabled={
-                      !plan.length
-                      || plan.some((lesson) => !validations[lesson.scheduled_lesson_id]?.status)
-                      || busy
-                    }
-                    onClick={() => void saveValidation()}
-                  >
-                    Complete Friday validation & continue
-                  </button>
-                </div>
-              </section>
-            )}
-
-            {validationFinalized && !completedPacketSubmitted && (
-              <section className="setup-step-card active-step">
-                <div className="step-heading">
-                  <span className="step-number">2</span>
-                  <div>
-                    <p className="eyebrow">Step 2</p>
-                    <h2>Weekly Reflection / PLC Discussion</h2>
-                    <p className="supporting">
-                      Complete all 12 district prompts yourself. TPP does not generate or rewrite
-                      reflection responses.
-                    </p>
-                  </div>
-                </div>
-                <div className="setup-step-summary complete-summary">
-                  <div>
-                    <strong>Validation complete</strong>
-                    <p>Saved revision {validationRevision ?? "â€”"}. Carry-forward choices are preserved.</p>
-                  </div>
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={() => setValidationFinalized(false)}
-                  >
-                    Edit validation
-                  </button>
-                </div>
-                <AiReflectionPanel
-                  accessToken={session.access_token}
-                  assignmentId={selectedAssignmentId || null}
-                  weekStart={weekStart}
-                  disabled={busy}
-                  onApplyReflection={(value) => updateDraft((current) => ({
-                    ...current,
-                    reflection: value,
-                  }))}
-                />
-                <div className="button-row">
-                  <button
-                    className="secondary"
-                    disabled={busy}
-                    onClick={() => void saveCloseoutDraft()}
-                  >
-                    Save reflection progress
-                  </button>
-                  {savedForReview && (
-                    <>
-                      <button
-                        className="secondary"
-                        onClick={() => void exportDocument("weekly-reflection", "view")}
-                      >
-                        View reflection PDF
-                      </button>
-                      <button
-                        className="secondary"
-                        onClick={() => void exportDocument("weekly-reflection", "download")}
-                      >
-                        Download reflection PDF
-                      </button>
-                      <button
-                        className="secondary"
-                        onClick={() => void exportDocument("weekly-reflection", "print")}
-                      >
-                        Print reflection PDF
-                      </button>
-                    </>
-                  )}
-                  <button
-                    className="primary"
-                    disabled={!reflectionIsComplete || busy}
-                    onClick={() => void submitFridayCloseout()}
-                  >
-                    Submit Friday closeout & continue
-                  </button>
-                </div>
-              </section>
-            )}
-
-            {completedPacketSubmitted && !completedPacketReviewed && (
-              <section className="setup-step-card active-step">
-                <div className="step-heading">
-                  <span className="step-number">3</span>
-                  <div>
-                    <p className="eyebrow">Step 3</p>
-                    <h2>Review completed weekly packet</h2>
-                    <p className="supporting">
-                      This immutable packet contains the week's Instructional Planning Framework,
-                      Week at a Glance, and teacher-authored reflection.
-                    </p>
-                  </div>
-                </div>
-                <div className="pdf-review-grid">
-                  <article className="card">
-                    <h3>Completed Weekly Packet</h3>
-                    <p className="supporting">
-                      Current week's planning documents + teacher-authored reflection
-                    </p>
-                    <div className="button-row">
-                      <button
-                        className="primary"
-                        disabled={busy}
-                        onClick={() => void exportCompletedPacket("view")}
-                      >
-                        {documentWorking === "completed-packet"
-                          ? "Preparingâ€¦"
-                          : "View completed packet"}
-                      </button>
-                      <button
-                        className="secondary"
-                        disabled={busy}
-                        onClick={() => void exportCompletedPacket("download")}
-                      >
-                        Download PDF
-                      </button>
-                      <button
-                        className="secondary"
-                        disabled={busy}
-                        onClick={() => void exportCompletedPacket("print")}
-                      >
-                        Print
-                      </button>
-                    </div>
-                  </article>
-                </div>
-              </section>
-            )}
-
-            {completedPacketSubmitted && completedPacketReviewed && (
-              <section className="setup-step-summary complete-summary">
-                <div>
-                  <strong>Step 3 complete Â· Completed Weekly Packet reviewed</strong>
-                  <p>View, download, or print the immutable packet again at any time before continuing.</p>
-                </div>
-                <div className="button-row">
-                  <button
-                    className="secondary"
-                    disabled={busy}
-                    onClick={() => void exportCompletedPacket("view")}
-                  >
-                    View packet
-                  </button>
-                  <button
-                    className="secondary"
-                    disabled={busy}
-                    onClick={() => void exportCompletedPacket("download")}
-                  >
-                    Download PDF
-                  </button>
-                  <button
-                    className="secondary"
-                    disabled={busy}
-                    onClick={() => void exportCompletedPacket("print")}
-                  >
-                    Print
-                  </button>
-                </div>
-              </section>
-            )}
-
-            {completedPacketReviewed && (
-              <section className="setup-ready-card">
-                <div className="step-heading">
-                  <span className="step-number">4</span>
-                  <div>
-                    <p className="eyebrow">Step 4</p>
-                    <h2>Continue to next week</h2>
-                    <p className="supporting">
-                      The current week is validated, reflected, submitted, and reviewed. TPP will
-                      now move to the following Monday-starting week.
-                    </p>
-                  </div>
-                </div>
-                <button className="primary" disabled={busy} onClick={continueToNextWeek}>
-                  Continue to next week
-                </button>
-              </section>
-            )}
-          </section>
-        )}
-
-        {view === "plan" && isTeacher && (
-          <section className="panel">
-            <div className="section-heading compact">
-              <div>
-                <p className="eyebrow">Weekly planning</p>
-                <h2>{selectedAssignment?.course_name ?? "Weekly Plan"}</h2>
-                <p className="supporting">
-                  Only the current step is expanded. Completed steps stay as short summaries with
-                  an Edit or Reopen action, so you can revise without losing saved teacher work.
-                </p>
-              </div>
-            </div>
-            <div className="setup-stepper weekly-plan-stepper">
-              <StepMarker
-                number={1}
-                title="Build Week"
-                complete={weekStep1}
-                active={!weekStep1}
-              />
-              <StepMarker
-                number={2}
-                title="Standards"
-                complete={weekStep2 && !weekStandardsEditing}
-                active={weekStep1 && (!weekStep2 || weekStandardsEditing)}
-              />
-              <StepMarker
-                number={3}
-                title="Planning Assist"
-                complete={weekStep3 && !planningAssistEditing}
-                active={weekStep2 && (!weekStep3 || planningAssistEditing)}
-              />
-              <StepMarker
-                number={4}
-                title="Review & Save"
-                complete={weekStep4 && !planReviewOpen}
-                active={weekStep3 && (!weekStep4 || planReviewOpen)}
-              />
-              <StepMarker
-                number={5}
-                title="Review PDF"
-                complete={weekStep5}
-                active={weekStep4 && !weekStep5}
-              />
-              <StepMarker
-                number={6}
-                title="Submit"
-                complete={weekStep6}
-                active={weekStep5 && !weekStep6}
-              />
-            </div>
-
-            {!weekStep1 && (
-              <section className="setup-step-card active-step">
-                <div className="step-heading">
-                  <span className="step-number">1</span>
-                  <div>
-                    <p className="eyebrow">Step 1</p>
-                    <h2>Build or reconcile the week</h2>
-                    <p className="supporting">
-                      Choose a class and Monday-starting week. TPP uses its saved Curriculum &
-                      Pacing, class-specific progress, class schedule, calendar, exceptions, and
-                      teacher-selected carry-forward. Review the resulting lessons before you
-                      confirm this step.
-                    </p>
-                  </div>
-                </div>
-                <div className="toolbar">
-                  <label>
-                    Class
-                    <select
-                      value={selectedAssignmentId}
-                      onChange={(event) => selectPlanningAssignment(event.target.value)}
-                    >
-                      <option value="">Select a class</option>
-                      {assignments.map((assignment) => (
-                        <option value={assignment.id} key={assignment.id}>
-                          {assignment.course_name}
-                          {assignment.curriculum_id ? "" : " Â· setup incomplete"}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <WeekSelector value={weekStart} disabled={busy} onChange={selectPlanningWeek} />
-                </div>
-                {selectedAssignment && !selectedAssignmentReady ? (
-                  <div className="guidance-card warning-card">
-                    <strong>Course Setup is not complete.</strong>
-                    <p>Add Curriculum & Pacing before TPP can schedule lessons for this class.</p>
-                    <button className="primary" onClick={() => setView("assignment")}>
-                      Finish Course Setup
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <ScheduleExceptionPanel
-                      key={`${selectedAssignmentId}-${weekStart}`}
-                      accessToken={session.access_token}
-                      assignmentId={selectedAssignmentId}
-                      weekStart={weekStart}
-                      disabled={busy}
-                      onExceptionsChanged={setScheduleExceptions}
-                      onChanged={() => {
-                        setPlan([]);
-                        setWeekCurriculumConfirmed(false);
-                        setCarryForwardLessonIds([]);
-                        setSavedStandardsCount(0);
-                        setWeekStandardsEditing(false);
-                        setPlanningAssistComplete(false);
-                        setPlanningAssistEditing(false);
-                        setPdfReviewed(false);
-                        setValidations({});
-                        setValidationRevision(null);
-                        setValidationFinalized(false);
-                      }}
-                    />
-                    <div className="button-row">
-                      <button
-                        className="primary"
-                        disabled={!selectedAssignmentId || busy}
-                        onClick={() => void generatePlan()}
-                      >
-                        Build / reconcile week
-                      </button>
-                      <button
-                        className="secondary"
-                        disabled={!selectedAssignmentId || busy}
-                        onClick={() => void loadPlan()}
-                      >
-                        Reopen saved week
-                      </button>
-                    </div>
-                  </>
-                )}
-
-                {plan.length > 0 && (
-                  <section className="week-curriculum-section">
-                    <div className="section-heading compact">
-                      <div>
-                        <p className="eyebrow">Review Step 1</p>
-                        <h3>This week's Curriculum & Pacing</h3>
-                        <p className="supporting">
-                          Confirm these lessons and teaching days before standards or planning
-                          assistance appear.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="weekly-curriculum-list">
-                      {plan.map((lesson) => {
-                        const carried = carryForwardLessonIds.includes(lesson.curriculum_lesson_id);
-                        return (
-                          <article
-                            className={`weekly-curriculum-item ${carried ? "carried-forward" : ""}`}
-                            key={lesson.scheduled_lesson_id}
-                          >
-                            <div>
-                              <div className="card-row">
-                                {carried ? (
-                                  <span className="badge carry-badge">Carried forward</span>
-                                ) : (
-                                  <span className="badge">Scheduled curriculum</span>
-                                )}
-                                <span>{lesson.planned_minutes} minutes</span>
-                              </div>
-                              <small>{lesson.unit_title}</small>
-                              <h3>
-                                {lesson.lesson_title}
-                                {lesson.segment_number > 1 ? ` Â· Segment ${lesson.segment_number}` : ""}
-                              </h3>
-                            </div>
-                            <label>
-                              Teach on
-                              <select
-                                value={lesson.lesson_date}
-                                disabled={busy}
-                                onChange={(event) => void movePlannedLesson(lesson, event.target.value)}
-                              >
-                                {meetingDates.map((date) => (
-                                  <option value={date} key={date}>
-                                    {new Date(`${date}T12:00:00`).toLocaleDateString(undefined, {
-                                      weekday: "long",
-                                      month: "short",
-                                      day: "numeric",
-                                    })}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                          </article>
-                        );
-                      })}
-                    </div>
-                    <div className="action-bar">
-                      <div>
-                        <strong>{plan.length} scheduled lesson{plan.length === 1 ? "" : "s"}</strong>
-                        <span>Nothing advances to standards until you confirm this sequence.</span>
-                      </div>
-                      <button
-                        type="button"
-                        className="primary"
-                        disabled={busy}
-                        onClick={() => {
-                          setWeekCurriculumConfirmed(true);
-                          setMessage("Step 1 complete â€” this week's Curriculum & Pacing is confirmed. Review authoritative standards next.");
-                        }}
-                      >
-                        Confirm this week's curriculum & continue
-                      </button>
-                    </div>
-                  </section>
-                )}
-              </section>
-            )}
-
-            {weekStep1 && (
-              <section className="setup-step-summary complete-summary">
-                <div>
-                  <strong>Step 1 complete Â· This week's curriculum confirmed</strong>
-                  <p>
-                    {plan.length} scheduled lesson{plan.length === 1 ? "" : "s"} for the week of
-                    {` ${weekStart}`}.
-                  </p>
-                </div>
-                <button
-                  className="secondary"
-                  onClick={() => {
-                    setWeekCurriculumConfirmed(false);
-                    setSavedStandardsCount(0);
-                    setWeekStandardsEditing(false);
-                    setPlanningAssistComplete(false);
-                    setPlanningAssistEditing(false);
-                    setPdfReviewed(false);
-                  }}
-                >
-                  Review/change week
-                </button>
-              </section>
-            )}
-
-            {weekStep1 && (!weekStep2 || weekStandardsEditing) && (
-              <section className="setup-step-card active-step">
-                <div className="step-heading">
-                  <span className="step-number">2</span>
-                  <div>
-                    <p className="eyebrow">{weekStep2 ? "Edit Step 2" : "Step 2"}</p>
-                    <h2>Authoritative standards</h2>
-                    <p className="supporting">
-                      Confirm and save the governed standards relevant to this week's scheduled
-                      curriculum.
-                    </p>
-                  </div>
-                </div>
-                <StandardsPanel
-                  key={`${selectedAssignmentId}-${weekStart}-${standardsMappingVersion}`}
-                  accessToken={session.access_token}
-                  assignmentId={selectedAssignmentId || null}
-                  weekStart={weekStart}
-                  weeklyLessons={plan}
-                  onSelectionResolved={resolveSelectedStandards}
-                  onSelectionSaved={(selected) => {
-                    setSavedStandardsCount(selected.length);
-                    resolveSelectedStandards(selected);
-                    if (!draftRevision) setPlanningAssistComplete(false);
-                    setPdfReviewed(false);
-                  }}
-                />
-                {weekStandardsEditing && weekStep2 && (
-                  <div className="button-row">
-                    <button
-                      className="primary"
-                      onClick={() => setWeekStandardsEditing(false)}
-                    >
-                      Done reviewing standards
-                    </button>
-                  </div>
-                )}
-              </section>
-            )}
-
-            {weekStep2 && !weekStandardsEditing && (
-              <section className="setup-step-summary complete-summary">
-                <div>
-                  <strong>Step 2 complete Â· Authoritative standards saved</strong>
-                  <p>{savedStandardsCount} governed standard{savedStandardsCount === 1 ? "" : "s"} selected.</p>
-                </div>
-                <button
-                  className="secondary"
-                  onClick={() => setWeekStandardsEditing(true)}
-                >
-                  Edit standards
-                </button>
-              </section>
-            )}
-
-            {weekStep2 && (!planningAssistComplete || planningAssistEditing) && (
-              <section className="setup-step-card active-step">
-                <div className="step-heading">
-                  <span className="step-number">3</span>
-                  <div>
-                    <p className="eyebrow">{planningAssistComplete ? "Reopen Step 3" : "Step 3"}</p>
-                    <h2>Planning assistance</h2>
-                    <p className="supporting">
-                      Use, edit, regenerate, or skip suggestions. Nothing enters the saved plan
-                      without your action.
-                    </p>
-                  </div>
-                </div>
-                <AiPlanningPanel
-                  accessToken={session.access_token}
-                  assignmentId={selectedAssignmentId || null}
-                  weekStart={weekStart}
-                  hasScheduledLessons={plan.length > 0}
-                  hasSavedStandards={savedStandardsCount > 0}
-                  currentFields={{
-                    unit_topic: draft.unit_topic,
-                    literacy_standards: draft.literacy_standards,
-                    act_preparation: draft.act_preparation,
-                    learning_targets: draft.learning_targets,
-                    know: draft.know,
-                    understand: draft.understand,
-                    do_statement: draft.do,
-                    activities: draft.activities,
-                    assessments: draft.assessments,
-                    resources: draft.resources,
-                    monday: draft.monday,
-                    tuesday: draft.tuesday,
-                    wednesday: draft.wednesday,
-                    thursday: draft.thursday,
-                    friday: draft.friday,
-                  }}
-                  onApplyField={applyAiPlanningField}
-                />
-                <div className="action-bar">
-                  <div>
-                    <strong>Teacher decision</strong>
-                    <span>You may use planning assistance or continue with your own planning text.</span>
-                  </div>
-                  <button
-                    className="primary"
-                    onClick={() => {
-                      setPlanningAssistComplete(true);
-                      setPlanningAssistEditing(false);
-                      setPlanReviewOpen(true);
-                    }}
-                  >
-                    Continue to review/edit plan
-                  </button>
-                </div>
-              </section>
-            )}
-
-            {weekStep3 && !planningAssistEditing && (
-              <section className="setup-step-summary complete-summary">
-                <div>
-                  <strong>Step 3 complete Â· Planning assistance reviewed</strong>
-                  <p>Teacher-approved or teacher-authored planning text is preserved.</p>
-                </div>
-                <button
-                  className="secondary"
-                  onClick={() => setPlanningAssistEditing(true)}
-                >
-                  Reopen planning assistance
-                </button>
-              </section>
-            )}
-
-            {weekStep3 && (!weekStep4 || planReviewOpen) && (
-              <section className="setup-step-card active-step">
-                <div className="step-heading">
-                  <span className="step-number">4</span>
-                  <div>
-                    <p className="eyebrow">{weekStep4 ? "Edit Step 4" : "Step 4"}</p>
-                    <h2>Review and save the working plan</h2>
-                    <p className="supporting">
-                      Review the Framework and Week at a Glance in district PDF order. Save before
-                      PDF review.
-                    </p>
-                  </div>
-                </div>
-                <PlanningPdfFieldsPanel draft={draft} disabled={busy} onChange={updateDraft} />
-                <div className="button-row">
-                  <button
-                    className="primary"
-                    disabled={!selectedAssignmentId || busy}
-                    onClick={() => void saveDraft()}
-                  >
-                    Save plan & continue
-                  </button>
-                  {draftRevision && (
-                    <button
-                      className="secondary"
-                      onClick={() => setPlanReviewOpen(false)}
-                    >
-                      Cancel editing
-                    </button>
-                  )}
-                </div>
-              </section>
-            )}
-
-            {weekStep4 && !planReviewOpen && (
-              <section className="setup-step-summary complete-summary">
-                <div>
-                  <strong>Step 4 complete Â· Draft revision {draftRevision}</strong>
-                  <p>{submissionLabel(draftSubmissionStatus)} Â· no unsaved changes.</p>
-                </div>
-                <button
-                  className="secondary"
-                  onClick={() => setPlanReviewOpen(true)}
-                >
-                  Edit plan
-                </button>
-              </section>
-            )}
-
-            {weekStep4 && !pdfReviewed && (
-              <section className="setup-step-card active-step">
-                <div className="step-heading">
-                  <span className="step-number">5</span>
-                  <div>
-                    <p className="eyebrow">Step 5</p>
-                    <h2>Review Weekly Lesson Plan PDF</h2>
-                    <p className="supporting">
-                      Open the Instructional Planning Framework + Week at a Glance and review it.
-                      Viewing the PDF only completes this review step; it does not submit or
-                      resubmit the weekly plan. Submission is a separate Step 6 action.
-                    </p>
-                  </div>
-                </div>
-                {documentWorking && (
-                  <p className="working-status" role="status" aria-live="polite">
-                    <span className="button-spinner" aria-hidden="true" />
-                    Preparing {documentTitle(documentWorking)}â€¦
-                  </p>
-                )}
-                <div className="pdf-review-grid">
-                  <article className="card">
-                    <h3>Weekly Lesson Plan</h3>
-                    <p className="supporting">
-                      Instructional Planning Framework + Week at a Glance
-                    </p>
-                    <div className="button-row">
-                      <button
-                        className="primary"
-                        disabled={busy}
-                        onClick={() => void exportDocument("lesson-plan", "view")}
-                      >
-                        {documentWorking === "lesson-plan" ? "Preparingâ€¦" : "View PDF"}
-                      </button>
-                      <button
-                        className="secondary"
-                        disabled={busy}
-                        onClick={() => void exportDocument("lesson-plan", "download")}
-                      >
-                        Download PDF
-                      </button>
-                      <button
-                        className="secondary"
-                        disabled={busy}
-                        onClick={() => void exportDocument("lesson-plan", "print")}
-                      >
-                        Print
-                      </button>
-                    </div>
-                  </article>
-                </div>
-              </section>
-            )}
-
-            {weekStep5 && (
-              <section className="setup-step-summary complete-summary">
-                <div>
-                  <strong>Step 5 complete Â· Weekly Lesson Plan PDF reviewed</strong>
-                  <p>PDF review is complete. Viewing did not submit the plan; Step 6 controls submission separately.</p>
-                </div>
-                <div className="button-row">
-                  <button
-                    className="secondary"
-                    disabled={busy}
-                    onClick={() => void exportDocument("lesson-plan", "view")}
-                  >
-                    View PDF
-                  </button>
-                  <button
-                    className="secondary"
-                    disabled={busy}
-                    onClick={() => void exportDocument("lesson-plan", "download")}
-                  >
-                    Download PDF
-                  </button>
-                  <button
-                    className="secondary"
-                    disabled={busy}
-                    onClick={() => void exportDocument("lesson-plan", "print")}
-                  >
-                    Print
-                  </button>
-                </div>
-              </section>
-            )}
-
-            {weekStep5 && (
-              <section className="setup-ready-card">
-                <div className="step-heading">
-                  <span className="step-number">{weekStep6 ? "âœ“" : "6"}</span>
-                  <div>
-                    <p className="eyebrow">Step 6</p>
-                    <h2>{weekStep6 ? "Weekly plan submitted" : "Submit weekly plan"}</h2>
-                    <p className="supporting">
-                      {weekStep6
-                        ? "This saved revision was already submitted. Reviewing the PDF did not submit it again."
-                        : "Select Submit weekly plan when you are ready to create the immutable administrator-visible upcoming lesson plan for this class and Monday-starting week."}
-                    </p>
-                  </div>
-                </div>
-                {draftSubmittedAt && (
-                  <p className="guidance-text">
-                    Last submitted {new Date(draftSubmittedAt).toLocaleString()}.
-                  </p>
-                )}
-                <button
-                  className="primary"
-                  disabled={!savedForReview || weekStep6 || busy}
-                  onClick={() => void submitDraft()}
-                >
-                  {draftSubmissionStatus === "revised_after_submission"
-                    ? "Resubmit weekly plan"
-                    : weekStep6
-                      ? "Weekly plan submitted"
-                      : "Submit weekly plan"}
-                </button>
-              </section>
-            )}
-          </section>
-        )}
-      </main>
-
-      {pdfPreview && (
-        <div
-          className="pdf-modal-backdrop"
-          role="dialog"
-          aria-modal="true"
-          aria-label={`${pdfPreview.title} preview`}
-        >
-          <section className="pdf-modal">
-            <div className="pdf-modal-heading">
-              <h2>{pdfPreview.title}</h2>
-              <button type="button" className="secondary" onClick={closePdfPreview}>
-                Close preview
-              </button>
-            </div>
-            <iframe src={pdfPreview.url} title={`${pdfPreview.title} PDF`} />
-          </section>
-        </div>
-      )}
-      <footer>
-        Prepared with Teacher Planning Platform Â· Anniston controlled pilot Â· Teacher and curriculum
-        data only
-      </footer>
-    </div>
-  );
-}
+      =´ó»h‘éì¶»§q«^tÙ]\œ›ÜŠˆŠNÂˆÙ]Y\ÜØYÙJ™^ÙYZÈOOH[Û™^HÈ[›š[™ÈÙYZÜÈ[Ø^\È™YÚ[ˆ[Û™^KˆÙYZÈÙ]È	Û[Û™^_K˜ˆˆŠNÂˆB‚ˆ[˜İ[ÛˆÜ[‘œšY^PÛÜÙ[İ]
+\ÜÚYÛ›Y[YHÙ[XİY\ÜÚYÛ›Y[Y
+HÂˆÛÛœİ\ÜÚYÛ›Y[H\ÜÚYÛ›Y[Ë™š[™
+
+][JHOˆ][KšYOOH\ÜÚYÛ›Y[Y
+HÏÈ[ÂˆÛÛœİİ\œ™[ÙYZÈH[Û™^Q›ÜŠ
+NÂˆÙ]Ù[XİY\ÜÚYÛ›Y[Y
+\ÜÚYÛ›Y[Y
+NÂˆÙ]ÙYZÔİ\
+İ\œ™[ÙYZÊNÂˆÛX\”[›š[™ĞÛÛ^
+\ÜÚYÛ›Y[İ\œ™[ÙYZÊNÂˆÙ]\œ›ÜŠˆŠNÂˆÙ]Y\ÜØYÙJˆŠNÂˆÙ]šY]Ê˜[Y][ÛˆŠNÂˆB‚ˆ[˜İ[ÛˆÜ[”[›š[™ÕÙYZÊ\™Ù]ÙYZÎˆİš[™Ë\ÜÚYÛ›Y[YHÙ[XİY\ÜÚYÛ›Y[Y
+HÂˆÛÛœİ\ÜÚYÛ›Y[H\ÜÚYÛ›Y[Ë™š[™
+
+][JHOˆ][KšYOOH\ÜÚYÛ›Y[Y
+HÏÈ[ÂˆÛÛœİ[Û™^HH[Û™^Q›Ü’\ÛÊ\™Ù]ÙYZÊNÂˆÙ]Ù[XİY\ÜÚYÛ›Y[Y
+\ÜÚYÛ›Y[Y
+NÂˆÙ]ÙYZÔİ\
+[Û™^JNÂˆÛX\”[›š[™ĞÛÛ^
+\ÜÚYÛ›Y[[Û™^JNÂˆÙ]\œ›ÜŠˆŠNÂˆÙ]Y\ÜØYÙJˆŠNÂˆÙ]šY]Êœ[ˆŠNÂˆB‚ˆ[˜İ[ÛˆÛÜÙT”™]šY]Ê
+HÂˆYˆ
+”™]šY]ÊHT“œ™]›ÚÙSØš™XİT“
+”™]šY]Ë\›
+NÂˆÙ]”™]šY]Ê[
+NÂˆB‚ˆ\ÙQY™™Xİ
+
+
+HOˆÂˆYˆ
+\İ\X˜\ÙJH™]\›Âˆ›ÚYİ\X˜\ÙK˜]]™Ù]Ù\ÜÚ[ÛŠ
+K[Š
+È]HJHOˆÙ]Ù\ÜÚ[ÛŠ]KœÙ\ÜÚ[ÛŠJNÂˆÛÛœİÈ]HHHİ\X˜\ÙK˜]]›Û]]İ]PÚ[™ÙJ
+Ù]™[™^Ù\ÜÚ[ÛŠHOˆÂˆÙ]Ù\ÜÚ[ÛŠ™^Ù\ÜÚ[ÛŠNÂˆYˆ
+[™^Ù\ÜÚ[ÛŠHÂˆÙ]Y[]J[
+NÂˆÙ]\ÜÚYÛ›Y[Ê×JNÂˆÙ]İ\œšXİ[J×JNÂˆBˆJNÂˆ™]\›ˆ
+
+HOˆ]KœİXœØÜš\[Û‹[œİXœØÜšX™J
+NÂˆK×JNÂ‚ˆ\ÙQY™™Xİ
+
+
+HOˆÂˆYˆ
+Ù\ÜÚ[ÛŠH›ÚY›Ûİİ˜\
+Ù\ÜÚ[ÛŠNÂˆKÜÙ\ÜÚ[Û—JNÂ‚ˆ\ÙQY™™Xİ
+
+
+HOˆÂˆYˆ
+\Ù[XİY\ÜÚYÛ›Y[
+H™]\›ÂˆÙ]˜Yİ]J
+İ\œ™[
+HOˆ
+Âˆ‹‹˜İ\œ™[ˆXXÚ\ˆY[]OË™\Ü^WÛ˜[YHÏÈİ\œ™[XXÚ\‹ˆÛİ\œÙNˆÙ[XİY\ÜÚYÛ›Y[˜Ûİ\œÙWÛ˜[YKˆÜ˜YNˆÙ[XİY\ÜÚYÛ›Y[™Ü˜YWØ˜[™ÏÈİ\œ™[™Ü˜YKˆÙYZ×ÛÙˆÙYZÔİ\ˆJJNÂˆKÚY[]KÙ[XİY\ÜÚYÛ›Y[ÙYZÔİ\JNÂ‚ˆ\ÙQY™™Xİ
+
+
+HOˆ
+
+HOˆÂˆYˆ
+”™]šY]ÊHT“œ™]›ÚÙSØš™XİT“
+”™]šY]Ë\›
+NÂˆKÜ”™]šY]×JNÂ‚ˆ\ÙQY™™Xİ
+
+
+HOˆÂˆYˆ
+ˆšY]ÈOOH˜[Y][Ûˆ‚ˆ\Ù\ÜÚ[ÛË˜XØÙ\Ü×İÚÙ[‚ˆ\Ù[XİY\ÜÚYÛ›Y[Yˆ
+H™]\›Âˆ]Ø[˜Ù[YH˜[ÙNÂˆ›ÚY
+\Ş[˜È
+
+HOˆÂˆÛÛœİ™\ÜÛœÙHH]ØZ]™]Ú
+ˆØ\KİŒKİXXÚ\‹\İX›Z\ÜÚ[ÛœËÉÙ[˜ÛÙUT’PÛÛ\Û™[
+Ù[XİY\ÜÚYÛ›Y[Y
+_KØÛÛ\]Y\XÚÙ]İÙYZ×Üİ\IÙ[˜ÛÙUT’PÛÛ\Û™[
+ÙYZÔİ\
+_XˆÈXY\œÎˆÈ]]Üš^˜][Ûˆ™X\™\ˆ	ÜÙ\ÜÚ[Û‹˜XØÙ\Ü×İÚÙ[ŸXHKˆ
+NÂˆYˆ
+Ø[˜Ù[Y
+H™]\›ÂˆYˆ
+™\ÜÛœÙK›ÚÊHÂˆÙ]ÛÛ\]YXÚÙ]İX›Z]Y
+YJNÂˆÙ]ÛÛ\]YXÚÙ]™]šY]ÙY
+˜[ÙJNÂˆÙ]˜[Y][Û‘š[˜[^™Y
+YJNÂˆÙ]Y\ÜØYÙJˆ•\ÈœšY^HÛÜÙ[İ]Ø\È[™XYHİX›Z]Yˆ™]šY]ÈHÛÛ\]YÙYZÛHXÚÙ]ÈÛÛ[YKˆ‹ˆ
+NÂˆ™]\›ÂˆBˆYˆ
+™\ÜÛœÙKœİ]\ÈOOH
+HÂˆÙ]ÛÛ\]YXÚÙ]İX›Z]Y
+˜[ÙJNÂˆ™]\›ÂˆBˆÙ]\œ›ÜŠ]ØZ]™\ÜÛœÙQ]Z[
+™\ÜÛœÙK‘œšY^HÛÜÙ[İ]İ]\ÈÛİ[›İ™H™\İÜ™YˆŠJNÂˆJJ
+NÂˆ™]\›ˆ
+
+HOˆÂˆØ[˜Ù[YHYNÂˆNÂˆKÜÙ\ÜÚ[ÛË˜XØÙ\Ü×İÚÙ[‹Ù[XİY\ÜÚYÛ›Y[YšY]ËÙYZÔİ\JNÂ‚ˆÛÛœİ™\ÛÛ™TÙ[XİYİ[™\™ÈH\ÙPØ[˜XÚÊ
+Ù[XİYˆİ[™\™[V×JHOˆÂˆÛÛœİ^Xİ^HÙ[XİYˆ›X\
+
+İ[™\™
+HOˆ	Üİ[™\™˜ÛÙ_H8 %	Üİ[™\™^X
+Bˆš›Ú[Š—ˆŠNÂˆÙ]˜Yİ]J
+İ\œ™[
+HOˆÂˆYˆ
+İ\œ™[œİ[™\™ÈOOH^Xİ^
+H™]\›ˆİ\œ™[ÂˆÙ]˜Y\JYJNÂˆÙ]”™]šY]ÙY
+˜[ÙJNÂˆ™]\›ˆÈ‹‹˜İ\œ™[İ[™\™Îˆ^Xİ^NÂˆJNÂˆK×JNÂ‚ˆÛÛœİ\PZT[›š[™ÑšY[H\ÙPØ[˜XÚÊ
+šY[ˆ[›š[™ÑšY[Ù^K˜[YNˆİš[™ÊHOˆÂˆÛÛœİ˜YÙ^HHšY[OOH™×Üİ][Y[ˆÈ™ÈˆˆšY[Âˆ\]Q˜Y
+
+İ\œ™[
+HOˆ
+È‹‹˜İ\œ™[Ù˜YÙ^WNˆ˜[YHJJNÂˆK×JNÂ‚ˆ\Ş[˜È[˜İ[Ûˆ\OŠ]ˆİš[™Ë[š]Îˆ™\]Y\İ[š]
+Nˆ›ÛZ\ÙOˆÂˆYˆ
+\Ù\ÜÚ[ÛË˜XØÙ\Ü×İÚÙ[ŠH›İÈ™]È\œ›ÜŠ–[İ\ˆ]][XØ]YÙ\ÜÚ[Ûˆ\È[˜]˜Z[X›KˆŠNÂˆÛÛœİXY\œÈH™]ÈXY\œÊ[š]ËšXY\œÊNÂˆXY\œËœÙ]
+]]Üš^˜][Ûˆ‹™X\™\ˆ	ÜÙ\ÜÚ[Û‹˜XØÙ\Ü×İÚÙ[ŸX
+NÂˆYˆ
+[š]Ë˜›ÙH	‰ˆZXY\œËš\ÊÛÛ[U\HŠJHXY\œËœÙ]
+ÛÛ[U\H‹˜\XØ][Û‹ÚœÛÛˆŠNÂˆÛÛœİ™\ÜÛœÙHH]ØZ]™]Ú
+]È‹‹š[š]XY\œÈJNÂˆYˆ
+\™\ÜÛœÙK›ÚÊHÂˆ›İÈ™]È\œ›ÜŠ]ØZ]™\ÜÛœÙQ]Z[
+™\ÜÛœÙK	Ü™\ÜÛœÙKœİ]\ßH	Ü™\ÜÛœÙKœİ]\Õ^X
+JNÂˆBˆ™]\›ˆ]ØZ]™\ÜÛœÙKšœÛÛŠ
+H\ÈÂˆB‚ˆ\Ş[˜È[˜İ[Ûˆ›Ûİİ˜\
+Xİ]™TÙ\ÜÚ[ÛˆÙ\ÜÚ[ÛŠHÂˆÙ]\ŞJYJNÂˆÙ]\œ›ÜŠˆŠNÂˆHÂˆÛÛœİXY\œÈHÈ]]Üš^˜][Ûˆ™X\™\ˆ	ØXİ]™TÙ\ÜÚ[Û‹˜XØÙ\Ü×İÚÙ[ŸXNÂˆÛÛœİY[]T™\ÜÛœÙHH]ØZ]™]Ú
+‹Ø\KİŒKÜÙ\ÜÚ[Ûˆ‹ÈXY\œÈJNÂˆYˆ
+ZY[]T™\ÜÛœÙK›ÚÊHÂˆ›İÈ™]È\œ›ÜŠ]ØZ]™\ÜÛœÙQ]Z[
+Y[]T™\ÜÛœÙK”[İXØÙ\ÜÈÛİ[›İ™HØYYˆŠJNÂˆBˆÛÛœİ™^Y[]HH]ØZ]Y[]T™\ÜÛœÙKšœÛÛŠ
+H\ÈY[]NÂˆÙ]Y[]J™^Y[]JNÂˆYˆ
+™^Y[]Kœ›Û\Ëš[˜ÛY\ÊXXÚ\ˆŠJHÂˆÛÛœİØİ\œšXİ[T™\ÜÛœÙK\ÜÚYÛ›Y[Ô™\ÜÛœÙWHH]ØZ]›ÛZ\ÙK˜[
+Âˆ™]Ú
+‹Ø\KİŒKØİ\œšXİ[H‹ÈXY\œÈJKˆ™]Ú
+‹Ø\KİŒKİXXÚ[™ËX\ÜÚYÛ›Y[È‹ÈXY\œÈJKˆJNÂˆ›Üˆ
+ÛÛœİ™\ÜÛœÙHÙˆØİ\œšXİ[T™\ÜÛœÙK\ÜÚYÛ›Y[Ô™\ÜÛœÙWJHÂˆYˆ
+\™\ÜÛœÙK›ÚÊHÂˆ›İÈ™]È\œ›ÜŠ]ØZ]™\ÜÛœÙQ]Z[
+™\ÜÛœÙK•XXÚ\ˆ[›š[™È]HÛİ[›İ™HØYYˆŠJNÂˆBˆBˆÛÛœİ™^İ\œšXİ[HH]ØZ]İ\œšXİ[T™\ÜÛœÙKšœÛÛŠ
+H\Èİ\œšXİ[[V×NÂˆÛÛœİ™^\ÜÚYÛ›Y[ÈH]ØZ]\ÜÚYÛ›Y[Ô™\ÜÛœÙKšœÛÛŠ
+H\È\ÜÚYÛ›Y[×NÂˆÙ]İ\œšXİ[J™^İ\œšXİ[JNÂˆÙ]\ÜÚYÛ›Y[Ê™^\ÜÚYÛ›Y[ÊNÂˆYˆ
+\Ù[XİY\ÜÚYÛ›Y[Y	‰ˆ™^\ÜÚYÛ›Y[Ë›[™İˆ
+HÂˆÙ]Ù[XİY\ÜÚYÛ›Y[Y
+™^\ÜÚYÛ›Y[ÖÌKšY
+NÂˆBˆH[ÙHÂˆÙ]İ\œšXİ[J×JNÂˆÙ]\ÜÚYÛ›Y[Ê×JNÂˆÙ]Ù[XİY\ÜÚYÛ›Y[Y
+ˆŠNÂˆBˆYˆ
+[™^Y[]Kœ›Û\Ëš[˜ÛY\ÊXXÚ\ˆŠH	‰ˆšY]ÈOOHš[ŠHÂˆÙ]šY]Ê˜YZ[š\İ˜][ÛˆŠNÂˆBˆHØ]Ú
+Ø]YÚ
+HÂˆÙ]\œ›ÜŠØ]YÚ[œİ[˜Ù[Ùˆ\œ›ÜˆÈØ]YÚ›Y\ÜØYÙHˆ”[İXØÙ\ÜÈÛİ[›İ™HØYYˆŠNÂˆHš[˜[HÂˆÙ]\ŞJ˜[ÙJNÂˆBˆB‚ˆ\Ş[˜È[˜İ[ÛˆÚYÛ’[Š
+HÂˆYˆ
+\İ\X˜\ÙJH™]\›ÂˆÙ]\œ›ÜŠˆŠNÂˆÛÛœİÈ\œ›ÜˆÚYÛ’[‘\œ›ÜˆHH]ØZ]İ\X˜\ÙK˜]]œÚYÛ’[•Ú]Ğ]]
+Âˆ›İšY\ˆ™ÛÛÙÛH‹ˆÜ[ÛœÎˆÈ™Y\™XİÎˆÚ[™İË›ØØ][Û‹›ÜšYÚ[ˆKˆJNÂˆYˆ
+ÚYÛ’[‘\œ›ÜŠHÙ]\œ›ÜŠÚYÛ’[‘\œ›Ü‹›Y\ÜØYÙJNÂˆB‚ˆ\Ş[˜È[˜İ[ÛˆÚYÛ“İ]
+
+HÂˆYˆ
+\İ\X˜\ÙJH™]\›Âˆ]ØZ]İ\X˜\ÙK˜]]œÚYÛ“İ]
+
+NÂˆÙ]šY]Ê™\Ú›Ø\™ŠNÂˆB‚ˆ\Ş[˜È[˜İ[ÛˆØYØ\œQ›ÜØ\™ÛÛ^
+\™Ù]ÙYZÈHÙYZÔİ\
+HÂˆYˆ
+\Ù[XİY\ÜÚYÛ›Y[Y
+H™]\›ÂˆHÂˆÛÛœİ™]š[İ\ÈHY^\Ê\™Ù]ÙYZËMÊNÂˆÛÛœİØ]™YH]ØZ]\OœšY^U˜[Y][Û”™XYŠˆØ\KİŒKÙœšY^K]˜[Y][ÛœÏØ\ÜÚYÛ›Y[ÚYIÙ[˜ÛÙUT’PÛÛ\Û™[
+Ù[XİY\ÜÚYÛ›Y[Y
+_IÙYZ×Üİ\IÙ[˜ÛÙUT’PÛÛ\Û™[
+™]š[İ\Ê_Xˆ
+NÂˆÙ]Ø\œQ›ÜØ\™\ÜÛÛ’YÊØ]™Y˜Ø\œWÙ›ÜØ\™Øİ\œšXİ[[WÛ\ÜÛÛ—ÚYÊNÂˆHØ]Ú
+Ø]YÚ
+HÂˆÛÛœİ^HØ]YÚ[œİ[˜Ù[Ùˆ\œ›ÜˆÈØ]YÚ›Y\ÜØYÙKÓİÙ\Ø\ÙJ
+HˆˆÂˆYˆ
+^š[˜ÛY\Ê››İ›İ[™ŠJHÙ]Ø\œQ›ÜØ\™\ÜÛÛ’YÊ×JNÂˆ[ÙH›İÈØ]YÚÂˆBˆB‚ˆ\Ş[˜È[˜İ[ÛˆÙ[™\˜]T[Š
+HÂˆYˆ
+\Ù[XİY\ÜÚYÛ›Y[Y
+H™]\›ÂˆYˆ
+\Ù[XİY\ÜÚYÛ›Y[Ë˜İ\œšXİ[[WÚY
+HÂˆÙ]\œ›ÜŠ‘š[š\ÚÛİ\œÙHÙ]\İ\ˆHY[™Èİ\œšXİ[[H	ˆXÚ[™È™Y›Ü™HZ[[™È\ÈÙYZËˆŠNÂˆ™]\›ÂˆBˆÙ]\ŞJYJNÂˆÙ]\œ›ÜŠˆŠNÂˆÙ]Y\ÜØYÙJˆŠNÂˆÙ]ÙYZĞİ\œšXİ[[PÛÛ™š\›YY
+˜[ÙJNÂˆÙ]Ø]™Yİ[™\™ĞÛİ[
+
+NÂˆÙ]ÙYZÔİ[™\™ÑY][™Ê˜[ÙJNÂˆÙ][›š[™Ğ\ÜÚ\İÛÛ\]J˜[ÙJNÂˆÙ][›š[™Ğ\ÜÚ\İY][™Ê˜[ÙJNÂˆÙ]”™]šY]ÙY
+˜[ÙJNÂˆHÂˆÛÛœİÙ[™\˜]YH]ØZ]\O[›™Y\ÜÛÛ–×OŠ‹Ø\KİŒKÜ[œËÙÙ[™\˜]H‹ÂˆY]Ùˆ”ÔÕ‹ˆ›ÙNˆ”ÓÓ‹œİš[™ÚYJÈ\ÜÚYÛ›Y[ÚYˆÙ[XİY\ÜÚYÛ›Y[YÙYZ×Üİ\ˆÙYZÔİ\JKˆJNÂˆÙ][ŠÛÜ[ŠÙ[™\˜]Y
+JNÂˆÙ]˜[Y][ÛœÊØš™Xİ™œ›ÛQ[šY\ÊˆÙ[™\˜]Y›X\
+
+\ÜÛÛŠHOˆÂˆ\ÜÛÛ‹œØÚY[YÛ\ÜÛÛ—ÚYˆÈİ]\Îˆˆ‹™X\ÛÛˆˆ‹XXÚ\“›İNˆˆ‹Ø\œQ›ÜØ\™ˆ˜[ÙHKˆJKˆ
+JNÂˆÙ]˜[Y][Û”™]š\Ú[ÛŠ[
+NÂˆ]ØZ]ØYØ\œQ›ÜØ\™ÛÛ^
+
+NÂˆ]ØZ]ØY˜Y
+˜[ÙJNÂˆ]ØZ]ØY^\İ[™Õ˜[Y][ÛŠÙ[™\˜]Y
+NÂˆÙ]Y\ÜØYÙJˆÙ[™\˜]Y›[™İˆÈZ[	ÙÙ[™\˜]Y›[™İHØÚY[Y\ÜÛÛ‰ÙÙ[™\˜]Y›[™İOOHHÈˆˆˆœÈŸKˆ™]šY]È\ÈÙYZÉÜÈİ\œšXİ[[H[™ÛÛ™š\›Hİ\H™Y›Ü™HÛÛ[Z[™Ë˜ˆˆ“›Èİ\œšXİ[[H\ÜÛÛœÈÙ\™H]˜Z[X›H›Üˆ\ÈÙYZËˆ™]šY]Èİ\œšXİ[[H	ˆXÚ[™È[ˆÛİ\œÙHÙ]\[ˆZ[HÙYZÈYØZ[‹ˆ‹ˆ
+NÂˆHØ]Ú
+Ø]YÚ
+HÂˆÙ]\œ›ÜŠØ]YÚ[œİ[˜Ù[Ùˆ\œ›ÜˆÈØ]YÚ›Y\ÜØYÙHˆ•ÙYZÛH[ˆÙ[™\˜][Ûˆ˜Z[YˆŠNÂˆHš[˜[HÂˆÙ]\ŞJ˜[ÙJNÂˆBˆB‚ˆ\Ş[˜È[˜İ[ÛˆØY^\İ[™Õ˜[Y][ÛŠØYY[ˆ[›™Y\ÜÛÛ–×JHÂˆYˆ
+\Ù[XİY\ÜÚYÛ›Y[Y
+H™]\›ÂˆHÂˆÛÛœİØ]™YH]ØZ]\OœšY^U˜[Y][Û”™XYŠˆØ\KİŒKÙœšY^K]˜[Y][ÛœÏØ\ÜÚYÛ›Y[ÚYIÙ[˜ÛÙUT’PÛÛ\Û™[
+Ù[XİY\ÜÚYÛ›Y[Y
+_IÙYZ×Üİ\IÙ[˜ÛÙUT’PÛÛ\Û™[
+ÙYZÔİ\
+_Xˆ
+NÂˆÛÛœİRYH™]ÈX\
+Ø]™Y›\ÜÛÛœË›X\
+
+\ÜÛÛŠHOˆÛ\ÜÛÛ‹œØÚY[YÛ\ÜÛÛ—ÚY\ÜÛÛ—JJNÂˆÙ]˜[Y][ÛœÊØš™Xİ™œ›ÛQ[šY\ÊˆØYY[‹›X\
+
+\ÜÛÛŠHOˆÂˆÛÛœİİÜ™YHRY™Ù]
+\ÜÛÛ‹œØÚY[YÛ\ÜÛÛ—ÚY
+NÂˆ™]\›ˆÂˆ\ÜÛÛ‹œØÚY[YÛ\ÜÛÛ—ÚYˆİÜ™YˆÈÂˆİ]\ÎˆİÜ™Yœİ]\Ëˆ™X\ÛÛˆİÜ™Yœ™X\ÛÛˆÏÈˆ‹ˆXXÚ\“›İNˆİÜ™YXXÚ\—Û›İHÏÈˆ‹ˆØ\œQ›ÜØ\™ˆİÜ™Y˜Ø\œWÙ›ÜØ\™ˆBˆˆÈİ]\Îˆˆ‹™X\ÛÛˆˆ‹XXÚ\“›İNˆˆ‹Ø\œQ›ÜØ\™ˆ˜[ÙHKˆNÂˆJKˆ
+JNÂˆÙ]˜[Y][Û”™]š\Ú[ÛŠØ]™Yœ™]š\Ú[ÛŠNÂˆÙ]˜[Y][Û‘š[˜[^™Y
+YJNÂˆHØ]Ú
+Ø]YÚ
+HÂˆÛÛœİ^HØ]YÚ[œİ[˜Ù[Ùˆ\œ›ÜˆÈØ]YÚ›Y\ÜØYÙKÓİÙ\Ø\ÙJ
+HˆˆÂˆYˆ
+]^š[˜ÛY\Ê››İ›İ[™ŠJH›İÈØ]YÚÂˆÙ]˜[Y][Û”™]š\Ú[ÛŠ[
+NÂˆÙ]˜[Y][Û‘š[˜[^™Y
+˜[ÙJNÂˆBˆB‚ˆ\Ş[˜È[˜İ[ÛˆØY[Š
+HÂˆYˆ
+\Ù[XİY\ÜÚYÛ›Y[Y
+H™]\›ÂˆYˆ
+\Ù[XİY\ÜÚYÛ›Y[Ë˜İ\œšXİ[[WÚY
+HÂˆÙ]\œ›ÜŠ‘š[š\ÚÛİ\œÙHÙ]\İ\ˆHY[™Èİ\œšXİ[[H	ˆXÚ[™È™Y›Ü™H™[Ü[š[™ÈHÙYZËˆŠNÂˆ™]\›ÂˆBˆÙ]\ŞJYJNÂˆÙ]\œ›ÜŠˆŠNÂˆÙ]ÙYZĞİ\œšXİ[[PÛÛ™š\›YY
+˜[ÙJNÂˆHÂˆÛÛœİØYYH]ØZ]\O[›™Y\ÜÛÛ–×OŠˆØ\KİŒKÜ[œÏØ\ÜÚYÛ›Y[ÚYIÙ[˜ÛÙUT’PÛÛ\Û™[
+Ù[XİY\ÜÚYÛ›Y[Y
+_IÙYZ×Üİ\IİÙYZÔİ\Xˆ
+NÂˆÙ][ŠÛÜ[ŠØYY
+JNÂˆÙ]˜[Y][ÛœÊØš™Xİ™œ›ÛQ[šY\ÊˆØYY›X\
+
+\ÜÛÛŠHOˆÂˆ\ÜÛÛ‹œØÚY[YÛ\ÜÛÛ—ÚYˆÈİ]\Îˆˆ‹™X\ÛÛˆˆ‹XXÚ\“›İNˆˆ‹Ø\œQ›ÜØ\™ˆ˜[ÙHKˆJKˆ
+JNÂˆ]ØZ]ØYØ\œQ›ÜØ\™ÛÛ^
+
+NÂˆ]ØZ]ØY˜Y
+˜[ÙJNÂˆ]ØZ]ØY^\İ[™Õ˜[Y][ÛŠØYY
+NÂˆÙ]Y\ÜØYÙJˆØYY›[™İˆÈ™[Ü[™Y	ÛØYY›[™İHØÚY[Y\ÜÛÛ‰ÛØYY›[™İOOHHÈˆˆˆœÈŸKˆ™]šY]È[™ÛÛ™š\›H\ÈÙYZÉÜÈİ\œšXİ[[H™Y›Ü™HÛÛ[Z[™Ë˜ˆˆ“›ÈØ]™YÙYZÈØ\È›İ[™›Üˆ\È[Û™^K\İ\[™ÈÙYZËˆ‹ˆ
+NÂˆHØ]Ú
+Ø]YÚ
+HÂˆÙ]\œ›ÜŠØ]YÚ[œİ[˜Ù[Ùˆ\œ›ÜˆÈØ]YÚ›Y\ÜØYÙHˆ•ÙYZÛH[ˆÛİ[›İ™HØYYˆŠNÂˆHš[˜[HÂˆÙ]\ŞJ˜[ÙJNÂˆBˆB‚ˆ\Ş[˜È[˜İ[ÛˆØY˜Y
+ÚİÓ›İ›İ[™HYJHÂˆYˆ
+\Ù[XİY\ÜÚYÛ›Y[Y
+H™]\›ÂˆHÂˆÛÛœİØYYH]ØZ]\OÙYZÛQ˜YŠˆØ\KİŒKİÙYZÛKY˜YÏØ\ÜÚYÛ›Y[ÚYIÙ[˜ÛÙUT’PÛÛ\Û™[
+Ù[XİY\ÜÚYÛ›Y[Y
+_IÙYZ×Üİ\IİÙYZÔİ\Xˆ
+NÂˆÙ]˜Yİ]JÈ‹‹™[\Q˜Y‹‹›ØYY˜ÛÛ[JNÂˆÙ]˜Y™]š\Ú[ÛŠØYYœ™]š\Ú[ÛŠNÂˆÙ]˜YİX›Z\ÜÚ[Û”İ]\ÊØYYœİX›Z\ÜÚ[Û—Üİ]\ÊNÂˆÙ]˜YİX›Z]Y]
+ØYYœİX›Z]YØ]
+NÂˆÙ]˜Y\J˜[ÙJNÂˆÙ][›š[™Ğ\ÜÚ\İÛÛ\]JYJNÂˆÙ][›š[™Ğ\ÜÚ\İY][™Ê˜[ÙJNÂˆÙ][”™]šY]ÓÜ[Š˜[ÙJNÂˆYˆ
+ÚİÓ›İ›İ[™
+HÂˆÙ]Y\ÜØYÙJˆ˜Y™]š\Ú[Ûˆ	ÛØYYœ™]š\Ú[ÛŸH™[Ü[™Y0­È	ÜİX›Z\ÜÚ[Û“X™[
+ØYYœİX›Z\ÜÚ[Û—Üİ]\Ê_K˜ˆ
+NÂˆBˆHØ]Ú
+Ø]YÚ
+HÂˆÛÛœİ^HØ]YÚ[œİ[˜Ù[Ùˆ\œ›ÜˆÈØ]YÚ›Y\ÜØYÙHˆ•ÙYZÛH˜YÛİ[›İ™HØYYˆÂˆYˆ
+^ÓİÙ\Ø\ÙJ
+Kš[˜ÛY\Ê››İ›İ[™ŠJHÂˆÙ]˜Y™]š\Ú[ÛŠ[
+NÂˆÙ]˜YİX›Z\ÜÚ[Û”İ]\Ê››İÜİX›Z]YŠNÂˆÙ]˜YİX›Z]Y]
+[
+NÂˆÙ]˜Yİ]JÂˆ‹‹™[\Q˜YˆXXÚ\ˆY[]OË™\Ü^WÛ˜[YHÏÈˆ‹ˆÛİ\œÙNˆÙ[XİY\ÜÚYÛ›Y[Ë˜Ûİ\œÙWÛ˜[YHÏÈˆ‹ˆÜ˜YNˆÙ[XİY\ÜÚYÛ›Y[Ë™Ü˜YWØ˜[™ÏÈˆ‹ˆÙYZ×ÛÙˆÙYZÔİ\ˆJNÂˆÙ]˜Y\J˜[ÙJNÂˆÙ][›š[™Ğ\ÜÚ\İÛÛ\]J˜[ÙJNÂˆÙ][›š[™Ğ\ÜÚ\İY][™Ê˜[ÙJNÂˆÙ][”™]šY]ÓÜ[ŠYJNÂˆYˆ
+ÚİÓ›İ›İ[™
+HÙ]Y\ÜØYÙJ“›ÈØ]™Y˜Y^\İÈ›Üˆ\ÈÙYZÈY]ˆŠNÂˆH[ÙHÂˆ›İÈØ]YÚÂˆBˆBˆB‚ˆ\Ş[˜È[˜İ[ÛˆØ]™Q˜Y
+
+Nˆ›ÛZ\ÙOÙYZÛQ˜Y[ˆÂˆYˆ
+\Ù[XİY\ÜÚYÛ›Y[Y
+H™]\›ˆ[ÂˆYˆ
+Y˜Y›]\˜XŞWÜİ[™\™Ëš[J
+JHÂˆÙ]\œ›ÜŠYÜˆÙ[XİH]\˜XŞHİ[™\™È[H™Y›Ü™HØ]š[™ÈHÙYZÛH[‹ˆŠNÂˆ™]\›ˆ[ÂˆBˆYˆ
+Y˜Y˜XİÜ™\\˜][Û‹š[J
+JHÂˆÙ]\œ›ÜŠˆÛÛ\]HPÕ™\\˜][Ûˆ™Y›Ü™HØ]š[™ÈHÙYZÛH[‹ˆ[\ˆHXXÚ\‹\Ù[XİY›İHİXÚ\È‹ĞHÚ[ˆ›ÈPÕ›Øİ\È\Y\È\ÈÙYZËˆ‹ˆ
+NÂˆ™]\›ˆ[ÂˆBˆÙ]\ŞJYJNÂˆÙ]\œ›ÜŠˆŠNÂˆHÂˆÛÛœİØ]™YH]ØZ]\OÙYZÛQ˜YŠ‹Ø\KİŒKİÙYZÛKY˜YÈ‹ÂˆY]Ùˆ”U‹ˆ›ÙNˆ”ÓÓ‹œİš[™ÚYJÂˆ\ÜÚYÛ›Y[ÚYˆÙ[XİY\ÜÚYÛ›Y[YˆÙYZ×Üİ\ˆÙYZÔİ\ˆÛÛ[ˆ˜Yˆ^XİYÜ™]š\Ú[Ûˆ˜Y™]š\Ú[Û‹ˆJKˆJNÂˆÙ]˜Y™]š\Ú[ÛŠØ]™Yœ™]š\Ú[ÛŠNÂˆÙ]˜Yİ]JØ]™Y˜ÛÛ[
+NÂˆÙ]˜YİX›Z\ÜÚ[Û”İ]\ÊØ]™YœİX›Z\ÜÚ[Û—Üİ]\ÊNÂˆÙ]˜YİX›Z]Y]
+Ø]™YœİX›Z]YØ]
+NÂˆÙ]˜Y\J˜[ÙJNÂˆÙ][”™]šY]ÓÜ[Š˜[ÙJNÂˆÙ]”™]šY]ÙY
+˜[ÙJNÂˆÙ]Y\ÜØYÙJˆ˜Y™]š\Ú[Ûˆ	ÜØ]™Yœ™]š\Ú[ÛŸHØ]™Y0­È	ÜİX›Z\ÜÚ[Û“X™[
+Ø]™YœİX›Z\ÜÚ[Û—Üİ]\Ê_Kˆİ\ÛÛ\]H8 %™]šY]ÈHˆ™^˜ˆ
+NÂˆ™]\›ˆØ]™YÂˆHØ]Ú
+Ø]YÚ
+HÂˆÙ]\œ›ÜŠØ]YÚ[œİ[˜Ù[Ùˆ\œ›ÜˆÈØ]YÚ›Y\ÜØYÙHˆ•ÙYZÛH˜YØ]™H˜Z[YˆŠNÂˆ™]\›ˆ[ÂˆHš[˜[HÂˆÙ]\ŞJ˜[ÙJNÂˆBˆB‚ˆ\Ş[˜È[˜İ[ÛˆØ]™PÛÜÙ[İ]˜Y
+
+Nˆ›ÛZ\ÙOÙYZÛQ˜Y[ˆÂˆYˆ
+\Ù[XİY\ÜÚYÛ›Y[Y
+H™]\›ˆ[ÂˆÙ]\ŞJYJNÂˆÙ]\œ›ÜŠˆŠNÂˆHÂˆÛÛœİØ]™YH]ØZ]\OÙYZÛQ˜YŠ‹Ø\KİŒKİÙYZÛKY˜YËØÛÜÙ[İ]‹ÂˆY]Ùˆ”U‹ˆ›ÙNˆ”ÓÓ‹œİš[™ÚYJÂˆ\ÜÚYÛ›Y[ÚYˆÙ[XİY\ÜÚYÛ›Y[YˆÙYZ×Üİ\ˆÙYZÔİ\ˆÛÛ[ˆ˜Yˆ^XİYÜ™]š\Ú[Ûˆ˜Y™]š\Ú[Û‹ˆJKˆJNÂˆÙ]˜Y™]š\Ú[ÛŠØ]™Yœ™]š\Ú[ÛŠNÂˆÙ]˜Yİ]JØ]™Y˜ÛÛ[
+NÂˆÙ]˜YİX›Z\ÜÚ[Û”İ]\ÊØ]™YœİX›Z\ÜÚ[Û—Üİ]\ÊNÂˆÙ]˜YİX›Z]Y]
+Ø]™YœİX›Z]YØ]
+NÂˆÙ]˜Y\J˜[ÙJNÂˆÙ]Y\ÜØYÙJœšY^HÛÜÙ[İ]Ø]™Y]™]š\Ú[Ûˆ	ÜØ]™Yœ™]š\Ú[ÛŸK˜
+NÂˆ™]\›ˆØ]™YÂˆHØ]Ú
+Ø]YÚ
+HÂˆÙ]\œ›ÜŠØ]YÚ[œİ[˜Ù[Ùˆ\œ›ÜˆÈØ]YÚ›Y\ÜØYÙHˆ‘œšY^HÛÜÙ[İ]Ø]™H˜Z[YˆŠNÂˆ™]\›ˆ[ÂˆHš[˜[HÂˆÙ]\ŞJ˜[ÙJNÂˆBˆB‚ˆ\Ş[˜È[˜İ[ÛˆİX›Z]˜Y
+™]š\Ú[Û“İ™\œšYOÎˆ[X™\ŠNˆ›ÛZ\ÙOÙYZÛQ˜Y[ˆÂˆÛÛœİ™]š\Ú[ÛˆH™]š\Ú[Û“İ™\œšYHÏÈ˜Y™]š\Ú[ÛÂˆYˆ
+\Ù[XİY\ÜÚYÛ›Y[Y\™]š\Ú[Ûˆ
+˜Y\H	‰ˆ™]š\Ú[Û“İ™\œšYHOOH[™Yš[™Y
+JHÂˆ™]\›ˆ[ÂˆBˆÙ]\ŞJYJNÂˆÙ]\œ›ÜŠˆŠNÂˆHÂˆÛÛœİİX›Z]YH]ØZ]\OÙYZÛQ˜YŠ‹Ø\KİŒKİÙYZÛKY˜YËÜİX›Z]‹ÂˆY]Ùˆ”ÔÕ‹ˆ›ÙNˆ”ÓÓ‹œİš[™ÚYJÂˆ\ÜÚYÛ›Y[ÚYˆÙ[XİY\ÜÚYÛ›Y[YˆÙYZ×Üİ\ˆÙYZÔİ\ˆ^XİYÜ™]š\Ú[Ûˆ™]š\Ú[Û‹ˆJKˆJNÂˆÙ]˜Y™]š\Ú[ÛŠİX›Z]Yœ™]š\Ú[ÛŠNÂˆÙ]˜Yİ]JİX›Z]Y˜ÛÛ[
+NÂˆÙ]˜YİX›Z\ÜÚ[Û”İ]\ÊİX›Z]YœİX›Z\ÜÚ[Û—Üİ]\ÊNÂˆÙ]˜YİX›Z]Y]
+İX›Z]YœİX›Z]YØ]
+NÂˆÙ]˜Y\J˜[ÙJNÂˆÙ]Y\ÜØYÙJÙYZÛH[ˆ™]š\Ú[Ûˆ	ÜİX›Z]Yœ™]š\Ú[ÛŸHİX›Z]YİXØÙ\ÜÙ[K˜
+NÂˆ™]\›ˆİX›Z]YÂˆHØ]Ú
+Ø]YÚ
+HÂˆÙ]\œ›ÜŠØ]YÚ[œİ[˜Ù[Ùˆ\œ›ÜˆÈØ]YÚ›Y\ÜØYÙHˆ•ÙYZÛH[ˆİX›Z\ÜÚ[Ûˆ˜Z[YˆŠNÂˆ™]\›ˆ[ÂˆHš[˜[HÂˆÙ]\ŞJ˜[ÙJNÂˆBˆB‚ˆ\Ş[˜È[˜İ[ÛˆØİ[Y[›ØŠˆØİ[Y[ˆ^ÛYOØİ[Y[Ú[™˜ÛÛ\]Y\XÚÙ]‹ˆ
+Nˆ›ÛZ\ÙO›ØˆÂˆYˆ
+\Ù\ÜÚ[ÛË˜XØÙ\Ü×İÚÙ[ŠH›İÈ™]È\œ›ÜŠ–[İ\ˆ]][XØ]YÙ\ÜÚ[Ûˆ\È[˜]˜Z[X›KˆŠNÂˆYˆ
+Y˜Y™]š\Ú[Ûˆ˜Y\JHÂˆ›İÈ™]È\œ›ÜŠ”Ø]™HHİ\œ™[[ˆ™Y›Ü™H™]šY]Ú[™ÈÜˆ^Ü[™ÈœËˆŠNÂˆBˆÛÛœİ]HØİ[Y[OOH›\ÜÛÛ‹\[ˆ‚ˆÈ‹Ø\KİŒKÙØİ[Y[ËØ[›š\İÛ‹[\ÜÛÛ‹\[‹\XÚÙ]‚ˆˆØ\KİŒKÙØİ[Y[ËØ[›š\İÛ‹ZZKÉÙØİ[Y[XÂˆÛÛœİ™\ÜÛœÙHH]ØZ]™]Ú
+]ÂˆY]Ùˆ”ÔÕ‹ˆXY\œÎˆÂˆ]]Üš^˜][Ûˆ™X\™\ˆ	ÜÙ\ÜÚ[Û‹˜XØÙ\Ü×İÚÙ[ŸXˆÛÛ[U\Hˆ˜\XØ][Û‹ÚœÛÛˆ‹ˆKˆ›ÙNˆ”ÓÓ‹œİš[™ÚYJ˜Y
+KˆJNÂˆYˆ
+\™\ÜÛœÙK›ÚÊHÂˆ›İÈ™]È\œ›ÜŠ]ØZ]™\ÜÛœÙQ]Z[
+™\ÜÛœÙK•H[›š[™ÈØİ[Y[Ûİ[›İ™HÙ[™\˜]YˆŠJNÂˆBˆ™]\›ˆ]ØZ]™\ÜÛœÙK˜›ØŠ
+NÂˆB‚ˆ\Ş[˜È[˜İ[ÛˆÛÛ\]YXÚÙ]›ØŠ
+Nˆ›ÛZ\ÙO›ØˆÂˆYˆ
+\Ù\ÜÚ[ÛË˜XØÙ\Ü×İÚÙ[ˆ\Ù[XİY\ÜÚYÛ›Y[Y
+HÂˆ›İÈ™]È\œ›ÜŠ–[İ\ˆ]][XØ]YÙ\ÜÚ[Ûˆ\È[˜]˜Z[X›KˆŠNÂˆBˆÛÛœİ™\ÜÛœÙHH]ØZ]™]Ú
+ˆØ\KİŒKİXXÚ\‹\İX›Z\ÜÚ[ÛœËÉÙ[˜ÛÙUT’PÛÛ\Û™[
+Ù[XİY\ÜÚYÛ›Y[Y
+_KØÛÛ\]Y\XÚÙ]İÙYZ×Üİ\IÙ[˜ÛÙUT’PÛÛ\Û™[
+ÙYZÔİ\
+_XˆÈXY\œÎˆÈ]]Üš^˜][Ûˆ™X\™\ˆ	ÜÙ\ÜÚ[Û‹˜XØÙ\Ü×İÚÙ[ŸXHKˆ
+NÂˆYˆ
+\™\ÜÛœÙK›ÚÊHÂˆ›İÈ™]È\œ›ÜŠˆ]ØZ]™\ÜÛœÙQ]Z[
+™\ÜÛœÙK•HÛÛ\]YÙYZÛHXÚÙ]Ûİ[›İ™HØYYˆŠKˆ
+NÂˆBˆ™]\›ˆ]ØZ]™\ÜÛœÙK˜›ØŠ
+NÂˆB‚ˆ[˜İ[Ûˆ™\Ù[Šˆ›Øˆ›Ø‹ˆ]Nˆİš[™Ëˆš[[˜[YNˆİš[™ËˆXİ[ÛˆØİ[Y[Xİ[Û‹ˆ
+HÂˆYˆ
+Xİ[ÛˆOOH™İÛ›ØYŠHÂˆİÛ›ØY›ØŠ›Ø‹š[[˜[YJNÂˆ™]\›ÂˆBˆÛÛœİ\›HT“˜Ü™X]SØš™XİT“
+›ØŠNÂˆYˆ
+Xİ[ÛˆOOHšY]ÈŠHÂˆÛÜÙT”™]šY]Ê
+NÂˆÙ]”™]šY]ÊÈ\›]HJNÂˆ™]\›ÂˆBˆÛÛœİœ˜[YHHÚ[™İË™Øİ[Y[˜Ü™X]Q[[Y[
+šYœ˜[YHŠNÂˆœ˜[YKœİ[KœÜÚ][ÛˆH™š^YÂˆœ˜[YKœİ[KÚYHŒÂˆœ˜[YKœİ[KšZYÚHŒÂˆœ˜[YKœİ[K˜›Ü™\ˆHŒÂˆœ˜[YKœÜ˜ÈH\›Âˆœ˜[YK›Û›ØYH
+
+HOˆÂˆÚ[™İËœÙ][Y[İ]
+
+
+HOˆÂˆœ˜[YK˜ÛÛ[Ú[™İÏË™›Øİ\Ê
+NÂˆœ˜[YK˜ÛÛ[Ú[™İÏËœš[
+
+NÂˆÚ[™İËœÙ][Y[İ]
+
+
+HOˆÂˆT“œ™]›ÚÙSØš™XİT“
+\›
+NÂˆœ˜[YKœ™[[İ™J
+NÂˆKWÌ
+NÂˆKL
+NÂˆNÂˆÚ[™İË™Øİ[Y[˜›ÙK˜\[™Ú[
+œ˜[YJNÂˆB‚ˆ\Ş[˜È[˜İ[Ûˆ^ÜØİ[Y[
+ˆØİ[Y[ˆ^ÛYOØİ[Y[Ú[™˜ÛÛ\]Y\XÚÙ]‹ˆXİ[ÛˆØİ[Y[Xİ[Û‹ˆ
+HÂˆÙ]Øİ[Y[ÛÜšÚ[™ÊØİ[Y[
+NÂˆÙ]\ŞJYJNÂˆÙ]\œ›ÜŠˆŠNÂˆÙ]Y\ÜØYÙJˆØİ[Y[OOH›\ÜÛÛ‹\[ˆ‚ˆÈZ[[™ÈHÙYZÛH\ÜÛÛˆ[ˆ¸ )ˆ‚ˆˆ™\\š[™È	ÙØİ[Y[]JØİ[Y[
+_x )˜ˆ
+NÂˆHÂˆÛÛœİ›ØˆH]ØZ]Øİ[Y[›ØŠØİ[Y[
+NÂˆ™\Ù[Š›Ø‹Øİ[Y[]JØİ[Y[
+K[›š\İÛ‹IÙØİ[Y[KIİÙYZÔİ\Kœ˜Xİ[ÛŠNÂˆYˆ
+Øİ[Y[OOH›\ÜÛÛ‹\[ˆˆ	‰ˆXİ[ÛˆOOHšY]ÈŠHÙ]”™]šY]ÙY
+YJNÂˆÙ]Y\ÜØYÙJˆ	ÙØİ[Y[]JØİ[Y[
+_H	ÂˆXİ[ÛˆOOH™İÛ›ØY‚ˆÈ™İÛ›ØYY‚ˆˆXİ[ÛˆOOHœš[‚ˆÈ›Ü[™Y›Üˆš[[™È‚ˆˆœ™XYH›Üˆ™]šY]È‚ˆK‰ÙØİ[Y[OOH›\ÜÛÛ‹\[ˆˆ	‰ˆXİ[ÛˆOOHšY]ÈˆÈˆšY]Ú[™ÈHˆÙ\È›İİX›Z]HÙYZÛH[ÈİX›Z\ÜÚ[Ûˆ™[XZ[œÈHÙ\\˜]Hİ\ˆXİ[Û‹ˆˆˆˆŸXˆ
+NÂˆHØ]Ú
+Ø]YÚ
+HÂˆÙ]\œ›ÜŠØ]YÚ[œİ[˜Ù[Ùˆ\œ›ÜˆÈØ]YÚ›Y\ÜØYÙHˆ‘Øİ[Y[^Ü˜Z[YˆŠNÂˆHš[˜[HÂˆÙ]Øİ[Y[ÛÜšÚ[™Ê[
+NÂˆÙ]\ŞJ˜[ÙJNÂˆBˆB‚ˆ\Ş[˜È[˜İ[Ûˆ^ÜÛÛ\]YXÚÙ]
+Xİ[ÛˆØİ[Y[Xİ[ÛŠHÂˆÙ]Øİ[Y[ÛÜšÚ[™Ê˜ÛÛ\]Y\XÚÙ]ŠNÂˆÙ]\ŞJYJNÂˆÙ]\œ›ÜŠˆŠNÂˆÙ]Y\ÜØYÙJ”™\\š[™ÈÛÛ\]YÙYZÛHXÚÙ]8 )ˆŠNÂˆHÂˆÛÛœİ›ØˆH]ØZ]ÛÛ\]YXÚÙ]›ØŠ
+NÂˆ™\Ù[Šˆ›Ø‹ˆÛÛ\]YÙYZÛHXÚÙ]‹ˆÛÛ\]Y]ÙYZÛK\XÚÙ]IİÙYZÔİ\Kœ˜ˆXİ[Û‹ˆ
+NÂˆÙ]ÛÛ\]YXÚÙ]™]šY]ÙY
+YJNÂˆÙ]Y\ÜØYÙJˆÛÛ\]YÙYZÛHXÚÙ]	ÂˆXİ[ÛˆOOH™İÛ›ØY‚ˆÈ™İÛ›ØYY‚ˆˆXİ[ÛˆOOHœš[‚ˆÈ›Ü[™Y›Üˆš[[™È‚ˆˆœ™XYH›Üˆ™]šY]È‚ˆK˜ˆ
+NÂˆHØ]Ú
+Ø]YÚ
+HÂˆÙ]\œ›ÜŠˆØ]YÚ[œİ[˜Ù[Ùˆ\œ›ÜˆÈØ]YÚ›Y\ÜØYÙHˆÛÛ\]YÙYZÛHXÚÙ]Ûİ[›İ™HÜ[™Yˆ‹ˆ
+NÂˆHš[˜[HÂˆÙ]Øİ[Y[ÛÜšÚ[™Ê[
+NÂˆÙ]\ŞJ˜[ÙJNÂˆBˆB‚ˆ[˜İ[Ûˆ\]U˜[Y][ÛŠYˆİš[™Ë]Úˆ\X[˜[Y][Û‘[OŠHÂˆÙ]˜[Y][ÛœÊ
+İ\œ™[
+HOˆ
+Âˆ‹‹˜İ\œ™[ˆÚYNˆÈ‹‹˜İ\œ™[ÚYK‹‹œ]ÚKˆJJNÂˆB‚ˆ\Ş[˜È[˜İ[ÛˆØ]™U˜[Y][ÛŠ
+Nˆ›ÛZ\ÙOœšY^U˜[Y][Û”™XY[ˆÂˆYˆ
+\Ù[XİY\ÜÚYÛ›Y[Y
+H™]\›ˆ[ÂˆYˆ
+[‹œÛÛYJ
+\ÜÛÛŠHOˆ]˜[Y][ÛœÖÛ\ÜÛÛ‹œØÚY[YÛ\ÜÛÛ—ÚYOËœİ]\ÊJHÂˆÙ]\œ›ÜŠ‘]™\HØÚY[Y\ÜÛÛˆ]\İ]™HHœšY^H˜[Y][Ûˆİ]\ËˆŠNÂˆ™]\›ˆ[ÂˆBˆYˆ
+[‹œÛÛYJ
+\ÜÛÛŠHOˆÂˆÛÛœİ[HH˜[Y][ÛœÖÛ\ÜÛÛ‹œØÚY[YÛ\ÜÛÛ—ÚYNÂˆ™]\›ˆ[Kœİ]\ÈOOH›Z\ÜÙYˆ	‰ˆY[Kœ™X\ÛÛ‹š[J
+NÂˆJJHÂˆÙ]\œ›ÜŠ‘]™\HZ\ÜÙY\ÜÛÛˆ™\]Z\™\ÈH™X\ÛÛˆ™Y›Ü™HœšY^H˜[Y][Ûˆ\ÈÛÛ\]YˆŠNÂˆ™]\›ˆ[ÂˆBˆÙ]\ŞJYJNÂˆÙ]\œ›ÜŠˆŠNÂˆHÂˆ]^XİY™]š\Ú[ÛˆH˜[Y][Û”™]š\Ú[ÛÂˆYˆ
+^XİY™]š\Ú[ÛˆOOH[
+HÂˆHÂˆÛÛœİ^\İ[™ÈH]ØZ]\OœšY^U˜[Y][Û”™XYŠˆØ\KİŒKÙœšY^K]˜[Y][ÛœÏØ\ÜÚYÛ›Y[ÚYIÙ[˜ÛÙUT’PÛÛ\Û™[
+Ù[XİY\ÜÚYÛ›Y[Y
+_IÙYZ×Üİ\IÙ[˜ÛÙUT’PÛÛ\Û™[
+ÙYZÔİ\
+_Xˆ
+NÂˆ^XİY™]š\Ú[ÛˆH^\İ[™Ëœ™]š\Ú[ÛÂˆÙ]˜[Y][Û”™]š\Ú[ÛŠ^\İ[™Ëœ™]š\Ú[ÛŠNÂˆHØ]Ú
+Ø]YÚ
+HÂˆÛÛœİ^HØ]YÚ[œİ[˜Ù[Ùˆ\œ›ÜˆÈØ]YÚ›Y\ÜØYÙKÓİÙ\Ø\ÙJ
+HˆˆÂˆYˆ
+]^š[˜ÛY\Ê››İ›İ[™ŠJH›İÈØ]YÚÂˆBˆBˆÛÛœİØ]™YH]ØZ]\OœšY^U˜[Y][Û”™XYŠ‹Ø\KİŒKÙœšY^K]˜[Y][ÛœÈ‹ÂˆY]Ùˆ”U‹ˆ›ÙNˆ”ÓÓ‹œİš[™ÚYJÂˆ\ÜÚYÛ›Y[ÚYˆÙ[XİY\ÜÚYÛ›Y[YˆÙYZ×Üİ\ˆÙYZÔİ\ˆ^XİYÜ™]š\Ú[Ûˆ^XİY™]š\Ú[Û‹ˆ\ÜÛÛœÎˆ[‹›X\
+
+\ÜÛÛŠHOˆÂˆÛÛœİ[HH˜[Y][ÛœÖÛ\ÜÛÛ‹œØÚY[YÛ\ÜÛÛ—ÚYNÂˆ™]\›ˆÂˆØÚY[YÛ\ÜÛÛ—ÚYˆ\ÜÛÛ‹œØÚY[YÛ\ÜÛÛ—ÚYˆİ\œšXİ[[WÛ\ÜÛÛ—ÚYˆ\ÜÛÛ‹˜İ\œšXİ[[WÛ\ÜÛÛ—ÚYˆ\ÜÛÛ—Ù]Nˆ\ÜÛÛ‹›\ÜÛÛ—Ù]KˆÙ\]Y[˜ÙNˆ\ÜÛÛ‹œÙ\]Y[˜ÙKˆİ]\Îˆ[Kœİ]\Ëˆ™X\ÛÛˆ[Kœ™X\ÛÛˆ[ˆXXÚ\—Û›İNˆ[KXXÚ\“›İH[ˆØ\œWÙ›ÜØ\™ˆ[K˜Ø\œQ›ÜØ\™ˆNÂˆJKˆJKˆJNÂˆÙ]˜[Y][Û”™]š\Ú[ÛŠØ]™Yœ™]š\Ú[ÛŠNÂˆÙ]˜[Y][Û‘š[˜[^™Y
+YJNÂˆÙ]Y\ÜØYÙJˆœšY^H˜[Y][ÛˆÛÛ\]Kˆ	ÜØ]™Y˜Ø\œWÙ›ÜØ\™Øİ\œšXİ[[WÛ\ÜÛÛ—ÚYË›[™İH\ÜÛÛ‰ÜØ]™Y˜Ø\œWÙ›ÜØ\™Øİ\œšXİ[[WÛ\ÜÛÛ—ÚYË›[™İOOHHÈˆˆˆœÈŸHÙ[XİYÈØ\œH›ÜØ\™ˆİ\HÛÛ\]H8 %š[š\ÚHXXÚ\ˆ™Y›Xİ[Ûˆ™^˜ˆ
+NÂˆ™]\›ˆØ]™YÂˆHØ]Ú
+Ø]YÚ
+HÂˆÙ]\œ›ÜŠØ]YÚ[œİ[˜Ù[Ùˆ\œ›ÜˆÈØ]YÚ›Y\ÜØYÙHˆ‘œšY^H˜[Y][Ûˆ˜Z[YˆŠNÂˆ™]\›ˆ[ÂˆHš[˜[HÂˆÙ]\ŞJ˜[ÙJNÂˆBˆB‚ˆ\Ş[˜È[˜İ[ÛˆİX›Z]œšY^PÛÜÙ[İ]
+
+HÂˆYˆ
+]˜[Y][Û‘š[˜[^™Y
+HÂˆÙ]\œ›ÜŠÛÛ\]HœšY^H˜[Y][Ûˆ™Y›Ü™HÛÜÚ[™ÈHÙYZËˆŠNÂˆ™]\›ÂˆBˆYˆ
+\™Y›Xİ[Û’\ĞÛÛ\]JHÂˆÙ]\œ›ÜŠˆÛÛ\]H[LˆÙYZÛH™Y›Xİ[ÛˆÈÈ\Øİ\ÜÚ[Ûˆ›Û\È™Y›Ü™HİX›Z][™ÈHœšY^HÛÜÙ[İ]ˆ‹ˆ
+NÂˆ™]\›ÂˆBˆÛÛœİØ]™YH]ØZ]Ø]™PÛÜÙ[İ]˜Y
+
+NÂˆYˆ
+\Ø]™Y
+H™]\›ÂˆÛÛœİİX›Z]YH]ØZ]İX›Z]˜Y
+Ø]™Yœ™]š\Ú[ÛŠNÂˆYˆ
+\İX›Z]Y
+H™]\›ÂˆÙ]ÛÛ\]YXÚÙ]İX›Z]Y
+YJNÂˆÙ]ÛÛ\]YXÚÙ]™]šY]ÙY
+˜[ÙJNÂˆÙ]Y\ÜØYÙJˆ‘œšY^HÛÜÙ[İ]İX›Z]Yˆİ\ˆÛÛ\]H8 %™]šY]ÈHÛÛ\]YÙYZÛHXÚÙ]™Y›Ü™HÛÛ[Z[™ÈÈ™^ÙYZËˆ‹ˆ
+NÂˆB‚ˆ[˜İ[ÛˆÛÛ[YUÓ™^ÙYZÊ
+HÂˆYˆ
+XÛÛ\]YXÚÙ]İX›Z]YXÛÛ\]YXÚÙ]™]šY]ÙY
+HÂˆÙ]\œ›ÜŠ”™]šY]ÈHÛÛ\]YÙYZÛHXÚÙ]™Y›Ü™HÛÛ[Z[™ÈÈ™^ÙYZËˆŠNÂˆ™]\›ÂˆBˆÛÛœİ™^HY^\ÊÙYZÔİ\ÊNÂˆÙ]ÙYZÔİ\
+™^
+NÂˆÛX\”[›š[™ĞÛÛ^
+Ù[XİY\ÜÚYÛ›Y[™^
+NÂˆÙ]šY]Êœ[ˆŠNÂˆÙ]Y\ÜØYÙJœšY^HÛÜÙ[İ]ÛÛ\]KˆZ[Üˆ™XÛÛ˜Ú[HHÙYZÈÙˆ	Û™^K˜
+NÂˆB‚ˆÛÛœİYY][™Ñ]\ÈH\ÙSY[[Ê
+
+HOˆÂˆYˆ
+\Ù[XİY\ÜÚYÛ›Y[
+H™]\›ˆ×NÂˆÛÛœİ[˜]˜Z[X›HH™]ÈÙ]
+ˆØÚY[Q^Ù\[ÛœÂˆ™š[\Š
+^Ù\[ÛŠHOˆY^Ù\[Û‹š\×Ø]˜Z[X›JBˆ›X\
+
+^Ù\[ÛŠHOˆ^Ù\[Û‹™^Ù\[Û—Ù]JKˆ
+NÂˆ™]\›ˆ\œ˜^K™œ›ÛJÈ[™İˆHK
+Ú][K[™^
+HOˆY^\ÊÙYZÔİ\[™^
+JK™š[\Šˆ
+\ÛÊHOˆÂˆÛÛœİ]HH™]È]J	Ú\ÛßULŒŒ
+NÂˆÛÛœİÙYZÙ^HH]K™Ù]^J
+HOOHÈÈˆ]K™Ù]^J
+NÂˆ™]\›ˆ][˜]˜Z[X›Kš\Ê\ÛÊBˆ	‰ˆÙ[XİY\ÜÚYÛ›Y[›YY][™×Ü]\›œËœÛÛYJˆ
+]\›ŠHOˆ]\›‹ÙYZÙ^\Ëš[˜ÛY\ÊÙYZÙ^JBˆ	‰ˆ\ÛÈH]\›‹™Y™™Xİ]™WÜİ\ˆ	‰ˆ\ÛÈH]\›‹™Y™™Xİ]™WÙ[™ˆ
+NÂˆKˆ
+NÂˆKÜØÚY[Q^Ù\[ÛœËÙ[XİY\ÜÚYÛ›Y[ÙYZÔİ\JNÂ‚ˆ\Ş[˜È[˜İ[Ûˆ[İ™T[›™Y\ÜÛÛŠ\ÜÛÛˆ[›™Y\ÜÛÛ‹™^]Nˆİš[™ÊHÂˆYˆ
+™^]HOOH\ÜÛÛ‹›\ÜÛÛ—Ù]JH™]\›ÂˆÙ]\ŞJYJNÂˆÙ]\œ›ÜŠˆŠNÂˆHÂˆ]ØZ]\O[šÛ›İÛŠˆØ\KİŒKÜ[œËÛ\ÜÛÛœËÉÙ[˜ÛÙUT’PÛÛ\Û™[
+\ÜÛÛ‹œØÚY[YÛ\ÜÛÛ—ÚY
+_XˆÈY]Ùˆ”UÒ‹›ÙNˆ”ÓÓ‹œİš[™ÚYJÈ\ÜÛÛ—Ù]Nˆ™^]HJHKˆ
+NÂˆÙ][Š
+İ\œ™[
+HOˆÛÜ[Šˆİ\œ™[›X\
+
+][JHOˆ
+ˆ][KœØÚY[YÛ\ÜÛÛ—ÚYOOH\ÜÛÛ‹œØÚY[YÛ\ÜÛÛ—ÚYˆÈÈ‹‹š][K\ÜÛÛ—Ù]Nˆ™^]HBˆˆ][Bˆ
+JKˆ
+JNÂˆÙ]ÙYZĞİ\œšXİ[[PÛÛ™š\›YY
+˜[ÙJNÂˆÙ]Ø]™Yİ[™\™ĞÛİ[
+
+NÂˆÙ]ÙYZÔİ[™\™ÑY][™Ê˜[ÙJNÂˆÙ][›š[™Ğ\ÜÚ\İÛÛ\]J˜[ÙJNÂˆÙ][›š[™Ğ\ÜÚ\İY][™Ê˜[ÙJNÂˆÙ]”™]šY]ÙY
+˜[ÙJNÂˆÙ]Y\ÜØYÙJˆ	Û\ÜÛÛ‹›\ÜÛÛ—İ]_H[İ™YÈ	Û™^]_KˆÛÛ™š\›H\ÈÙYZÉÜÈİ\œšXİ[[HYØZ[‹[ˆ™]šY]Èİ[™\™È[™[›š[™È\ÜÚ\İ[˜ÙK˜ˆ
+NÂˆHØ]Ú
+Ø]YÚ
+HÂˆÙ]\œ›ÜŠØ]YÚ[œİ[˜Ù[Ùˆ\œ›ÜˆÈØ]YÚ›Y\ÜØYÙHˆ“\ÜÛÛˆ^HÛİ[›İ™HÚ[™ÙYˆŠNÂˆHš[˜[HÂˆÙ]\ŞJ˜[ÙJNÂˆBˆB‚ˆYˆ
+\İ\X˜\ÙJHÂˆ™]\›ˆ
+ˆXZ[ˆÛ\ÜÓ˜[YOH˜Ù[\™Y\İ]H‚ˆ]ˆÛ\ÜÓ˜[YOHœİ]KXØ\™‚ˆÛ\ÜÓ˜[YOH™^YXœ›İÈ•XXÚ\ˆ[›š[™È]›Ü›OÜ‚ˆO”[İÛÛ™šYİ\˜][Ûˆ™\]Z\™YÚO‚ˆ•Hİ\X˜\ÙHX›XÈT“[™[›ÛˆÙ^HÙ\™H›İİ\YYÈHœ›Û[™Z[Ü‚ˆÙ]‚ˆÛXZ[‚ˆ
+NÂˆB‚ˆYˆ
+\Ù\ÜÚ[ÛŠHÂˆ™]\›ˆ
+ˆXZ[ˆÛ\ÜÓ˜[YOH›ÙÚ[‹\Ú[‚ˆÙXİ[ÛˆÛ\ÜÓ˜[YOH›ÙÚ[‹XØ\™‚ˆÛ\ÜÓ˜[YOH™^YXœ›İÈ[›š\İÛˆÚ]HØÚÛÛÈÛÛ›ÛY[İÜ‚ˆO•XXÚ\ˆ[›š[™È]›Ü›OÚO‚ˆ‚ˆÛÜÙHHİ\œ™[ÙYZËØ\œH›ÜØ\™Ú]™YYÈ][[Û‹[™™\\™H™^ÙYZÂˆÚ]İ]ÜÚ[™Èİ\œšXİ[[HÙ\]Y[˜ÙK‚ˆÜ‚ˆ]ÛˆÛ\ÜÓ˜[YOHœš[X\H\™ÙHˆÛÛXÚÏ^Ê
+HOˆ›ÚYÚYÛ’[Š
+_O‚ˆÛÛ[YHÚ]ÛÛÙÛBˆØ]Û‚ˆ]ˆÛ\ÜÓ˜[YOH˜›İ[™\K[›İXÙH‚ˆXXÚ\ˆ[™İ\œšXİ[[H]HÛ›KˆÈ›İ[\ˆİY[˜[Y\ËQËÜ˜Y\ËQTÍLˆX[\ØÚ\[™KY[YšXX›HİY[ÛÜšËÜˆİ\ˆİY[\ÜXÚYšXÈ[™›Ü›X][Û‹‚ˆÙ]‚ˆÙ\œ›Üˆ	‰ˆÛ\ÜÓ˜[YOH™\œ›Ü‹[Y\ÜØYÙHÙ\œ›ÜŸOÜŸBˆÜÙXİ[Û‚ˆÛXZ[‚ˆ
+NÂˆB‚ˆÛÛœİÙYZÔİ\HH[‹›[™İˆ	‰ˆÙYZĞİ\œšXİ[[PÛÛ™š\›YYÂˆÛÛœİÙYZÔİ\ˆHÙYZÔİ\H	‰ˆØ]™Yİ[™\™ĞÛİ[ˆÂˆÛÛœİÙYZÔİ\ÈHÙYZÔİ\ˆ	‰ˆ[›š[™Ğ\ÜÚ\İÛÛ\]NÂˆÛÛœİÙYZÔİ\HÙYZÔİ\È	‰ˆØ]™Y›Ü”™]šY]ÎÂˆÛÛœİÙYZÔİ\HHÙYZÔİ\	‰ˆ”™]šY]ÙYÂˆÛÛœİÙYZÔİ\ˆHÙYZÔİ\H	‰ˆ˜YİX›Z\ÜÚ[Û”İ]\ÈOOHœİX›Z]Yˆ	‰ˆY˜Y\NÂ‚ˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœÚ[‚ˆXY\ˆÛ\ÜÓ˜[YOHÜ˜\ˆ‚ˆ]‚ˆÛ\ÜÓ˜[YOH™^YXœ›İÈ[›š\İÛˆÚ]HØÚÛÛÈ[İÜ‚ˆO•XXÚ\ˆ[›š[™È]›Ü›OÚO‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOHšY[]KX›ØÚÈ‚ˆİ›Û™ÏÚY[]OË™\Ü^WÛ˜[YHÏÈÙ\ÜÚ[Û‹\Ù\‹™[XZ[OÜİ›Û™Ï‚ˆÜ[ÚY[]OËœ›Û\Ëš›Ú[Šˆ0­ÈŠHÏÈ“ØY[™ÈÛİ™\›™Y›Û\ÈŸOÜÜ[‚ˆ]ÛˆÛ\ÜÓ˜[YOH›[šËX]ÛˆˆÛÛXÚÏ^Ê
+HOˆ›ÚYÚYÛ“İ]
+
+_O”ÚYÛˆİ]Ø]Û‚ˆÙ]‚ˆÚXY\‚ˆ]ˆÛ\ÜÓ˜[YOH˜›İ[™\K\İš\‚ˆİ›Û™Ï‚ˆXXÚ\ˆ[™İ\œšXİ[[H]HÛ›Kˆ\ÙHÛ\ÜËHÜˆÜ›İ\[]™[[œİXİ[Û˜[ØœÙ\˜][ÛœÎÂˆÈ›İ[\ˆİY[\ÜXÚYšXÈ[™›Ü›X][Û‹‚ˆÜİ›Û™Ï‚ˆÙ]‚ˆ˜]ˆÛ\ÜÓ˜[YOHÛÜšÙ›İË[˜]ˆˆ\šXK[X™[H”[›š[™ÈÛÜšÙ›İÈ‚ˆ]Û‚ˆÛ\ÜÓ˜[YO^İšY]ÈOOH™\Ú›Ø\™ˆÈ˜Xİ]™HˆˆˆŸBˆÛÛXÚÏ^Ê
+HOˆÙ]šY]Ê™\Ú›Ø\™Š_Bˆ‚ˆ\Ú›Ø\™ˆØ]Û‚ˆÚ\ÕXXÚ\ˆ	‰ˆ
+ˆ]Û‚ˆÛ\ÜÓ˜[YO^İšY]ÈOOH˜\ÜÚYÛ›Y[ˆÈ˜Xİ]™HˆˆˆŸBˆÛÛXÚÏ^Ê
+HOˆÙ]šY]Ê˜\ÜÚYÛ›Y[Š_Bˆ‚ˆÛİ\œÙHÙ]\ˆØ]Û‚ˆ
+_BˆÚ\ÕXXÚ\ˆ	‰ˆ
+ˆ]Û‚ˆÛ\ÜÓ˜[YO^İšY]ÈOOH˜[Y][ÛˆˆÈ˜Xİ]™HˆˆˆŸBˆÛÛXÚÏ^Ê
+HOˆÜ[‘œšY^PÛÜÙ[İ]
+
+_Bˆ‚ˆœšY^H˜[Y][Û‚ˆØ]Û‚ˆ
+_BˆÚ\ÕXXÚ\ˆ	‰ˆ
+ˆ]Û‚ˆÛ\ÜÓ˜[YO^İšY]ÈOOHœ[ˆˆÈ˜Xİ]™HˆˆˆŸBˆÛÛXÚÏ^Ê
+HOˆÙ]šY]Êœ[ˆŠ_Bˆ‚ˆÙYZÛH[‚ˆØ]Û‚ˆ
+_BˆØØ[•šY]ĞYZ[š\İ˜][Ûˆ	‰ˆ
+ˆ]Û‚ˆÛ\ÜÓ˜[YO^İšY]ÈOOH˜YZ[š\İ˜][ÛˆˆÈ˜Xİ]™HˆˆˆŸBˆÛÛXÚÏ^Ê
+HOˆÙ]šY]Ê˜YZ[š\İ˜][ÛˆŠ_Bˆ‚ˆYZ[š\İ˜][Û‚ˆØ]Û‚ˆ
+_Bˆ]Û‚ˆÛ\ÜÓ˜[YO^İšY]ÈOOHš[ˆÈ˜Xİ]™HˆˆˆŸBˆÛÛXÚÏ^Ê
+HOˆÙ]šY]Êš[Š_Bˆ‚ˆ[ˆØ]Û‚ˆÛ˜]‚‚ˆXZ[‚ˆÊY\ÜØYÙH\œ›ÜŠH	‰ˆ
+ˆ]‚ˆÛ\ÜÓ˜[YO^Ù\œ›ÜˆÈ˜[\\œ›ÜˆØ\İX[\ˆˆ˜[\İXØÙ\ÜÈØ\İX[\ŸBˆ›ÛO^Ù\œ›ÜˆÈ˜[\ˆˆœİ]\ÈŸBˆ\šXK[]™O^Ù\œ›ÜˆÈ˜\ÜÙ\]™HˆˆœÛ]HŸBˆ‚ˆÙ\œ›ÜˆY\ÜØYÙ_Bˆ]Û‚ˆ\šXK[X™[H‘\ÛZ\ÜÈ‚ˆÛÛXÚÏ^Ê
+HOˆÂˆÙ]\œ›ÜŠˆŠNÂˆÙ]Y\ÜØYÙJˆŠNÂˆ_Bˆ‚ˆ0åÂˆØ]Û‚ˆÙ]‚ˆ
+_BˆØ\ŞH	‰ˆ]ˆÛ\ÜÓ˜[YOHœ›ÙÜ™\ÜËX˜\ˆˆ\šXK[X™[H•ÛÜšÚ[™ÈˆÏŸB‚ˆİšY]ÈOOH™\Ú›Ø\™ˆ	‰ˆ\ÕXXÚ\ˆ	‰ˆ
+ˆ‚ˆÙXİ[ÛˆÛ\ÜÓ˜[YOHš\›È‚ˆ]‚ˆÛ\ÜÓ˜[YOH™^YXœ›İÈ•ÙYZÛHÛÜšÙ›İÏÜ‚ˆÛÜÙH\ÈÙYZËˆ[ˆZ[H™^Û™KÚ‚ˆ‚ˆ›Ü›X[›İ][™NˆœšY^H˜[Y][Ûˆ8¡¤ˆXXÚ\ˆ™Y›Xİ[Ûˆ8¡¤ˆ™]šY]ÈÛÛ\]YXÚÙ]ˆ8¡¤ˆ™XÛÛ˜Ú[HØ\œKY›ÜØ\™8¡¤ˆ[ˆ8¡¤ˆ™]šY]Èˆ8¡¤ˆİX›Z]‚ˆÜ‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOHš\›ËXXİ[ÛœÈ‚ˆ]Û‚ˆÛ\ÜÓ˜[YOHœš[X\H‚ˆ\ØX›Y^È\Ù[XİY\ÜÚYÛ›Y[YBˆÛÛXÚÏ^Ê
+HOˆÜ[‘œšY^PÛÜÙ[İ]
+
+_Bˆ‚ˆÛÛ\]HœšY^H˜[Y][Û‚ˆØ]Û‚ˆ]Û‚ˆÛ\ÜÓ˜[YOHœÙXÛÛ™\H‚ˆ\ØX›Y^È\Ù[XİY\ÜÚYÛ›Y[YBˆÛÛXÚÏ^Ê
+HOˆÜ[”[›š[™ÕÙYZÊ[Û™^Q›ÜŠ
+J_Bˆ‚ˆÜ[ˆÙYZÛH[‚ˆØ]Û‚ˆ]Û‚ˆÛ\ÜÓ˜[YOHœÙXÛÛ™\H‚ˆ\ØX›Y^È\Ù[XİY\ÜÚYÛ›Y[YBˆÛÛXÚÏ^Ê
+HOˆÜ[”[›š[™ÕÙYZÊY^\Ê[Û™^Q›ÜŠ
+KÊJ_Bˆ‚ˆ[ˆ™^ÙYZÈX\›BˆØ]Û‚ˆÙ]‚ˆÜÙXİ[Û‚ˆÙXİ[Û‚ˆ]ˆÛ\ÜÓ˜[YOHœÙXİ[Û‹ZXY[™È‚ˆ]‚ˆÛ\ÜÓ˜[YOH™^YXœ›İÈÛİ\œÙHÙ]\Ü‚ˆ–[İ\ˆÛ\ÜÙ\ÏÚ‚ˆÛ\ÜÓ˜[YOHœİ\Ü[™È‚ˆXXÚØ\™\ÈHÙ\\˜]HXXÚ[™ÈÙXİ[Û‹ˆš[š\ÚÛİ\œÙHÙ]\™Y›Ü™HÙYZÛBˆ[›š[™Ë‚ˆÜ‚ˆÙ]‚ˆ]ÛˆÛ\ÜÓ˜[YOHœÙXÛÛ™\HˆÛÛXÚÏ^Ê
+HOˆÙ]šY]Ê˜\ÜÚYÛ›Y[Š_OYÛ\ÜÏØ]Û‚ˆÙ]‚ˆØ\ÜÚYÛ›Y[Ë›[™İOOHÈ
+ˆ]ˆÛ\ÜÓ˜[YOH™[\K\İ]H‚ˆÏ“›ÈÛ\ÜÙ\ÈÛÛ™šYİ\™YY]ÚÏ‚ˆÜ™X]H[İ\ˆš\œİÛ\ÜÈ	ˆØÚY[Kˆİ\œšXİ[[H	ˆXÚ[™È\Èİ\‹Ü‚ˆ]ÛˆÛ\ÜÓ˜[YOHœš[X\HˆÛÛXÚÏ^Ê
+HOˆÙ]šY]Ê˜\ÜÚYÛ›Y[Š_O‚ˆÜ™X]HÛ\ÜÂˆØ]Û‚ˆÙ]‚ˆ
+Hˆ
+ˆ]ˆÛ\ÜÓ˜[YOH™ÜšY‚ˆÙ\Ú›Ø\™\ÜÚYÛ›Y[Ë›X\
+
+\ÜÚYÛ›Y[
+HOˆÂˆÛÛœİİ\œšXİ[[HH\ÜÚYÛ›Y[˜İ\œšXİ[[WÚYˆÈİ\œšXİ[K™š[™
+
+][JHOˆ][KšYOOH\ÜÚYÛ›Y[˜İ\œšXİ[[WÚY
+Bˆˆ[Âˆ™]\›ˆ
+ˆ\XÛBˆÛ\ÜÓ˜[YO^ØØ\™	ÜÙ[XİY\ÜÚYÛ›Y[YOOH\ÜÚYÛ›Y[šYÈœÙ[XİYˆˆˆŸXBˆÙ^O^Ø\ÜÚYÛ›Y[šYBˆ‚ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™\›İÈ‚ˆÜ[ˆÛ\ÜÓ˜[YOH˜˜YÙH”™]š\Ú[ÛˆØ\ÜÚYÛ›Y[œ™]š\Ú[ÛŸOÜÜ[‚ˆÜ[ˆÛ\ÜÓ˜[YOHœİ]\È‚ˆØİ\œšXİ[[HÈ”XÚ[™ÈYYˆˆ”Ù]\[ˆ›ÙÜ™\ÜÈŸBˆÜÜ[‚ˆÙ]‚ˆÏØ\ÜÚYÛ›Y[˜Ûİ\œÙWÛ˜[Y_OÚÏ‚ˆ‚ˆØ\ÜÚYÛ›Y[›YY][™×Ü]\›œÂˆ›X\
+
+]\›ŠHOˆ\Ú›Ø\™ØÚY[SX™[
+]\›ŠJBˆš›Ú[Š‹Š_BˆÜ‚ˆÛX[‚ˆØİ\œšXİ[[BˆÈ	Øİ\œšXİ[[K›˜[Y_H0­È	Øİ\œšXİ[[K™\œÚ[ÛŸXˆˆİ\œšXİ[[H	ˆXÚ[™È›İYYŸBˆÜÛX[‚ˆ]ˆÛ\ÜÓ˜[YOH˜]Û‹\›İÈ‚ˆØİ\œšXİ[[HÈ
+ˆ]Û‚ˆÛ\ÜÓ˜[YOH›[šËX]Ûˆ‚ˆÛÛXÚÏ^Ê
+HOˆÜ[”[›š[™ÕÙYZÊ[Û™^Q›ÜŠ
+K\ÜÚYÛ›Y[šY
+_Bˆ‚ˆÜ[ˆÙYZÛH[‚ˆØ]Û‚ˆ
+Hˆ
+ˆ]Û‚ˆÛ\ÜÓ˜[YOH›[šËX]Ûˆ‚ˆÛÛXÚÏ^Ê
+HOˆÂˆÙ]Ù[XİY\ÜÚYÛ›Y[Y
+\ÜÚYÛ›Y[šY
+NÂˆÙ]šY]Ê˜\ÜÚYÛ›Y[ŠNÂˆ_Bˆ‚ˆš[š\ÚÙ]\ˆØ]Û‚ˆ
+_Bˆ]Û‚ˆÛ\ÜÓ˜[YOH›[šËX]Ûˆ‚ˆÛÛXÚÏ^Ê
+HOˆÂˆÙ]Ù[XİY\ÜÚYÛ›Y[Y
+\ÜÚYÛ›Y[šY
+NÂˆÙ]šY]Ê˜\ÜÚYÛ›Y[ŠNÂˆ_Bˆ‚ˆX[˜YÙHÛ\ÜÂˆØ]Û‚ˆÙ]‚ˆØ\XÛO‚ˆ
+NÂˆJ_BˆÙ]‚ˆ
+_BˆÜÙXİ[Û‚ˆÏ‚ˆ
+_B‚ˆİšY]ÈOOH™\Ú›Ø\™ˆ	‰ˆZ\ÕXXÚ\ˆ	‰ˆØ[•šY]ĞYZ[š\İ˜][Ûˆ	‰ˆ
+ˆÙXİ[ÛˆÛ\ÜÓ˜[YOHš\›È‚ˆ]‚ˆÛ\ÜÓ˜[YOH™^YXœ›İÈ‘Ûİ™\›™YYZ[š\İ˜][ÛÜ‚ˆ”ØÚÛÛ[™\İšXİ[›š[™ÈÜ\˜][ÛœÏÚ‚ˆ”™]šY]È›Ù™\ÜÚ[Û˜[XXÚ\‹\[›š[™ÈYÜ[Ûˆ[™ÙYZÛHİX›Z\ÜÚ[Ûˆİ]\ËÜ‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOHš\›ËXXİ[ÛœÈ‚ˆ]ÛˆÛ\ÜÓ˜[YOHœš[X\HˆÛÛXÚÏ^Ê
+HOˆÙ]šY]Ê˜YZ[š\İ˜][ÛˆŠ_O‚ˆÜ[ˆYZ[š\İ˜][Û‚ˆØ]Û‚ˆÙ]‚ˆÜÙXİ[Û‚ˆ
+_B‚ˆİšY]ÈOOH˜\ÜÚYÛ›Y[ˆ	‰ˆ\ÕXXÚ\ˆ	‰ˆY[]H	‰ˆ
+ˆÛİ\œÙTÙ]\[™[ˆXØÙ\ÜÕÚÙ[^ÜÙ\ÜÚ[Û‹˜XØÙ\Ü×İÚÙ[ŸBˆØÚÛÛY^ÚY[]KœØÚÛÛÚYBˆ\ÜÚYÛ›Y[Ï^Ø\ÜÚYÛ›Y[ßBˆİ\œšXİ[O^Øİ\œšXİ[_BˆÙ[XİY\ÜÚYÛ›Y[Y^ÜÙ[XİY\ÜÚYÛ›Y[YBˆ\ØX›Y^Ø\Ş_BˆÛ”Ù[Xİ\ÜÚYÛ›Y[^ÜÙ[Xİ[›š[™Ğ\ÜÚYÛ›Y[BˆÛ\ÜÚYÛ›Y[ĞÚ[™ÙY^ÜÙ]\ÜÚYÛ›Y[ßBˆÛİ\œšXİ[PÚ[™ÙY^ÜÙ]İ\œšXİ[_BˆÛ“Y\ÜØYÙO^ÜÙ]Y\ÜØYÙ_BˆÛ‘\œ›Ü^ÜÙ]\œ›ÜŸBˆÛ”İ[™\™ÓX\[™ÔØ]™Y^Ê
+HOˆÂˆÙ]İ[™\™ÓX\[™Õ™\œÚ[ÛŠ
+İ\œ™[
+HOˆİ\œ™[
+ÈJNÂˆ_BˆÛ“Ü[•ÙYZÛT[^Ê\ÜÚYÛ›Y[Y
+HOˆÜ[”[›š[™ÕÙYZÊ[Û™^Q›ÜŠ
+K\ÜÚYÛ›Y[Y
+_BˆÏ‚ˆ
+_BˆİšY]ÈOOH˜YZ[š\İ˜][Ûˆˆ	‰ˆØ[•šY]ĞYZ[š\İ˜][Ûˆ	‰ˆ
+ˆYZ[š\İ˜][Û“İ™\šY]ÂˆXØÙ\ÜÕÚÙ[^ÜÙ\ÜÚ[Û‹˜XØÙ\Ü×İÚÙ[ŸBˆ›Û\Ï^ÚY[]OËœ›Û\ÈÏÈ×_Bˆ\ØX›Y^Ø\Ş_BˆÏ‚ˆ
+_BˆİšY]ÈOOHš[ˆ	‰ˆY[]H	‰ˆ[YÙH›Û\Ï^ÚY[]Kœ›Û\ßHÏŸB‚ˆİšY]ÈOOH˜[Y][Ûˆˆ	‰ˆ\ÕXXÚ\ˆ	‰ˆ
+ˆÙXİ[Û‚ˆÛ\ÜÓ˜[YOHœ[™[‚ˆ]KYœšY^K]ÙYZË\İ\^İÙYZÔİ\Bˆ]KYœšY^KX\ÜÚYÛ›Y[ZY^ÜÙ[XİY\ÜÚYÛ›Y[YBˆ‚ˆ]ˆÛ\ÜÓ˜[YOHœÙXİ[Û‹ZXY[™ÈÛÛ\Xİ‚ˆ]‚ˆÛ\ÜÓ˜[YOH™^YXœ›İÈ‘œšY^HÛÜÙ[İ]Ü‚ˆÛÜÙHÛ™H[Û™^x $ÑœšY^HÙYZÈ]H[YOÚ‚ˆÛ\ÜÓ˜[YOHœİ\Ü[™È‚ˆ˜[Y]H[œİXİ[Û‹ÛÛ\]HHXXÚ\‹X]]Ü™Y™Y›Xİ[Û‹™]šY]ÈBˆÛÛ\]YXÚÙ][ˆÛÛ[YHÈH›ÛİÚ[™ÈÙYZË‚ˆÜ‚ˆÙ]‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOHœÙ]\\İ\\ˆÛÜÙ[İ]\İ\\ˆ‚ˆİ\X\šÙ\‚ˆ[X™\^Ì_Bˆ]OH•˜[Y]H‚ˆÛÛ\]O^İ˜[Y][Û‘š[˜[^™YBˆXİ]™O^È]˜[Y][Û‘š[˜[^™YBˆÏ‚ˆİ\X\šÙ\‚ˆ[X™\^ÌŸBˆ]OH”™Y›Xİ	ˆİX›Z]‚ˆÛÛ\]O^ØÛÛ\]YXÚÙ]İX›Z]YBˆXİ]™O^İ˜[Y][Û‘š[˜[^™Y	‰ˆXÛÛ\]YXÚÙ]İX›Z]YBˆÏ‚ˆİ\X\šÙ\‚ˆ[X™\^ÌßBˆ]OH”™]šY]ÈXÚÙ]‚ˆÛÛ\]O^ØÛÛ\]YXÚÙ]™]šY]ÙYBˆXİ]™O^ØÛÛ\]YXÚÙ]İX›Z]Y	‰ˆXÛÛ\]YXÚÙ]™]šY]ÙYBˆÏ‚ˆİ\X\šÙ\‚ˆ[X™\^ÍBˆ]OHÛÛ[YH‚ˆÛÛ\]O^Ù˜[Ù_BˆXİ]™O^ØÛÛ\]YXÚÙ]™]šY]ÙYBˆÏ‚ˆÙ]‚‚ˆÈ]˜[Y][Û‘š[˜[^™Y	‰ˆ
+ˆÙXİ[ÛˆÛ\ÜÓ˜[YOHœÙ]\\İ\XØ\™Xİ]™K\İ\‚ˆ]ˆÛ\ÜÓ˜[YOHœİ\ZXY[™È‚ˆÜ[ˆÛ\ÜÓ˜[YOHœİ\[[X™\ˆŒOÜÜ[‚ˆ]‚ˆÛ\ÜÓ˜[YOH™^YXœ›İÈ”İ\OÜ‚ˆ‘œšY^H˜[Y][ÛÚ‚ˆÛ\ÜÓ˜[YOHœİ\Ü[™È‚ˆÛÛ™š\›HÚ]XİX[H\[™Yˆ[İHXÚYHÚ]\ˆZ\ÜÙYÜˆ[ÙYšYYˆ[œİXİ[ÛˆØ\œšY\È›ÜØ\™‚ˆÜ‚ˆÙ]‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOHÛÛ˜\ˆ‚ˆX™[‚ˆÛİ\œÙBˆÙ[Xİˆ˜[YO^ÜÙ[XİY\ÜÚYÛ›Y[YBˆÛÚ[™ÙO^Ê]™[
+HOˆÙ[Xİ[›š[™Ğ\ÜÚYÛ›Y[
+]™[\™Ù]˜[YJ_Bˆ‚ˆÜ[Ûˆ˜[YOHˆ”Ù[XİHÛ\ÜÏÛÜ[Û‚ˆØ\ÜÚYÛ›Y[Âˆ™š[\Š
+\ÜÚYÛ›Y[
+HOˆ\ÜÚYÛ›Y[˜İ\œšXİ[[WÚY
+Bˆ›X\
+
+\ÜÚYÛ›Y[
+HOˆ
+ˆÜ[Ûˆ˜[YO^Ø\ÜÚYÛ›Y[šYHÙ^O^Ø\ÜÚYÛ›Y[šYO‚ˆØ\ÜÚYÛ›Y[˜Ûİ\œÙWÛ˜[Y_BˆÛÜ[Û‚ˆ
+J_BˆÜÙ[Xİ‚ˆÛX™[‚ˆÙYZÔÙ[XİÜˆ˜[YO^İÙYZÔİ\H\ØX›Y^Ø\Ş_HÛÚ[™ÙO^ÜÙ[Xİ[›š[™ÕÙYZßHÏ‚ˆ]Û‚ˆÛ\ÜÓ˜[YOHœÙXÛÛ™\H‚ˆ\ØX›Y^È\Ù[XİY\ÜÚYÛ›Y[Y\Ş_BˆÛÛXÚÏ^Ê
+HOˆ›ÚYØY[Š
+_Bˆ‚ˆØYÙYZÂˆØ]Û‚ˆÙ]‚ˆÜ[‹›[™İOOHÈ
+ˆ]ˆÛ\ÜÓ˜[YOH™[\K\İ]H‚ˆ“ØYHØÚY[Y[Û™^x $ÑœšY^HÙYZÈ™Y›Ü™HÛÛ\][™È˜[Y][Û‹Ü‚ˆÙ]‚ˆ
+Hˆ
+ˆ]ˆÛ\ÜÓ˜[YOH˜[Y][Û‹[\İ‚ˆÜ[‹›X\
+
+\ÜÛÛŠHOˆÂˆÛÛœİ[HH˜[Y][ÛœÖÛ\ÜÛÛ‹œØÚY[YÛ\ÜÛÛ—ÚYHÏÈÂˆİ]\Îˆˆ‹ˆ™X\ÛÛˆˆ‹ˆXXÚ\“›İNˆˆ‹ˆØ\œQ›ÜØ\™ˆ˜[ÙKˆNÂˆ™]\›ˆ
+ˆ\XÛHÛ\ÜÓ˜[YOH˜[Y][Û‹\›İÈˆÙ^O^Û\ÜÛÛ‹œØÚY[YÛ\ÜÛÛ—ÚYO‚ˆ]ˆÛ\ÜÓ˜[YOH™^KX›ØÚÈ‚ˆİ›Û™ÏÛ\ÜÛÛ‹›\ÜÛÛ—Ù]_OÜİ›Û™Ï‚ˆÜ[Û\ÜÛÛ‹œ[›™YÛZ[]\ßHZ[]\ÏÜÜ[‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH›\ÜÛÛ‹X›ØÚÈ‚ˆÛX[Û\ÜÛÛ‹[š]İ]_OÜÛX[‚ˆİ›Û™ÏÛ\ÜÛÛ‹›\ÜÛÛ—İ]_OÜİ›Û™Ï‚ˆX™[‚ˆİ]\ÂˆÙ[Xİˆ˜[YO^Ù[Kœİ]\ßBˆÛÚ[™ÙO^Ê]™[
+HOˆÂˆÛÛœİİ]\ÈH]™[\™Ù]˜[YH\È\ÜÛÛ”İ]\ÈˆÂˆ\]U˜[Y][ÛŠ\ÜÛÛ‹œØÚY[YÛ\ÜÛÛ—ÚYÂˆİ]\ËˆØ\œQ›ÜØ\™ˆİ]\ÈOOH›Z\ÜÙY‚ˆÈYBˆˆ
+İ]\ÈOOH˜ÛÛ\]Yˆİ]\ÈOOHœÚÚ\YŠBˆÈ˜[ÙBˆˆ[K˜Ø\œQ›ÜØ\™ˆJNÂˆ_Bˆ‚ˆÜ[Ûˆ˜[YOHˆ”Ù[Xİİ]ÛÛYOÛÜ[Û‚ˆÜ[Ûˆ˜[YOH˜ÛÛ\]YÛÛ\]YÛÜ[Û‚ˆÜ[Ûˆ˜[YOH›[ÙYšYY“[ÙYšYYÛÜ[Û‚ˆÜ[Ûˆ˜[YOH›Z\ÜÙY“Z\ÜÙYÛÜ[Û‚ˆÜ[Ûˆ˜[YOHœÚÚ\Y”ÚÚ\YÈ›İ™YYYÛÜ[Û‚ˆÜÙ[Xİ‚ˆÛX™[‚ˆX™[‚ˆ™X\ÛÛˆÜˆ›İBˆ[œ]ˆ˜[YO^Ù[Kœ™X\ÛÛŸBˆ™\]Z\™Y^Ù[Kœİ]\ÈOOH›Z\ÜÙYŸBˆXÙZÛ\^Âˆ[Kœİ]\ÈOOH›Z\ÜÙY‚ˆÈ”™\]Z\™Y›ÜˆHZ\ÜÙY\ÜÛÛˆ‚ˆˆ“Ü[Û˜[‚ˆBˆÛÚ[™ÙO^Ê]™[
+HOˆ\]U˜[Y][ÛŠˆ\ÜÛÛ‹œØÚY[YÛ\ÜÛÛ—ÚYˆÈ™X\ÛÛˆ]™[\™Ù]˜[YHKˆ
+_BˆÏ‚ˆÛX™[‚ˆX™[‚ˆ[›š[™È›İBˆ[œ]ˆ˜[YO^Ù[KXXÚ\“›İ_BˆXÙZÛ\H“Ü[Û˜[›İH›Üˆ]\™H[›š[™È‚ˆÛÚ[™ÙO^Ê]™[
+HOˆ\]U˜[Y][ÛŠˆ\ÜÛÛ‹œØÚY[YÛ\ÜÛÛ—ÚYˆÈXXÚ\“›İNˆ]™[\™Ù]˜[YHKˆ
+_BˆÏ‚ˆÛX™[‚ˆX™[Û\ÜÓ˜[YOH˜ÚXÚÈ‚ˆ[œ]ˆ\OH˜ÚXÚØ›Ş‚ˆÚXÚÙY^Ù[K˜Ø\œQ›ÜØ\™Bˆ\ØX›Y^Âˆ[Kœİ]\ÈOOH˜ÛÛ\]Y‚ˆ[Kœİ]\ÈOOHœÚÚ\Y‚ˆY[Kœİ]\ÂˆBˆÛÚ[™ÙO^Ê]™[
+HOˆ\]U˜[Y][ÛŠˆ\ÜÛÛ‹œØÚY[YÛ\ÜÛÛ—ÚYˆÈØ\œQ›ÜØ\™ˆ]™[\™Ù]˜ÚXÚÙYKˆ
+_BˆÏ‚ˆØ\œH\È\ÜÛÛˆ›ÜØ\™ˆÛX™[‚ˆÙ]‚ˆØ\XÛO‚ˆ
+NÂˆJ_BˆÙ]‚ˆ
+_Bˆ]ˆÛ\ÜÓ˜[YOH˜Xİ[Û‹X˜\ˆ‚ˆ]‚ˆİ›Û™Ï‚ˆÜ[‹™š[\Šˆ
+\ÜÛÛŠHOˆ]˜[Y][ÛœÖÛ\ÜÛÛ‹œØÚY[YÛ\ÜÛÛ—ÚYOËœİ]\Ëˆ
+K›[™İH\ÜÛÛœÈİ[[™[™ÂˆÜİ›Û™Ï‚ˆÜ[“›İ[™ÈØ\œšY\È›ÜØ\™[›\ÜÈ[İHÙ[Xİ]ÜÜ[‚ˆÙ]‚ˆ]Û‚ˆÛ\ÜÓ˜[YOHœš[X\H‚ˆ\ØX›Y^Âˆ\[‹›[™İˆ[‹œÛÛYJ
+\ÜÛÛŠHOˆ]˜[Y][ÛœÖÛ\ÜÛÛ‹œØÚY[YÛ\ÜÛÛ—ÚYOËœİ]\ÊBˆ\ŞBˆBˆÛÛXÚÏ^Ê
+HOˆ›ÚYØ]™U˜[Y][ÛŠ
+_Bˆ‚ˆÛÛ\]HœšY^H˜[Y][Ûˆ	ˆÛÛ[YBˆØ]Û‚ˆÙ]‚ˆÜÙXİ[Û‚ˆ
+_B‚ˆİ˜[Y][Û‘š[˜[^™Y	‰ˆXÛÛ\]YXÚÙ]İX›Z]Y	‰ˆ
+ˆÙXİ[ÛˆÛ\ÜÓ˜[YOHœÙ]\\İ\XØ\™Xİ]™K\İ\‚ˆ]ˆÛ\ÜÓ˜[YOHœİ\ZXY[™È‚ˆÜ[ˆÛ\ÜÓ˜[YOHœİ\[[X™\ˆŒÜÜ[‚ˆ]‚ˆÛ\ÜÓ˜[YOH™^YXœ›İÈ”İ\Ü‚ˆ•ÙYZÛH™Y›Xİ[ÛˆÈÈ\Øİ\ÜÚ[ÛÚ‚ˆÛ\ÜÓ˜[YOHœİ\Ü[™È‚ˆÛÛ\]H[Lˆ\İšXİ›Û\È[İ\œÙ[‹ˆÙ\È›İÙ[™\˜]HÜˆ™]Üš]Bˆ™Y›Xİ[Ûˆ™\ÜÛœÙ\Ë‚ˆÜ‚ˆÙ]‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOHœÙ]\\İ\\İ[[X\HÛÛ\]K\İ[[X\H‚ˆ]‚ˆİ›Û™Ï•˜[Y][ÛˆÛÛ\]OÜİ›Û™Ï‚ˆ”Ø]™Y™]š\Ú[Ûˆİ˜[Y][Û”™]š\Ú[ÛˆÏÈ¸ %ŸKˆØ\œKY›ÜØ\™ÚÚXÙ\È\™H™\Ù\™YÜ‚ˆÙ]‚ˆ]Û‚ˆ\OH˜]Ûˆ‚ˆÛ\ÜÓ˜[YOHœÙXÛÛ™\H‚ˆÛÛXÚÏ^Ê
+HOˆÙ]˜[Y][Û‘š[˜[^™Y
+˜[ÙJ_Bˆ‚ˆY]˜[Y][Û‚ˆØ]Û‚ˆÙ]‚ˆZT™Y›Xİ[Û”[™[ˆXØÙ\ÜÕÚÙ[^ÜÙ\ÜÚ[Û‹˜XØÙ\Ü×İÚÙ[ŸBˆ\ÜÚYÛ›Y[Y^ÜÙ[XİY\ÜÚYÛ›Y[Y[BˆÙYZÔİ\^İÙYZÔİ\Bˆ\ØX›Y^Ø\Ş_BˆÛ\T™Y›Xİ[Û^Ê˜[YJHOˆ\]Q˜Y
+
+İ\œ™[
+HOˆ
+Âˆ‹‹˜İ\œ™[ˆ™Y›Xİ[Ûˆ˜[YKˆJJ_BˆÏ‚ˆ]ˆÛ\ÜÓ˜[YOH˜]Û‹\›İÈ‚ˆ]Û‚ˆÛ\ÜÓ˜[YOHœÙXÛÛ™\H‚ˆ\ØX›Y^Ø\Ş_BˆÛÛXÚÏ^Ê
+HOˆ›ÚYØ]™PÛÜÙ[İ]˜Y
+
+_Bˆ‚ˆØ]™H™Y›Xİ[Ûˆ›ÙÜ™\ÜÂˆØ]Û‚ˆÜØ]™Y›Ü”™]šY]È	‰ˆ
+ˆ‚ˆ]Û‚ˆÛ\ÜÓ˜[YOHœÙXÛÛ™\H‚ˆÛÛXÚÏ^Ê
+HOˆ›ÚY^ÜØİ[Y[
+ÙYZÛK\™Y›Xİ[Ûˆ‹šY]ÈŠ_Bˆ‚ˆšY]È™Y›Xİ[Ûˆ‚ˆØ]Û‚ˆ]Û‚ˆÛ\ÜÓ˜[YOHœÙXÛÛ™\H‚ˆÛÛXÚÏ^Ê
+HOˆ›ÚY^ÜØİ[Y[
+ÙYZÛK\™Y›Xİ[Ûˆ‹™İÛ›ØYŠ_Bˆ‚ˆİÛ›ØY™Y›Xİ[Ûˆ‚ˆØ]Û‚ˆ]Û‚ˆÛ\ÜÓ˜[YOHœÙXÛÛ™\H‚ˆÛÛXÚÏ^Ê
+HOˆ›ÚY^ÜØİ[Y[
+ÙYZÛK\™Y›Xİ[Ûˆ‹œš[Š_Bˆ‚ˆš[™Y›Xİ[Ûˆ‚ˆØ]Û‚ˆÏ‚ˆ
+_Bˆ]Û‚ˆÛ\ÜÓ˜[YOHœš[X\H‚ˆ\ØX›Y^È\™Y›Xİ[Û’\ĞÛÛ\]H\Ş_BˆÛÛXÚÏ^Ê
+HOˆ›ÚYİX›Z]œšY^PÛÜÙ[İ]
+
+_Bˆ‚ˆİX›Z]œšY^HÛÜÙ[İ]	ˆÛÛ[YBˆØ]Û‚ˆÙ]‚ˆÜÙXİ[Û‚ˆ
+_B‚ˆØÛÛ\]YXÚÙ]İX›Z]Y	‰ˆXÛÛ\]YXÚÙ]™]šY]ÙY	‰ˆ
+ˆÙXİ[ÛˆÛ\ÜÓ˜[YOHœÙ]\\İ\XØ\™Xİ]™K\İ\‚ˆ]ˆÛ\ÜÓ˜[YOHœİ\ZXY[™È‚ˆÜ[ˆÛ\ÜÓ˜[YOHœİ\[[X™\ˆŒÏÜÜ[‚ˆ]‚ˆÛ\ÜÓ˜[YOH™^YXœ›İÈ”İ\ÏÜ‚ˆ”™]šY]ÈÛÛ\]YÙYZÛHXÚÙ]Ú‚ˆÛ\ÜÓ˜[YOHœİ\Ü[™È‚ˆ\È[[]]X›HXÚÙ]ÛÛZ[œÈHÙYZÉÜÈ[œİXİ[Û˜[[›š[™Èœ˜[Y]ÛÜšËˆÙYZÈ]HÛ[˜ÙK[™XXÚ\‹X]]Ü™Y™Y›Xİ[Û‹‚ˆÜ‚ˆÙ]‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOHœ‹\™]šY]ËYÜšY‚ˆ\XÛHÛ\ÜÓ˜[YOH˜Ø\™‚ˆÏÛÛ\]YÙYZÛHXÚÙ]ÚÏ‚ˆÛ\ÜÓ˜[YOHœİ\Ü[™È‚ˆİ\œ™[ÙYZÉÜÈ[›š[™ÈØİ[Y[È
+ÈXXÚ\‹X]]Ü™Y™Y›Xİ[Û‚ˆÜ‚ˆ]ˆÛ\ÜÓ˜[YOH˜]Û‹\›İÈ‚ˆ]Û‚ˆÛ\ÜÓ˜[YOHœš[X\H‚ˆ\ØX›Y^Ø\Ş_BˆÛÛXÚÏ^Ê
+HOˆ›ÚY^ÜÛÛ\]YXÚÙ]
+šY]ÈŠ_Bˆ‚ˆÙØİ[Y[ÛÜšÚ[™ÈOOH˜ÛÛ\]Y\XÚÙ]‚ˆÈ”™\\š[™ø )ˆ‚ˆˆ•šY]ÈÛÛ\]YXÚÙ]ŸBˆØ]Û‚ˆ]Û‚ˆÛ\ÜÓ˜[YOHœÙXÛÛ™\H‚ˆ\ØX›Y^Ø\Ş_BˆÛÛXÚÏ^Ê
+HOˆ›ÚY^ÜÛÛ\]YXÚÙ]
+™İÛ›ØYŠ_Bˆ‚ˆİÛ›ØY‚ˆØ]Û‚ˆ]Û‚ˆÛ\ÜÓ˜[YOHœÙXÛÛ™\H‚ˆ\ØX›Y^Ø\Ş_BˆÛÛXÚÏ^Ê
+HOˆ›ÚY^ÜÛÛ\]YXÚÙ]
+œš[Š_Bˆ‚ˆš[ˆØ]Û‚ˆÙ]‚ˆØ\XÛO‚ˆÙ]‚ˆÜÙXİ[Û‚ˆ
+_B‚ˆØÛÛ\]YXÚÙ]İX›Z]Y	‰ˆÛÛ\]YXÚÙ]™]šY]ÙY	‰ˆ
+ˆÙXİ[ÛˆÛ\ÜÓ˜[YOHœÙ]\\İ\\İ[[X\HÛÛ\]K\İ[[X\H‚ˆ]‚ˆİ›Û™Ï”İ\ÈÛÛ\]H0­ÈÛÛ\]YÙYZÛHXÚÙ]™]šY]ÙYÜİ›Û™Ï‚ˆ•šY]ËİÛ›ØYÜˆš[H[[]]X›HXÚÙ]YØZ[ˆ][H[YH™Y›Ü™HÛÛ[Z[™ËÜ‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH˜]Û‹\›İÈ‚ˆ]Û‚ˆÛ\ÜÓ˜[YOHœÙXÛÛ™\H‚ˆ\ØX›Y^Ø\Ş_BˆÛÛXÚÏ^Ê
+HOˆ›ÚY^ÜÛÛ\]YXÚÙ]
+šY]ÈŠ_Bˆ‚ˆšY]ÈXÚÙ]ˆØ]Û‚ˆ]Û‚ˆÛ\ÜÓ˜[YOHœÙXÛÛ™\H‚ˆ\ØX›Y^Ø\Ş_BˆÛÛXÚÏ^Ê
+HOˆ›ÚY^ÜÛÛ\]YXÚÙ]
+™İÛ›ØYŠ_Bˆ‚ˆİÛ›ØY‚ˆØ]Û‚ˆ]Û‚ˆÛ\ÜÓ˜[YOHœÙXÛÛ™\H‚ˆ\ØX›Y^Ø\Ş_BˆÛÛXÚÏ^Ê
+HOˆ›ÚY^ÜÛÛ\]YXÚÙ]
+œš[Š_Bˆ‚ˆš[ˆØ]Û‚ˆÙ]‚ˆÜÙXİ[Û‚ˆ
+_B‚ˆØÛÛ\]YXÚÙ]™]šY]ÙY	‰ˆ
+ˆÙXİ[ÛˆÛ\ÜÓ˜[YOHœÙ]\\™XYKXØ\™‚ˆ]ˆÛ\ÜÓ˜[YOHœİ\ZXY[™È‚ˆÜ[ˆÛ\ÜÓ˜[YOHœİ\[[X™\ˆÜÜ[‚ˆ]‚ˆÛ\ÜÓ˜[YOH™^YXœ›İÈ”İ\Ü‚ˆÛÛ[YHÈ™^ÙYZÏÚ‚ˆÛ\ÜÓ˜[YOHœİ\Ü[™È‚ˆHİ\œ™[ÙYZÈ\È˜[Y]Y™Y›XİYİX›Z]Y[™™]šY]ÙYˆÚ[ˆ›İÈ[İ™HÈH›ÛİÚ[™È[Û™^K\İ\[™ÈÙYZË‚ˆÜ‚ˆÙ]‚ˆÙ]‚ˆ]ÛˆÛ\ÜÓ˜[YOHœš[X\Hˆ\ØX›Y^Ø\Ş_HÛÛXÚÏ^ØÛÛ[YUÓ™^ÙYZßO‚ˆÛÛ[YHÈ™^ÙYZÂˆØ]Û‚ˆÜÙXİ[Û‚ˆ
+_BˆÜÙXİ[Û‚ˆ
+_B‚ˆİšY]ÈOOHœ[ˆˆ	‰ˆ\ÕXXÚ\ˆ	‰ˆ
+ˆÙXİ[ÛˆÛ\ÜÓ˜[YOHœ[™[‚ˆ]ˆÛ\ÜÓ˜[YOHœÙXİ[Û‹ZXY[™ÈÛÛ\Xİ‚ˆ]‚ˆÛ\ÜÓ˜[YOH™^YXœ›İÈ•ÙYZÛH[›š[™ÏÜ‚ˆÜÙ[XİY\ÜÚYÛ›Y[Ë˜Ûİ\œÙWÛ˜[YHÏÈ•ÙYZÛH[ˆŸOÚ‚ˆÛ\ÜÓ˜[YOHœİ\Ü[™È‚ˆÛ›HHİ\œ™[İ\\È^[™YˆÛÛ\]Yİ\Èİ^H\ÈÚÜİ[[X\šY\ÈÚ]ˆ[ˆY]Üˆ™[Ü[ˆXİ[Û‹ÛÈ[İHØ[ˆ™]š\ÙHÚ]İ]ÜÚ[™ÈØ]™YXXÚ\ˆÛÜšË‚ˆÜ‚ˆÙ]‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOHœÙ]\\İ\\ˆÙYZÛK\[‹\İ\\ˆ‚ˆİ\X\šÙ\‚ˆ[X™\^Ì_Bˆ]OHZ[ÙYZÈ‚ˆÛÛ\]O^İÙYZÔİ\_BˆXİ]™O^È]ÙYZÔİ\_BˆÏ‚ˆİ\X\šÙ\‚ˆ[X™\^ÌŸBˆ]OH”İ[™\™È‚ˆÛÛ\]O^İÙYZÔİ\ˆ	‰ˆ]ÙYZÔİ[™\™ÑY][™ßBˆXİ]™O^İÙYZÔİ\H	‰ˆ
+]ÙYZÔİ\ˆÙYZÔİ[™\™ÑY][™Ê_BˆÏ‚ˆİ\X\šÙ\‚ˆ[X™\^ÌßBˆ]OH”[›š[™È\ÜÚ\İ‚ˆÛÛ\]O^İÙYZÔİ\È	‰ˆ\[›š[™Ğ\ÜÚ\İY][™ßBˆXİ]™O^İÙYZÔİ\ˆ	‰ˆ
+]ÙYZÔİ\È[›š[™Ğ\ÜÚ\İY][™Ê_BˆÏ‚ˆİ\X\šÙ\‚ˆ[X™\^ÍBˆ]OH”™]šY]È	ˆØ]™H‚ˆÛÛ\]O^İÙYZÔİ\	‰ˆ\[”™]šY]ÓÜ[ŸBˆXİ]™O^İÙYZÔİ\È	‰ˆ
+]ÙYZÔİ\[”™]šY]ÓÜ[Š_BˆÏ‚ˆİ\X\šÙ\‚ˆ[X™\^Í_Bˆ]OH”™]šY]Èˆ‚ˆÛÛ\]O^İÙYZÔİ\_BˆXİ]™O^İÙYZÔİ\	‰ˆ]ÙYZÔİ\_BˆÏ‚ˆİ\X\šÙ\‚ˆ[X™\^ÍŸBˆ]OH”İX›Z]‚ˆÛÛ\]O^İÙYZÔİ\ŸBˆXİ]™O^İÙYZÔİ\H	‰ˆ]ÙYZÔİ\ŸBˆÏ‚ˆÙ]‚‚ˆÈ]ÙYZÔİ\H	‰ˆ
+ˆÙXİ[ÛˆÛ\ÜÓ˜[YOHœÙ]\\İ\XØ\™Xİ]™K\İ\‚ˆ]ˆÛ\ÜÓ˜[YOHœİ\ZXY[™È‚ˆÜ[ˆÛ\ÜÓ˜[YOHœİ\[[X™\ˆŒOÜÜ[‚ˆ]‚ˆÛ\ÜÓ˜[YOH™^YXœ›İÈ”İ\OÜ‚ˆZ[Üˆ™XÛÛ˜Ú[HHÙYZÏÚ‚ˆÛ\ÜÓ˜[YOHœİ\Ü[™È‚ˆÚÛÜÙHHÛ\ÜÈ[™[Û™^K\İ\[™ÈÙYZËˆ\Ù\È]ÈØ]™Yİ\œšXİ[[H	‚ˆXÚ[™ËÛ\ÜË\ÜXÚYšXÈ›ÙÜ™\ÜËÛ\ÜÈØÚY[KØ[[™\‹^Ù\[ÛœË[™ˆXXÚ\‹\Ù[XİYØ\œKY›ÜØ\™ˆ™]šY]ÈH™\İ[[™È\ÜÛÛœÈ™Y›Ü™H[İBˆÛÛ™š\›H\Èİ\‚ˆÜ‚ˆÙ]‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOHÛÛ˜\ˆ‚ˆX™[‚ˆÛ\ÜÂˆÙ[Xİˆ˜[YO^ÜÙ[XİY\ÜÚYÛ›Y[YBˆÛÚ[™ÙO^Ê]™[
+HOˆÙ[Xİ[›š[™Ğ\ÜÚYÛ›Y[
+]™[\™Ù]˜[YJ_Bˆ‚ˆÜ[Ûˆ˜[YOHˆ”Ù[XİHÛ\ÜÏÛÜ[Û‚ˆØ\ÜÚYÛ›Y[Ë›X\
+
+\ÜÚYÛ›Y[
+HOˆ
+ˆÜ[Ûˆ˜[YO^Ø\ÜÚYÛ›Y[šYHÙ^O^Ø\ÜÚYÛ›Y[šYO‚ˆØ\ÜÚYÛ›Y[˜Ûİ\œÙWÛ˜[Y_BˆØ\ÜÚYÛ›Y[˜İ\œšXİ[[WÚYÈˆˆˆˆ0­ÈÙ]\[˜ÛÛ\]HŸBˆÛÜ[Û‚ˆ
+J_BˆÜÙ[Xİ‚ˆÛX™[‚ˆÙYZÔÙ[XİÜˆ˜[YO^İÙYZÔİ\H\ØX›Y^Ø\Ş_HÛÚ[™ÙO^ÜÙ[Xİ[›š[™ÕÙYZßHÏ‚ˆÙ]‚ˆÜÙ[XİY\ÜÚYÛ›Y[	‰ˆ\Ù[XİY\ÜÚYÛ›Y[™XYHÈ
+ˆ]ˆÛ\ÜÓ˜[YOH™İZY[˜ÙKXØ\™Ø\›š[™ËXØ\™‚ˆİ›Û™ÏÛİ\œÙHÙ]\\È›İÛÛ\]KÜİ›Û™Ï‚ˆYİ\œšXİ[[H	ˆXÚ[™È™Y›Ü™HØ[ˆØÚY[H\ÜÛÛœÈ›Üˆ\ÈÛ\ÜËÜ‚ˆ]ÛˆÛ\ÜÓ˜[YOHœš[X\HˆÛÛXÚÏ^Ê
+HOˆÙ]šY]Ê˜\ÜÚYÛ›Y[Š_O‚ˆš[š\ÚÛİ\œÙHÙ]\ˆØ]Û‚ˆÙ]‚ˆ
+Hˆ
+ˆ‚ˆØÚY[Q^Ù\[Û”[™[ˆÙ^O^Ø	ÜÙ[XİY\ÜÚYÛ›Y[YKIİÙYZÔİ\XBˆXØÙ\ÜÕÚÙ[^ÜÙ\ÜÚ[Û‹˜XØÙ\Ü×İÚÙ[ŸBˆ\ÜÚYÛ›Y[Y^ÜÙ[XİY\ÜÚYÛ›Y[YBˆÙYZÔİ\^İÙYZÔİ\Bˆ\ØX›Y^Ø\Ş_BˆÛ‘^Ù\[ÛœĞÚ[™ÙY^ÜÙ]ØÚY[Q^Ù\[ÛœßBˆÛÚ[™ÙY^Ê
+HOˆÂˆÙ][Š×JNÂˆÙ]ÙYZĞİ\œšXİ[[PÛÛ™š\›YY
+˜[ÙJNÂˆÙ]Ø\œQ›ÜØ\™\ÜÛÛ’YÊ×JNÂˆÙ]Ø]™Yİ[™\™ĞÛİ[
+
+NÂˆÙ]ÙYZÔİ[™\™ÑY][™Ê˜[ÙJNÂˆÙ][›š[™Ğ\ÜÚ\İÛÛ\]J˜[ÙJNÂˆÙ][›š[™Ğ\ÜÚ\İY][™Ê˜[ÙJNÂˆÙ]”™]šY]ÙY
+˜[ÙJNÂˆÙ]˜[Y][ÛœÊßJNÂˆÙ]˜[Y][Û”™]š\Ú[ÛŠ[
+NÂˆÙ]˜[Y][Û‘š[˜[^™Y
+˜[ÙJNÂˆ_BˆÏ‚ˆ]ˆÛ\ÜÓ˜[YOH˜]Û‹\›İÈ‚ˆ]Û‚ˆÛ\ÜÓ˜[YOHœš[X\H‚ˆ\ØX›Y^È\Ù[XİY\ÜÚYÛ›Y[Y\Ş_BˆÛÛXÚÏ^Ê
+HOˆ›ÚYÙ[™\˜]T[Š
+_Bˆ‚ˆZ[È™XÛÛ˜Ú[HÙYZÂˆØ]Û‚ˆ]Û‚ˆÛ\ÜÓ˜[YOHœÙXÛÛ™\H‚ˆ\ØX›Y^È\Ù[XİY\ÜÚYÛ›Y[Y\Ş_BˆÛÛXÚÏ^Ê
+HOˆ›ÚYØY[Š
+_Bˆ‚ˆ™[Ü[ˆØ]™YÙYZÂˆØ]Û‚ˆÙ]‚ˆÏ‚ˆ
+_B‚ˆÜ[‹›[™İˆ	‰ˆ
+ˆÙXİ[ÛˆÛ\ÜÓ˜[YOHÙYZËXİ\œšXİ[[K\ÙXİ[Ûˆ‚ˆ]ˆÛ\ÜÓ˜[YOHœÙXİ[Û‹ZXY[™ÈÛÛ\Xİ‚ˆ]‚ˆÛ\ÜÓ˜[YOH™^YXœ›İÈ”™]šY]Èİ\OÜ‚ˆÏ•\ÈÙYZÉÜÈİ\œšXİ[[H	ˆXÚ[™ÏÚÏ‚ˆÛ\ÜÓ˜[YOHœİ\Ü[™È‚ˆÛÛ™š\›H\ÙH\ÜÛÛœÈ[™XXÚ[™È^\È™Y›Ü™Hİ[™\™ÈÜˆ[›š[™Âˆ\ÜÚ\İ[˜ÙH\X\‹‚ˆÜ‚ˆÙ]‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOHÙYZÛKXİ\œšXİ[[K[\İ‚ˆÜ[‹›X\
+
+\ÜÛÛŠHOˆÂˆÛÛœİØ\œšYYHØ\œQ›ÜØ\™\ÜÛÛ’YËš[˜ÛY\Ê\ÜÛÛ‹˜İ\œšXİ[[WÛ\ÜÛÛ—ÚY
+NÂˆ™]\›ˆ
+ˆ\XÛBˆÛ\ÜÓ˜[YO^ØÙYZÛKXİ\œšXİ[[KZ][H	ØØ\œšYYÈ˜Ø\œšYYY›ÜØ\™ˆˆˆŸXBˆÙ^O^Û\ÜÛÛ‹œØÚY[YÛ\ÜÛÛ—ÚYBˆ‚ˆ]‚ˆ]ˆÛ\ÜÓ˜[YOH˜Ø\™\›İÈ‚ˆØØ\œšYYÈ
+ˆÜ[ˆÛ\ÜÓ˜[YOH˜˜YÙHØ\œKX˜YÙHØ\œšYY›ÜØ\™ÜÜ[‚ˆ
+Hˆ
+ˆÜ[ˆÛ\ÜÓ˜[YOH˜˜YÙH”ØÚY[Yİ\œšXİ[[OÜÜ[‚ˆ
+_BˆÜ[Û\ÜÛÛ‹œ[›™YÛZ[]\ßHZ[]\ÏÜÜ[‚ˆÙ]‚ˆÛX[Û\ÜÛÛ‹[š]İ]_OÜÛX[‚ˆÏ‚ˆÛ\ÜÛÛ‹›\ÜÛÛ—İ]_BˆÛ\ÜÛÛ‹œÙYÛY[Û[X™\ˆˆHÈ0­ÈÙYÛY[	Û\ÜÛÛ‹œÙYÛY[Û[X™\ŸXˆˆŸBˆÚÏ‚ˆÙ]‚ˆX™[‚ˆXXÚÛ‚ˆÙ[Xİˆ˜[YO^Û\ÜÛÛ‹›\ÜÛÛ—Ù]_Bˆ\ØX›Y^Ø\Ş_BˆÛÚ[™ÙO^Ê]™[
+HOˆ›ÚY[İ™T[›™Y\ÜÛÛŠ\ÜÛÛ‹]™[\™Ù]˜[YJ_Bˆ‚ˆÛYY][™Ñ]\Ë›X\
+
+]JHOˆ
+ˆÜ[Ûˆ˜[YO^Ù]_HÙ^O^Ù]_O‚ˆÛ™]È]J	Ù]_ULŒŒ
+KÓØØ[Q]Tİš[™Ê[™Yš[™YÂˆÙYZÙ^Nˆ›Û™È‹ˆ[ÛˆœÚÜ‹ˆ^Nˆ›[Y\šXÈ‹ˆJ_BˆÛÜ[Û‚ˆ
+J_BˆÜÙ[Xİ‚ˆÛX™[‚ˆØ\XÛO‚ˆ
+NÂˆJ_BˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH˜Xİ[Û‹X˜\ˆ‚ˆ]‚ˆİ›Û™ÏÜ[‹›[™İHØÚY[Y\ÜÛÛÜ[‹›[™İOOHHÈˆˆˆœÈŸOÜİ›Û™Ï‚ˆÜ[“›İ[™ÈY˜[˜Ù\ÈÈİ[™\™È[[[İHÛÛ™š\›H\ÈÙ\]Y[˜ÙKÜÜ[‚ˆÙ]‚ˆ]Û‚ˆ\OH˜]Ûˆ‚ˆÛ\ÜÓ˜[YOHœš[X\H‚ˆ\ØX›Y^Ø\Ş_BˆÛÛXÚÏ^Ê
+HOˆÂˆÙ]ÙYZĞİ\œšXİ[[PÛÛ™š\›YY
+YJNÂˆÙ]Y\ÜØYÙJ”İ\HÛÛ\]H8 %\ÈÙYZÉÜÈİ\œšXİ[[H	ˆXÚ[™È\ÈÛÛ™š\›YYˆ™]šY]È]]Üš]]]™Hİ[™\™È™^ˆŠNÂˆ_Bˆ‚ˆÛÛ™š\›H\ÈÙYZÉÜÈİ\œšXİ[[H	ˆÛÛ[YBˆØ]Û‚ˆÙ]‚ˆÜÙXİ[Û‚ˆ
+_BˆÜÙXİ[Û‚ˆ
+_B‚ˆİÙYZÔİ\H	‰ˆ
+ˆÙXİ[ÛˆÛ\ÜÓ˜[YOHœÙ]\\İ\\İ[[X\HÛÛ\]K\İ[[X\H‚ˆ]‚ˆİ›Û™Ï”İ\HÛÛ\]H0­È\ÈÙYZÉÜÈİ\œšXİ[[HÛÛ™š\›YYÜİ›Û™Ï‚ˆ‚ˆÜ[‹›[™İHØÚY[Y\ÜÛÛÜ[‹›[™İOOHHÈˆˆˆœÈŸH›ÜˆHÙYZÈÙ‚ˆØ	İÙYZÔİ\XK‚ˆÜ‚ˆÙ]‚ˆ]Û‚ˆÛ\ÜÓ˜[YOHœÙXÛÛ™\H‚ˆÛÛXÚÏ^Ê
+HOˆÂˆÙ]ÙYZĞİ\œšXİ[[PÛÛ™š\›YY
+˜[ÙJNÂˆÙ]Ø]™Yİ[™\™ĞÛİ[
+
+NÂˆÙ]ÙYZÔİ[™\™ÑY][™Ê˜[ÙJNÂˆÙ][›š[™Ğ\ÜÚ\İÛÛ\]J˜[ÙJNÂˆÙ][›š[™Ğ\ÜÚ\İY][™Ê˜[ÙJNÂˆÙ]”™]šY]ÙY
+˜[ÙJNÂˆ_Bˆ‚ˆ™]šY]ËØÚ[™ÙHÙYZÂˆØ]Û‚ˆÜÙXİ[Û‚ˆ
+_B‚ˆİÙYZÔİ\H	‰ˆ
+]ÙYZÔİ\ˆÙYZÔİ[™\™ÑY][™ÊH	‰ˆ
+ˆÙXİ[ÛˆÛ\ÜÓ˜[YOHœÙ]\\İ\XØ\™Xİ]™K\İ\‚ˆ]ˆÛ\ÜÓ˜[YOHœİ\ZXY[™È‚ˆÜ[ˆÛ\ÜÓ˜[YOHœİ\[[X™\ˆŒÜÜ[‚ˆ]‚ˆÛ\ÜÓ˜[YOH™^YXœ›İÈİÙYZÔİ\ˆÈ‘Y]İ\ˆˆˆ”İ\ˆŸOÜ‚ˆ]]Üš]]]™Hİ[™\™ÏÚ‚ˆÛ\ÜÓ˜[YOHœİ\Ü[™È‚ˆÛÛ™š\›H[™Ø]™HHÛİ™\›™Yİ[™\™È™[]˜[È\ÈÙYZÉÜÈØÚY[Yˆİ\œšXİ[[K‚ˆÜ‚ˆÙ]‚ˆÙ]‚ˆİ[™\™Ô[™[ˆÙ^O^Ø	ÜÙ[XİY\ÜÚYÛ›Y[YKIİÙYZÔİ\KIÜİ[™\™ÓX\[™Õ™\œÚ[ÛŸXBˆXØÙ\ÜÕÚÙ[^ÜÙ\ÜÚ[Û‹˜XØÙ\Ü×İÚÙ[ŸBˆ\ÜÚYÛ›Y[Y^ÜÙ[XİY\ÜÚYÛ›Y[Y[BˆÙYZÔİ\^İÙYZÔİ\BˆÙYZÛS\ÜÛÛœÏ^Ü[ŸBˆÛ”Ù[Xİ[Û”™\ÛÛ™Y^Ü™\ÛÛ™TÙ[XİYİ[™\™ßBˆÛ”Ù[Xİ[Û”Ø]™Y^ÊÙ[XİY
+HOˆÂˆÙ]Ø]™Yİ[™\™ĞÛİ[
+Ù[XİY›[™İ
+NÂˆ™\ÛÛ™TÙ[XİYİ[™\™ÊÙ[XİY
+NÂˆYˆ
+Y˜Y™]š\Ú[ÛŠHÙ][›š[™Ğ\ÜÚ\İÛÛ\]J˜[ÙJNÂˆÙ]”™]šY]ÙY
+˜[ÙJNÂˆ_BˆÏ‚ˆİÙYZÔİ[™\™ÑY][™È	‰ˆÙYZÔİ\ˆ	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH˜]Û‹\›İÈ‚ˆ]Û‚ˆÛ\ÜÓ˜[YOHœš[X\H‚ˆÛÛXÚÏ^Ê
+HOˆÙ]ÙYZÔİ[™\™ÑY][™Ê˜[ÙJ_Bˆ‚ˆÛ™H™]šY]Ú[™Èİ[™\™ÂˆØ]Û‚ˆÙ]‚ˆ
+_BˆÜÙXİ[Û‚ˆ
+_B‚ˆİÙYZÔİ\ˆ	‰ˆ]ÙYZÔİ[™\™ÑY][™È	‰ˆ
+ˆÙXİ[ÛˆÛ\ÜÓ˜[YOHœÙ]\\İ\\İ[[X\HÛÛ\]K\İ[[X\H‚ˆ]‚ˆİ›Û™Ï”İ\ˆÛÛ\]H0­È]]Üš]]]™Hİ[™\™ÈØ]™YÜİ›Û™Ï‚ˆÜØ]™Yİ[™\™ĞÛİ[HÛİ™\›™Yİ[™\™ÜØ]™Yİ[™\™ĞÛİ[OOHHÈˆˆˆœÈŸHÙ[XİYÜ‚ˆÙ]‚ˆ]Û‚ˆÛ\ÜÓ˜[YOHœÙXÛÛ™\H‚ˆÛÛXÚÏ^Ê
+HOˆÙ]ÙYZÔİ[™\™ÑY][™ÊYJ_Bˆ‚ˆY]İ[™\™ÂˆØ]Û‚ˆÜÙXİ[Û‚ˆ
+_B‚ˆİÙYZÔİ\ˆ	‰ˆ
+\[›š[™Ğ\ÜÚ\İÛÛ\]H[›š[™Ğ\ÜÚ\İY][™ÊH	‰ˆ
+ˆÙXİ[ÛˆÛ\ÜÓ˜[YOHœÙ]\\İ\XØ\™Xİ]™K\İ\‚ˆ]ˆÛ\ÜÓ˜[YOHœİ\ZXY[™È‚ˆÜ[ˆÛ\ÜÓ˜[YOHœİ\[[X™\ˆŒÏÜÜ[‚ˆ]‚ˆÛ\ÜÓ˜[YOH™^YXœ›İÈÜ[›š[™Ğ\ÜÚ\İÛÛ\]HÈ”™[Ü[ˆİ\Èˆˆ”İ\ÈŸOÜ‚ˆ”[›š[™È\ÜÚ\İ[˜ÙOÚ‚ˆÛ\ÜÓ˜[YOHœİ\Ü[™È‚ˆ\ÙKY]™YÙ[™\˜]KÜˆÚÚ\İYÙÙ\İ[ÛœËˆ›İ[™È[\œÈHØ]™Y[‚ˆÚ]İ][İ\ˆXİ[Û‹‚ˆÜ‚ˆÙ]‚ˆÙ]‚ˆZT[›š[™Ô[™[ˆXØÙ\ÜÕÚÙ[^ÜÙ\ÜÚ[Û‹˜XØÙ\Ü×İÚÙ[ŸBˆ\ÜÚYÛ›Y[Y^ÜÙ[XİY\ÜÚYÛ›Y[Y[BˆÙYZÔİ\^İÙYZÔİ\Bˆ\ÔØÚY[Y\ÜÛÛœÏ^Ü[‹›[™İˆBˆ\ÔØ]™Yİ[™\™Ï^ÜØ]™Yİ[™\™ĞÛİ[ˆBˆİ\œ™[šY[Ï^ŞÂˆ[š]İÜXÎˆ˜Y[š]İÜXËˆ]\˜XŞWÜİ[™\™Îˆ˜Y›]\˜XŞWÜİ[™\™ËˆXİÜ™\\˜][Ûˆ˜Y˜XİÜ™\\˜][Û‹ˆX\›š[™×İ\™Ù]Îˆ˜Y›X\›š[™×İ\™Ù]ËˆÛ›İÎˆ˜YšÛ›İËˆ[™\œİ[™ˆ˜Y[™\œİ[™ˆ×Üİ][Y[ˆ˜Y™ËˆXİ]š]Y\Îˆ˜Y˜Xİ]š]Y\Ëˆ\ÜÙ\ÜÛY[Îˆ˜Y˜\ÜÙ\ÜÛY[Ëˆ™\Ûİ\˜Ù\Îˆ˜Yœ™\Ûİ\˜Ù\Ëˆ[Û™^Nˆ˜Y›[Û™^KˆY\Ù^Nˆ˜YY\Ù^KˆÙY™\Ù^Nˆ˜YÙY™\Ù^Kˆ\œÙ^Nˆ˜Y\œÙ^KˆœšY^Nˆ˜Y™œšY^Kˆ_BˆÛ\QšY[^Ø\PZT[›š[™ÑšY[BˆÏ‚ˆ]ˆÛ\ÜÓ˜[YOH˜Xİ[Û‹X˜\ˆ‚ˆ]‚ˆİ›Û™Ï•XXÚ\ˆXÚ\Ú[ÛÜİ›Û™Ï‚ˆÜ[–[İHX^H\ÙH[›š[™È\ÜÚ\İ[˜ÙHÜˆÛÛ[YHÚ][İ\ˆİÛˆ[›š[™È^ÜÜ[‚ˆÙ]‚ˆ]Û‚ˆÛ\ÜÓ˜[YOHœš[X\H‚ˆÛÛXÚÏ^Ê
+HOˆÂˆÙ][›š[™Ğ\ÜÚ\İÛÛ\]JYJNÂˆÙ][›š[™Ğ\ÜÚ\İY][™Ê˜[ÙJNÂˆÙ][”™]šY]ÓÜ[ŠYJNÂˆ_Bˆ‚ˆÛÛ[YHÈ™]šY]ËÙY][‚ˆØ]Û‚ˆÙ]‚ˆÜÙXİ[Û‚ˆ
+_B‚ˆİÙYZÔİ\È	‰ˆ\[›š[™Ğ\ÜÚ\İY][™È	‰ˆ
+ˆÙXİ[ÛˆÛ\ÜÓ˜[YOHœÙ]\\İ\\İ[[X\HÛÛ\]K\İ[[X\H‚ˆ]‚ˆİ›Û™Ï”İ\ÈÛÛ\]H0­È[›š[™È\ÜÚ\İ[˜ÙH™]šY]ÙYÜİ›Û™Ï‚ˆ•XXÚ\‹X\›İ™YÜˆXXÚ\‹X]]Ü™Y[›š[™È^\È™\Ù\™YÜ‚ˆÙ]‚ˆ]Û‚ˆÛ\ÜÓ˜[YOHœÙXÛÛ™\H‚ˆÛÛXÚÏ^Ê
+HOˆÙ][›š[™Ğ\ÜÚ\İY][™ÊYJ_Bˆ‚ˆ™[Ü[ˆ[›š[™È\ÜÚ\İ[˜ÙBˆØ]Û‚ˆÜÙXİ[Û‚ˆ
+_B‚ˆİÙYZÔİ\È	‰ˆ
+]ÙYZÔİ\[”™]šY]ÓÜ[ŠH	‰ˆ
+ˆÙXİ[ÛˆÛ\ÜÓ˜[YOHœÙ]\\İ\XØ\™Xİ]™K\İ\‚ˆ]ˆÛ\ÜÓ˜[YOHœİ\ZXY[™È‚ˆÜ[ˆÛ\ÜÓ˜[YOHœİ\[[X™\ˆÜÜ[‚ˆ]‚ˆÛ\ÜÓ˜[YOH™^YXœ›İÈİÙYZÔİ\È‘Y]İ\ˆˆ”İ\ŸOÜ‚ˆ”™]šY]È[™Ø]™HHÛÜšÚ[™È[Ú‚ˆÛ\ÜÓ˜[YOHœİ\Ü[™È‚ˆ™]šY]ÈHœ˜[Y]ÛÜšÈ[™ÙYZÈ]HÛ[˜ÙH[ˆ\İšXİˆÜ™\‹ˆØ]™H™Y›Ü™Bˆˆ™]šY]Ë‚ˆÜ‚ˆÙ]‚ˆÙ]‚ˆ[›š[™Ô‘šY[Ô[™[˜Y^Ù˜YH\ØX›Y^Ø\Ş_HÛÚ[™ÙO^İ\]Q˜YHÏ‚ˆ]ˆÛ\ÜÓ˜[YOH˜]Û‹\›İÈ‚ˆ]Û‚ˆÛ\ÜÓ˜[YOHœš[X\H‚ˆ\ØX›Y^È\Ù[XİY\ÜÚYÛ›Y[Y\Ş_BˆÛÛXÚÏ^Ê
+HOˆ›ÚYØ]™Q˜Y
+
+_Bˆ‚ˆØ]™H[ˆ	ˆÛÛ[YBˆØ]Û‚ˆÙ˜Y™]š\Ú[Ûˆ	‰ˆ
+ˆ]Û‚ˆÛ\ÜÓ˜[YOHœÙXÛÛ™\H‚ˆÛÛXÚÏ^Ê
+HOˆÙ][”™]šY]ÓÜ[Š˜[ÙJ_Bˆ‚ˆØ[˜Ù[Y][™ÂˆØ]Û‚ˆ
+_BˆÙ]‚ˆÜÙXİ[Û‚ˆ
+_B‚ˆİÙYZÔİ\	‰ˆ\[”™]šY]ÓÜ[ˆ	‰ˆ
+ˆÙXİ[ÛˆÛ\ÜÓ˜[YOHœÙ]\\İ\\İ[[X\HÛÛ\]K\İ[[X\H‚ˆ]‚ˆİ›Û™Ï”İ\ÛÛ\]H0­È˜Y™]š\Ú[ÛˆÙ˜Y™]š\Ú[ÛŸOÜİ›Û™Ï‚ˆÜİX›Z\ÜÚ[Û“X™[
+˜YİX›Z\ÜÚ[Û”İ]\Ê_H0­È›È[œØ]™YÚ[™Ù\ËÜ‚ˆÙ]‚ˆ]Û‚ˆÛ\ÜÓ˜[YOHœÙXÛÛ™\H‚ˆÛÛXÚÏ^Ê
+HOˆÙ][”™]šY]ÓÜ[ŠYJ_Bˆ‚ˆY][‚ˆØ]Û‚ˆÜÙXİ[Û‚ˆ
+_B‚ˆİÙYZÔİ\	‰ˆ\”™]šY]ÙY	‰ˆ
+ˆÙXİ[ÛˆÛ\ÜÓ˜[YOHœÙ]\\İ\XØ\™Xİ]™K\İ\‚ˆ]ˆÛ\ÜÓ˜[YOHœİ\ZXY[™È‚ˆÜ[ˆÛ\ÜÓ˜[YOHœİ\[[X™\ˆOÜÜ[‚ˆ]‚ˆÛ\ÜÓ˜[YOH™^YXœ›İÈ”İ\OÜ‚ˆ”™]šY]ÈÙYZÛH\ÜÛÛˆ[ˆÚ‚ˆÛ\ÜÓ˜[YOHœİ\Ü[™È‚ˆÜ[ˆH[œİXİ[Û˜[[›š[™Èœ˜[Y]ÛÜšÈ
+ÈÙYZÈ]HÛ[˜ÙH[™™]šY]È]‚ˆšY]Ú[™ÈHˆÛ›HÛÛ\]\È\È™]šY]Èİ\È]Ù\È›İİX›Z]Ü‚ˆ™\İX›Z]HÙYZÛH[‹ˆİX›Z\ÜÚ[Ûˆ\ÈHÙ\\˜]Hİ\ˆXİ[Û‹‚ˆÜ‚ˆÙ]‚ˆÙ]‚ˆÙØİ[Y[ÛÜšÚ[™È	‰ˆ
+ˆÛ\ÜÓ˜[YOHÛÜšÚ[™Ë\İ]\Èˆ›ÛOHœİ]\Èˆ\šXK[]™OHœÛ]H‚ˆÜ[ˆÛ\ÜÓ˜[YOH˜]Û‹\Ü[›™\ˆˆ\šXKZY[HYHˆÏ‚ˆ™\\š[™ÈÙØİ[Y[]JØİ[Y[ÛÜšÚ[™Ê_x )‚ˆÜ‚ˆ
+_Bˆ]ˆÛ\ÜÓ˜[YOHœ‹\™]šY]ËYÜšY‚ˆ\XÛHÛ\ÜÓ˜[YOH˜Ø\™‚ˆÏ•ÙYZÛH\ÜÛÛˆ[ÚÏ‚ˆÛ\ÜÓ˜[YOHœİ\Ü[™È‚ˆ[œİXİ[Û˜[[›š[™Èœ˜[Y]ÛÜšÈ
+ÈÙYZÈ]HÛ[˜ÙBˆÜ‚ˆ]ˆÛ\ÜÓ˜[YOH˜]Û‹\›İÈ‚ˆ]Û‚ˆÛ\ÜÓ˜[YOHœš[X\H‚ˆ\ØX›Y^Ø\Ş_BˆÛÛXÚÏ^Ê
+HOˆ›ÚY^ÜØİ[Y[
+›\ÜÛÛ‹\[ˆ‹šY]ÈŠ_Bˆ‚ˆÙØİ[Y[ÛÜšÚ[™ÈOOH›\ÜÛÛ‹\[ˆˆÈ”™\\š[™ø )ˆˆˆ•šY]ÈˆŸBˆØ]Û‚ˆ]Û‚ˆÛ\ÜÓ˜[YOHœÙXÛÛ™\H‚ˆ\ØX›Y^Ø\Ş_BˆÛÛXÚÏ^Ê
+HOˆ›ÚY^ÜØİ[Y[
+›\ÜÛÛ‹\[ˆ‹™İÛ›ØYŠ_Bˆ‚ˆİÛ›ØY‚ˆØ]Û‚ˆ]Û‚ˆÛ\ÜÓ˜[YOHœÙXÛÛ™\H‚ˆ\ØX›Y^Ø\Ş_BˆÛÛXÚÏ^Ê
+HOˆ›ÚY^ÜØİ[Y[
+›\ÜÛÛ‹\[ˆ‹œš[Š_Bˆ‚ˆš[ˆØ]Û‚ˆÙ]‚ˆØ\XÛO‚ˆÙ]‚ˆÜÙXİ[Û‚ˆ
+_B‚ˆİÙYZÔİ\H	‰ˆ
+ˆÙXİ[ÛˆÛ\ÜÓ˜[YOHœÙ]\\İ\\İ[[X\HÛÛ\]K\İ[[X\H‚ˆ]‚ˆİ›Û™Ï”İ\HÛÛ\]H0­ÈÙYZÛH\ÜÛÛˆ[ˆˆ™]šY]ÙYÜİ›Û™Ï‚ˆ”ˆ™]šY]È\ÈÛÛ\]KˆšY]Ú[™ÈY›İİX›Z]H[Èİ\ˆÛÛ›ÛÈİX›Z\ÜÚ[ÛˆÙ\\˜][KÜ‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH˜]Û‹\›İÈ‚ˆ]Û‚ˆÛ\ÜÓ˜[YOHœÙXÛÛ™\H‚ˆ\ØX›Y^Ø\Ş_BˆÛÛXÚÏ^Ê
+HOˆ›ÚY^ÜØİ[Y[
+›\ÜÛÛ‹\[ˆ‹šY]ÈŠ_Bˆ‚ˆšY]È‚ˆØ]Û‚ˆ]Û‚ˆÛ\ÜÓ˜[YOHœÙXÛÛ™\H‚ˆ\ØX›Y^Ø\Ş_BˆÛÛXÚÏ^Ê
+HOˆ›ÚY^ÜØİ[Y[
+›\ÜÛÛ‹\[ˆ‹™İÛ›ØYŠ_Bˆ‚ˆİÛ›ØY‚ˆØ]Û‚ˆ]Û‚ˆÛ\ÜÓ˜[YOHœÙXÛÛ™\H‚ˆ\ØX›Y^Ø\Ş_BˆÛÛXÚÏ^Ê
+HOˆ›ÚY^ÜØİ[Y[
+›\ÜÛÛ‹\[ˆ‹œš[Š_Bˆ‚ˆš[ˆØ]Û‚ˆÙ]‚ˆÜÙXİ[Û‚ˆ
+_B‚ˆİÙYZÔİ\H	‰ˆ
+ˆÙXİ[ÛˆÛ\ÜÓ˜[YOHœÙ]\\™XYKXØ\™‚ˆ]ˆÛ\ÜÓ˜[YOHœİ\ZXY[™È‚ˆÜ[ˆÛ\ÜÓ˜[YOHœİ\[[X™\ˆİÙYZÔİ\ˆÈ¸§$ÈˆˆˆŸOÜÜ[‚ˆ]‚ˆÛ\ÜÓ˜[YOH™^YXœ›İÈ”İ\Ü‚ˆİÙYZÔİ\ˆÈ•ÙYZÛH[ˆİX›Z]Yˆˆ”İX›Z]ÙYZÛH[ˆŸOÚ‚ˆÛ\ÜÓ˜[YOHœİ\Ü[™È‚ˆİÙYZÔİ\‚ˆÈ•\ÈØ]™Y™]š\Ú[ÛˆØ\È[™XYHİX›Z]Yˆ™]šY]Ú[™ÈHˆY›İİX›Z]]YØZ[‹ˆ‚ˆˆ”Ù[XİİX›Z]ÙYZÛH[ˆÚ[ˆ[İH\™H™XYHÈÜ™X]HH[[]]X›HYZ[š\İ˜]Ü‹]š\ÚX›H\ÛÛZ[™È\ÜÛÛˆ[ˆ›Üˆ\ÈÛ\ÜÈ[™[Û™^K\İ\[™ÈÙYZËˆŸBˆÜ‚ˆÙ]‚ˆÙ]‚ˆÙ˜YİX›Z]Y]	‰ˆ
+ˆÛ\ÜÓ˜[YOH™İZY[˜ÙK]^‚ˆ\İİX›Z]YÛ™]È]J˜YİX›Z]Y]
+KÓØØ[Tİš[™Ê
+_K‚ˆÜ‚ˆ
+_Bˆ]Û‚ˆÛ\ÜÓ˜[YOHœš[X\H‚ˆ\ØX›Y^È\Ø]™Y›Ü”™]šY]ÈÙYZÔİ\ˆ\Ş_BˆÛÛXÚÏ^Ê
+HOˆ›ÚYİX›Z]˜Y
+
+_Bˆ‚ˆÙ˜YİX›Z\ÜÚ[Û”İ]\ÈOOHœ™]š\ÙYØY\—ÜİX›Z\ÜÚ[Ûˆ‚ˆÈ”™\İX›Z]ÙYZÛH[ˆ‚ˆˆÙYZÔİ\‚ˆÈ•ÙYZÛH[ˆİX›Z]Y‚ˆˆ”İX›Z]ÙYZÛH[ˆŸBˆØ]Û‚ˆÜÙXİ[Û‚ˆ
+_BˆÜÙXİ[Û‚ˆ
+_BˆÛXZ[‚‚ˆÜ”™]šY]È	‰ˆ
+ˆ]‚ˆÛ\ÜÓ˜[YOHœ‹[[Ù[X˜XÚÙ›Ü‚ˆ›ÛOH™X[ÙÈ‚ˆ\šXK[[Ù[HYH‚ˆ\šXK[X™[^Ø	Ü”™]šY]Ë]_H™]šY]ØBˆ‚ˆÙXİ[ÛˆÛ\ÜÓ˜[YOHœ‹[[Ù[‚ˆ]ˆÛ\ÜÓ˜[YOHœ‹[[Ù[ZXY[™È‚ˆÜ”™]šY]Ë]_OÚ‚ˆ]Ûˆ\OH˜]ÛˆˆÛ\ÜÓ˜[YOHœÙXÛÛ™\HˆÛÛXÚÏ^ØÛÜÙT”™]šY]ßO‚ˆÛÜÙH™]šY]ÂˆØ]Û‚ˆÙ]‚ˆYœ˜[YHÜ˜Ï^Ü”™]šY]Ë\›H]O^Ø	Ü”™]šY]Ë]_H˜HÏ‚ˆÜÙXİ[Û‚ˆÙ]‚ˆ
+_Bˆ›Ûİ\‚ˆ™\\™YÚ]XXÚ\ˆ[›š[™È]›Ü›H0­È[›š\İÛˆÛÛ›ÛY[İ0­ÈXXÚ\ˆ[™İ\œšXİ[[Bˆ]HÛ›BˆÙ›Ûİ\‚ˆÙ]‚ˆ
+NÂŸB
