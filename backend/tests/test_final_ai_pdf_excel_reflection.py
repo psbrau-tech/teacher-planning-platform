@@ -132,7 +132,8 @@ def test_pdf_field_ui_follows_canonical_pdf_order_without_extra_sections() -> No
         "Performance Task / Authentic Application",
         "Resources",
     )
-    positions = [source.index(label) for label in labels]
+    framework_start = source.index("<summary>Instructional Planning Framework</summary>")
+    positions = [source.index(label, framework_start) for label in labels]
     assert positions == sorted(positions)
 
 
