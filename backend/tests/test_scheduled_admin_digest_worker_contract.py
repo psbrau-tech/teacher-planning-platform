@@ -38,6 +38,12 @@ WINDOW_HARDENING_MIGRATION = (
     / "migrations"
     / "20260815220500_harden_school_local_notification_windows.sql"
 )
+CLAIM_CONFLICT_REPAIR_MIGRATION = (
+    ROOT
+    / "supabase"
+    / "migrations"
+    / "20260821201500_fix_scheduled_notification_claim_conflicts.sql"
+)
 SCHEDULED_STACK = ROOT / "infra" / "scheduled-admin-digest-stack.yml"
 MAIN_STACK = ROOT / "infra" / "pilot-stack.yml"
 ACTIVATION_WORKFLOW = (
@@ -240,6 +246,23 @@ def test_delivery_ledger_becomes_school_scoped_and_content_minimized() -> None:
     assert "scheduled_notification_school_windows" in multi_school
     assert "target_school_id uuid" in multi_school
     assert "<> 'service_role'" in multi_school
+
+
+def test_teacher_and_admin_claims_use_named_school_scoped_conflict_constraint() -> None:
+    multi_school = MULTI_SCHOOL_MIGRATION.read_text(encoding="utf-8")
+    repair = CLAIM_CONFLICT_REPAIR_MIGRATION.read_text(encoding="utf-8")
+    named_target = (
+        "on conflict on constraint "
+        "scheduled_notification_deliveries_school_recipient_week_key"
+    )
+
+    assert multi_school.count(named_target) == 2
+    assert "on conflict (\n      notification_key,\n      school_id" not in multi_school
+    assert "claim_teacher_friday_reminder_candidates(uuid,date)" in repair
+    assert "claim_scheduled_admin_weekly_digest_candidates(uuid,date)" in repair
+    assert "pg_get_functiondef" in repair
+    assert "if repaired_definition = current_definition" in repair
+    assert named_target in repair
 
 
 def test_initial_school_local_window_sql_is_executable_before_hardening() -> None:
