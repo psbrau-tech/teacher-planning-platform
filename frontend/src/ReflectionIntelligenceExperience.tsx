@@ -26,6 +26,11 @@ type TeacherInsight = {
   };
 };
 
+type TeacherStatusRow = {
+  current_week_required: boolean;
+  current_packet_submitted: boolean;
+};
+
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ?? "";
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
 const reflectionSupabase = supabaseUrl && supabaseAnonKey
@@ -109,20 +114,38 @@ export function ReflectionIntelligenceExperience() {
   }, [accessToken]);
 
   useEffect(() => {
-    if (!isTeacher) {
+    if (!isTeacher || !accessToken) {
       setStepTarget(null);
       setStepperTarget(null);
       return;
     }
 
-    const syncTargets = () => {
-      const panel = findFridayValidationPanel();
-      if (!panel) {
-        setStepTarget(null);
-        setStepperTarget(null);
-        return;
-      }
+    let active = true;
+    let requestedContext = "";
+    let eligibleContext = "";
 
+    const removeInjectedTargets = () => {
+      document.querySelectorAll<HTMLElement>("[data-ri-step-marker-host], [data-ri-friday-step-host]")
+        .forEach((element) => element.remove());
+      document.querySelectorAll<HTMLElement>(".ri-renumbered-continue-marker")
+        .forEach((element) => {
+          element.classList.remove("ri-renumbered-continue-marker");
+          element.removeAttribute("aria-label");
+        });
+      document.querySelectorAll<HTMLElement>(".ri-renumbered-continue-card")
+        .forEach((element) => {
+          element.classList.remove("ri-renumbered-continue-card");
+          element.removeAttribute("aria-label");
+        });
+    };
+
+    const clearTargets = () => {
+      setStepTarget(null);
+      setStepperTarget(null);
+      removeInjectedTargets();
+    };
+
+    const mountEligibleTargets = (panel: HTMLElement) => {
       const stepper = panel.querySelector<HTMLElement>(".closeout-stepper");
       if (stepper) {
         let markerHost = stepper.querySelector<HTMLElement>("[data-ri-step-marker-host]");
@@ -169,26 +192,60 @@ export function ReflectionIntelligenceExperience() {
       setStepTarget(stepHost);
     };
 
+    const syncTargets = () => {
+      const panel = findFridayValidationPanel();
+      const continueCard = panel
+        ? Array.from(panel.querySelectorAll<HTMLElement>(".setup-ready-card"))
+          .find((card) => card.querySelector("h2")?.textContent?.trim() === "Continue to next week")
+        : null;
+      const panelWeekStart = panel?.dataset.fridayWeekStart ?? "";
+      const assignmentId = panel?.dataset.fridayAssignmentId ?? "";
+
+      if (!panel || !continueCard || !panelWeekStart || !assignmentId) {
+        clearTargets();
+        return;
+      }
+
+      const context = `${panelWeekStart}:${assignmentId}`;
+      if (context === eligibleContext) {
+        mountEligibleTargets(panel);
+        return;
+      }
+      if (context === requestedContext) return;
+
+      requestedContext = context;
+      clearTargets();
+      void fetch(
+        `/api/v1/friday-status/teacher?week_start=${encodeURIComponent(panelWeekStart)}`,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      ).then(async (response) => {
+        if (!response.ok || !active || context !== requestedContext) return;
+        const rows = await response.json() as TeacherStatusRow[];
+        const requiredRows = rows.filter((row) => row.current_week_required);
+        if (!requiredRows.length || requiredRows.some((row) => !row.current_packet_submitted)) return;
+        eligibleContext = context;
+        setWeekStart(panelWeekStart);
+        mountEligibleTargets(panel);
+      }).catch(() => {
+        // Status failure is fail-closed: do not recommend or enable another AI request.
+      });
+    };
+
     syncTargets();
     const observer = new MutationObserver(syncTargets);
-    observer.observe(document.body, { childList: true, subtree: true });
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["data-friday-week-start", "data-friday-assignment-id"],
+    });
 
     return () => {
+      active = false;
       observer.disconnect();
-      document.querySelectorAll<HTMLElement>("[data-ri-step-marker-host], [data-ri-friday-step-host]")
-        .forEach((element) => element.remove());
-      document.querySelectorAll<HTMLElement>(".ri-renumbered-continue-marker")
-        .forEach((element) => {
-          element.classList.remove("ri-renumbered-continue-marker");
-          element.removeAttribute("aria-label");
-        });
-      document.querySelectorAll<HTMLElement>(".ri-renumbered-continue-card")
-        .forEach((element) => {
-          element.classList.remove("ri-renumbered-continue-card");
-          element.removeAttribute("aria-label");
-        });
+      removeInjectedTargets();
     };
-  }, [isTeacher]);
+  }, [accessToken, isTeacher]);
 
   const weekLabel = useMemo(() => {
     const value = new Date(`${weekStart}T12:00:00`);
@@ -245,9 +302,9 @@ export function ReflectionIntelligenceExperience() {
           <p className="eyebrow">Step 4 · Optional</p>
           <h2 id="reflection-intelligence-title">Review your reflection insights</h2>
           <p className="supporting">
-            After your teacher-authored reflection is submitted and the completed packet is reviewed,
-            TPP can privately synthesize patterns from your own submitted reflections. This does not
-            change your reflection and is not a teacher-performance score.
+            After every required class closeout for this week is submitted, TPP can privately
+            synthesize patterns from your own submitted reflections. This combined recap does not
+            change your reflections and is not a teacher-performance score.
           </p>
         </div>
       </div>

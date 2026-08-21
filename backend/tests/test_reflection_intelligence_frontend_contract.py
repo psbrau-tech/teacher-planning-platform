@@ -44,12 +44,29 @@ def test_teacher_reflection_insights_are_scoped_inline_to_friday_step_four() -> 
     assert "ri-renumbered-continue-card" in source
     assert "ri-inline-body" in source
     assert "Generate my private recap" in source
+    assert "/api/v1/friday-status/teacher?week_start=" in source
+    assert "requiredRows.some((row) => !row.current_packet_submitted)" in source
+    assert "Status failure is fail-closed" in source
     assert "ri-results" in source
     assert "<aside" not in source
     assert 'className="ri-panel"' not in source
     assert "setOpen(" not in source
     assert ".ri-panel" not in styles
     assert "position: fixed" not in styles
+
+
+def test_teacher_recap_is_server_gated_until_all_required_class_packets_are_submitted() -> None:
+    api = (ROOT / "backend" / "app" / "reflection_intelligence_api.py").read_text(
+        encoding="utf-8"
+    )
+    assert "def _require_complete_teacher_week" in api
+    assert '"teacher_friday_submission_status"' in api
+    assert 'row.get("current_week_required") is True' in api
+    assert 'row.get("current_packet_submitted") is not True' in api
+    assert api.index("_require_complete_teacher_week(client, week_start)") < api.index(
+        '"teacher_reflection_intelligence_source"',
+        api.index("def generate_teacher_insight"),
+    )
 
 
 def test_teacher_reflection_insights_remain_private_and_non_evaluative() -> None:

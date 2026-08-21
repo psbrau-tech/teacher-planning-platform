@@ -1448,7 +1448,11 @@ export function TeacherPlanningShell() {
         {view === "help" && identity && <HelpPage roles={identity.roles} />}
 
         {view === "validation" && isTeacher && (
-          <section className="panel">
+          <section
+            className="panel"
+            data-friday-week-start={weekStart}
+            data-friday-assignment-id={selectedAssignmentId}
+          >
             <div className="section-heading compact">
               <div>
                 <p className="eyebrow">Friday closeout</p>

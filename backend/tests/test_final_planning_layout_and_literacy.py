@@ -12,6 +12,9 @@ def test_week_at_a_glance_uses_matrix_layout() -> None:
     assert '<th scope="col">Instructional component</th>' in source
     assert 'COMPONENTS.map(([prefix, label])' in source
     assert 'DAYS.map(([suffix, dayLabel])' in source
+    assert 'className="week-at-glance-component-row"' in source
+    assert 'onPointerDown={beginRowResize}' in source
+    assert 'setRowHeight(Math.max(MIN_MATRIX_ROW_HEIGHT' in source
     assert 'week-at-glance-day' not in source
     assert "Prefill matching fields" not in source
 
@@ -39,7 +42,7 @@ def test_framework_is_one_continuous_section_in_canonical_pdf_order() -> None:
         "Performance Task / Authentic Application",
         "Resources",
     )
-    positions = [source.index(label) for label in labels]
+    positions = [source.index(label, source.index(framework_summary)) for label in labels]
     assert positions == sorted(positions)
     assert '>Monday<textarea' not in source
     assert '>Tuesday<textarea' not in source

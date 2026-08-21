@@ -189,12 +189,14 @@ export function HelpPage({ roles }: Props) {
               teacher-authored reflection. View, Download, and Print remain available.
             </p>
             <p>
-              <strong>4. Review Reflection Insights if useful.</strong> After the reflection is
-              submitted and the completed packet is reviewed, the Friday validation page offers an
-              optional private recap inline inside Step 4, based only on your own already-submitted
-              professional reflections. The recap is an AI-generated analytical aid; it does not
-              alter your submitted reflection and is not an official response or teacher-performance
-              score. Reflection Insights are optional and do not block the Friday workflow.
+              <strong>4. Review Reflection Insights if useful.</strong> After every required class
+              closeout for the week is submitted, the Friday validation page offers one optional
+              combined private recap inline inside Step 4, based only on your own already-submitted
+              professional reflections. It is intentionally withheld during earlier class closeouts
+              to avoid unnecessary AI requests. The recap is an AI-generated analytical aid; it does
+              not alter your submitted reflections and is not an official response or
+              teacher-performance score. Reflection Insights are optional and do not block the
+              Friday workflow.
             </p>
             <p>
               <strong>5. Continue to the following week.</strong> TPP moves to the next Monday and
