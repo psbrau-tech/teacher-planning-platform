@@ -12,6 +12,12 @@ ROOT = Path(__file__).resolve().parents[2]
 MIGRATION = (
     ROOT / "supabase" / "migrations" / "20260821180000_weekly_lesson_replacements.sql"
 )
+FIX_MIGRATION = (
+    ROOT
+    / "supabase"
+    / "migrations"
+    / "20260821194800_fix_weekly_lesson_replacement_week_start.sql"
+)
 SHELL = ROOT / "frontend" / "src" / "TeacherPlanningShell.tsx"
 LIVE_PLANNING = ROOT / "backend" / "app" / "live_planning_api.py"
 AI_PLANNING = ROOT / "backend" / "app" / "ai_planning_api.py"
@@ -29,6 +35,13 @@ def test_replacement_rpc_preserves_manual_source_and_displaced_lesson_decision()
     assert "ol.global_sequence > coalesce(week_max_sequence, 0)" in source
     assert "coalesce(final_minutes, target.planned_minutes)" in source
     assert "ta.teacher_id = (select auth.uid())" in source
+
+
+def test_replacement_rpc_week_boundary_does_not_collide_with_snapshot_column() -> None:
+    source = FIX_MIGRATION.read_text(encoding="utf-8")
+    assert "target_week_start date" in source
+    assert "fvs.week_start = target_week_start" in source
+    assert "fvs.week_start = week_start" not in source
 
 
 def test_manual_replacement_requires_teacher_to_choose_skip_or_postpone() -> None:
