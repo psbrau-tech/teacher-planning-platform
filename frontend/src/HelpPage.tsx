@@ -147,6 +147,15 @@ export function HelpPage({ roles }: Props) {
               the week&apos;s curriculum before continuing.
             </p>
             <p>
+              <strong>Replace a scheduled lesson when pacing needs to change.</strong> Choose
+              <strong> Use next pacing lesson</strong> to skip the selected curriculum lesson,
+              move the remaining lessons earlier, and pull the next queued pacing lesson into the
+              final open class day. Or choose <strong>Add a manual class</strong>, enter the
+              teacher-authored class details, and decide each time whether the displaced curriculum
+              lesson is skipped or postponed. After a plan has been submitted, first use the
+              existing reopen/revision process; the prior submitted revision remains unchanged.
+            </p>
+            <p>
               <strong>3. Save authoritative standards.</strong> Confirm the governed standards
               relevant to this week&apos;s scheduled curriculum.
             </p>

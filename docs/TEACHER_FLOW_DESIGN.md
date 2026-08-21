@@ -130,6 +130,19 @@ The weekly plan combines curriculum sequence, meeting pattern, school calendar, 
 exceptions, and the previous Friday validation. A missed or modified week therefore does not require
 the teacher to rebuild the course sequence manually.
 
+Before confirming the week, the teacher can replace a scheduled curriculum lesson in either of two
+ways:
+
+- **Use next pacing lesson:** skip the selected lesson, move the remaining lessons earlier, and pull
+  the next queued curriculum lesson into the final open class day.
+- **Add a manual class:** enter teacher-authored unit/topic, lesson/focus, learning targets, and
+  assessment, then explicitly choose whether the displaced curriculum lesson is skipped or
+  postponed. This decision is required for every manual class.
+
+The adjustment is assignment-specific and does not rewrite the governed curriculum. A previously
+submitted week must enter the existing reopen/revision workflow before it can be changed, and the
+submitted snapshot remains immutable.
+
 ## 4. Weekly standards
 
 The standards screen should not begin with the complete course corpus as one undifferentiated list.

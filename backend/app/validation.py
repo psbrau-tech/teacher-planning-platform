@@ -9,7 +9,7 @@ from .models import LessonStatus, ValidationUpdate
 class ScheduledLessonRecord:
     id: UUID
     assignment_id: UUID
-    curriculum_lesson_id: UUID
+    curriculum_lesson_id: UUID | None
     date: date
     sequence: int
     status: LessonStatus = LessonStatus.PLANNED
@@ -19,7 +19,7 @@ class ScheduledLessonRecord:
 class ValidatedLessonRecord:
     scheduled_lesson_id: UUID
     assignment_id: UUID
-    curriculum_lesson_id: UUID
+    curriculum_lesson_id: UUID | None
     date: date
     sequence: int
     status: LessonStatus
@@ -67,7 +67,8 @@ def apply_friday_validation(
     carry_forward_ids = tuple(
         record.curriculum_lesson_id
         for record in validated
-        if record.carry_forward or record.status == LessonStatus.MISSED
+        if record.curriculum_lesson_id is not None
+        and (record.carry_forward or record.status == LessonStatus.MISSED)
     )
 
     return FridayValidationResult(

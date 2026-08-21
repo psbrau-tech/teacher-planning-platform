@@ -274,7 +274,11 @@ def _assignment_context(
                         f"(school_date.gte.{week_start.isoformat()},"
                         f"school_date.lte.{week_end.isoformat()})"
                     ),
-                    "select": "lesson_id,school_date,planned_minutes,sequence_position",
+                    "select": (
+                        "lesson_id,school_date,planned_minutes,sequence_position,source_type,"
+                        "manual_unit_title,manual_lesson_title,manual_learning_targets,"
+                        "manual_assessment"
+                    ),
                     "order": "school_date.asc,sequence_position.asc",
                 },
             )
@@ -381,6 +385,31 @@ def _build_context(
         )
     scheduled: list[JsonRecord] = []
     for row in scheduled_rows:
+        if row.get("source_type") == "manual":
+            scheduled.append(
+                {
+                    "date": _required_text(row, "school_date"),
+                    "unit_title": _required_text(row, "manual_unit_title"),
+                    "lesson_title": _required_text(row, "manual_lesson_title"),
+                    "planned_minutes": _required_int(row, "planned_minutes"),
+                    "imported_learning_targets": _string_list(
+                        row.get("manual_learning_targets")
+                    ),
+                    "imported_know": None,
+                    "imported_understand": None,
+                    "imported_do": None,
+                    "imported_activities": [],
+                    "imported_assessments": (
+                        [value]
+                        if isinstance((value := row.get("manual_assessment")), str)
+                        and value.strip()
+                        else []
+                    ),
+                    "imported_resources": [],
+                    "source_type": "teacher_manual",
+                }
+            )
+            continue
         lesson_id = _required_text(row, "lesson_id")
         detail = lessons.get(lesson_id, {})
         scheduled.append(
