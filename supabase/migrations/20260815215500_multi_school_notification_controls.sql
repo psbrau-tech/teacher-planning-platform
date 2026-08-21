@@ -218,12 +218,8 @@ begin
       'teacher_friday_reminder',
       'claimed'
     from grouped g
-    on conflict (
-      notification_key,
-      school_id,
-      recipient_profile_id,
-      week_start
-    ) do nothing
+    on conflict on constraint scheduled_notification_deliveries_school_recipient_week_key
+    do nothing
     returning
       scheduled_notification_deliveries.id,
       scheduled_notification_deliveries.school_id,
@@ -384,12 +380,8 @@ begin
       'admin_weekly_digest',
       'claimed'
     from eligible e
-    on conflict (
-      notification_key,
-      school_id,
-      recipient_profile_id,
-      week_start
-    ) do nothing
+    on conflict on constraint scheduled_notification_deliveries_school_recipient_week_key
+    do nothing
     returning
       scheduled_notification_deliveries.id,
       scheduled_notification_deliveries.school_id,
