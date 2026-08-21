@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 from datetime import date, timedelta
 from typing import Annotated, Any, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 
 from .auth import AuthenticatedTeacher, require_teacher
 from .settings import Settings, get_settings
@@ -20,6 +22,35 @@ class PlannedLessonMove(BaseModel):
 class PlannedLessonMoveRead(BaseModel):
     scheduled_lesson_id: UUID
     lesson_date: date
+
+
+class PlannedLessonReplacement(BaseModel):
+    replacement_kind: str
+    manual_unit_title: str | None = Field(default=None, max_length=300)
+    manual_lesson_title: str | None = Field(default=None, max_length=1000)
+    manual_learning_targets: list[str] = Field(default_factory=list)
+    manual_assessment: str | None = Field(default=None, max_length=2000)
+    original_disposition: str | None = None
+
+    @model_validator(mode="after")
+    def validate_replacement(self) -> PlannedLessonReplacement:
+        if self.replacement_kind not in {"next", "manual"}:
+            raise ValueError("replacement_kind must be next or manual")
+        if self.replacement_kind == "manual":
+            if not (self.manual_unit_title or "").strip() or not (
+                self.manual_lesson_title or ""
+            ).strip():
+                raise ValueError("Manual unit/topic and lesson/focus are required")
+            if self.original_disposition not in {"skip", "postpone"}:
+                raise ValueError("Choose whether to skip or postpone the original lesson")
+            if len(self.manual_learning_targets) > 20 or any(
+                len(target.strip()) > 1000 for target in self.manual_learning_targets
+            ):
+                raise ValueError("Use no more than 20 learning targets of 1,000 characters each")
+            self.manual_learning_targets = [
+                target.strip() for target in self.manual_learning_targets if target.strip()
+            ]
+        return self
 
 
 def _records(payload: object) -> list[dict[str, Any]]:
@@ -133,3 +164,40 @@ def move_planned_lesson(
         scheduled_lesson_id=scheduled_lesson_id,
         lesson_date=payload.lesson_date,
     )
+
+
+@router.post("/{scheduled_lesson_id}/replace")
+def replace_planned_lesson(
+    scheduled_lesson_id: UUID,
+    payload: PlannedLessonReplacement,
+    identity: Annotated[AuthenticatedTeacher, Depends(require_teacher)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, str]:
+    """Replace curriculum with the next paced lesson or a teacher-authored manual class."""
+    if identity.access_token is None:
+        raise HTTPException(status_code=503, detail="Supabase session token is unavailable")
+    client = SupabaseRestClient.from_settings(settings, access_token=identity.access_token)
+    try:
+        client.request(
+            "POST",
+            "rpc/replace_weekly_scheduled_lesson",
+            payload={
+                "target_scheduled_lesson_id": str(scheduled_lesson_id),
+                "replacement_kind": payload.replacement_kind,
+                "target_manual_unit_title": payload.manual_unit_title,
+                "target_manual_lesson_title": payload.manual_lesson_title,
+                "target_manual_learning_targets": payload.manual_learning_targets,
+                "target_manual_assessment": payload.manual_assessment,
+                "original_disposition": payload.original_disposition,
+            },
+        )
+    except SupabaseRestError as error:
+        if error.status_code in {401, 403}:
+            raise HTTPException(status_code=403, detail="Planned lesson replacement was denied") from error
+        if error.status_code in {400, 404, 409, 422}:
+            raise HTTPException(
+                status_code=409,
+                detail="The scheduled lesson could not be replaced. Reopen the current plan and try again.",
+            ) from error
+        raise HTTPException(status_code=503, detail="Planned lesson replacement is unavailable") from error
+    return {"status": "replaced"}

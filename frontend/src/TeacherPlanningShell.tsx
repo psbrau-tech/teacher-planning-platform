@@ -59,7 +59,7 @@ type Assignment = {
 };
 type PlannedLesson = {
   scheduled_lesson_id: string;
-  curriculum_lesson_id: string;
+  curriculum_lesson_id: string | null;
   unit_title: string;
   lesson_title: string;
   lesson_date: string;
@@ -67,6 +67,20 @@ type PlannedLesson = {
   planned_minutes: number;
   segment_number: number;
   status: string;
+  source_type: "curriculum" | "manual";
+  manual_learning_targets: string[];
+  manual_assessment: string | null;
+  replaced_curriculum_lesson_id: string | null;
+  replacement_disposition: "skip" | "postpone" | null;
+};
+type LessonReplacementDraft = {
+  scheduledLessonId: string;
+  mode: "next" | "manual";
+  unitTitle: string;
+  lessonTitle: string;
+  learningTargets: string;
+  assessment: string;
+  originalDisposition: "skip" | "postpone";
 };
 type WeeklyDraft = {
   id: string;
@@ -326,6 +340,7 @@ export function TeacherPlanningShell() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [lessonReplacement, setLessonReplacement] = useState<LessonReplacementDraft | null>(null);
 
   const isTeacher = identity?.roles.includes("teacher") ?? false;
   const isSchoolAdmin = identity?.roles.includes("school_admin") ?? false;
@@ -373,6 +388,7 @@ export function TeacherPlanningShell() {
     setValidations({});
     setValidationFinalized(false);
     setValidationRevision(null);
+    setLessonReplacement(null);
     setDraftRevision(null);
     setDraftSubmissionStatus("not_submitted");
     setDraftSubmittedAt(null);
@@ -1149,6 +1165,57 @@ export function TeacherPlanningShell() {
       );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Lesson day could not be changed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function resetPlanningAfterScheduleChange() {
+    setWeekCurriculumConfirmed(false);
+    setSavedStandardsCount(0);
+    setWeekStandardsEditing(false);
+    setPlanningAssistComplete(false);
+    setPlanningAssistEditing(false);
+    setPdfReviewed(false);
+  }
+
+  async function replacePlannedLesson() {
+    if (!lessonReplacement) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api<{ status: string }>(
+        `/api/v1/plans/lessons/${encodeURIComponent(lessonReplacement.scheduledLessonId)}/replace`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            replacement_kind: lessonReplacement.mode,
+            manual_unit_title: lessonReplacement.mode === "manual" ? lessonReplacement.unitTitle : null,
+            manual_lesson_title: lessonReplacement.mode === "manual" ? lessonReplacement.lessonTitle : null,
+            manual_learning_targets: lessonReplacement.mode === "manual"
+              ? lessonReplacement.learningTargets.split("\n").map((value) => value.trim()).filter(Boolean)
+              : [],
+            manual_assessment: lessonReplacement.mode === "manual" ? lessonReplacement.assessment : null,
+            original_disposition: lessonReplacement.mode === "manual"
+              ? lessonReplacement.originalDisposition
+              : null,
+          }),
+        },
+      );
+      const refreshed = await api<PlannedLesson[]>(
+        `/api/v1/plans?assignment_id=${encodeURIComponent(selectedAssignmentId)}&week_start=${weekStart}`,
+      );
+      setPlan(sortPlan(refreshed));
+      setLessonReplacement(null);
+      resetPlanningAfterScheduleChange();
+      setDraftDirty(draftRevision !== null);
+      setMessage(
+        lessonReplacement.mode === "next"
+          ? "The lesson was skipped and the remaining pacing sequence moved forward one instructional day. Review and confirm the week again."
+          : `Manual class added. The original curriculum lesson will be ${lessonReplacement.originalDisposition === "postpone" ? "returned to the pacing queue" : "skipped"}. Review and confirm the week again.`,
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The scheduled lesson could not be replaced.");
     } finally {
       setBusy(false);
     }
@@ -1974,7 +2041,10 @@ export function TeacherPlanningShell() {
                     </div>
                     <div className="weekly-curriculum-list">
                       {plan.map((lesson) => {
-                        const carried = carryForwardLessonIds.includes(lesson.curriculum_lesson_id);
+                        const carried = Boolean(
+                          lesson.curriculum_lesson_id
+                          && carryForwardLessonIds.includes(lesson.curriculum_lesson_id),
+                        );
                         return (
                           <article
                             className={`weekly-curriculum-item ${carried ? "carried-forward" : ""}`}
@@ -1982,7 +2052,9 @@ export function TeacherPlanningShell() {
                           >
                             <div>
                               <div className="card-row">
-                                {carried ? (
+                                {lesson.source_type === "manual" ? (
+                                  <span className="badge">Manual class</span>
+                                ) : carried ? (
                                   <span className="badge carry-badge">Carried forward</span>
                                 ) : (
                                   <span className="badge">Scheduled curriculum</span>
@@ -2013,10 +2085,169 @@ export function TeacherPlanningShell() {
                                 ))}
                               </select>
                             </label>
+                            {lesson.source_type === "curriculum" ? (
+                              <button
+                                type="button"
+                                className="secondary"
+                                disabled={busy}
+                                onClick={() => setLessonReplacement({
+                                  scheduledLessonId: lesson.scheduled_lesson_id,
+                                  mode: "next",
+                                  unitTitle: "",
+                                  lessonTitle: "",
+                                  learningTargets: "",
+                                  assessment: "",
+                                  originalDisposition: "skip",
+                                })}
+                              >
+                                Replace scheduled lesson
+                              </button>
+                            ) : (
+                              <small>
+                                Original curriculum lesson {lesson.replacement_disposition === "postpone"
+                                  ? "will return to the pacing queue"
+                                  : "was skipped"}.
+                              </small>
+                            )}
                           </article>
                         );
                       })}
                     </div>
+                    {lessonReplacement ? (
+                      <section className="guidance-card lesson-replacement-editor" aria-labelledby="lesson-replacement-title">
+                        <div className="section-heading compact">
+                          <div>
+                            <p className="eyebrow">Adjust this week</p>
+                            <h3 id="lesson-replacement-title">Replace scheduled lesson</h3>
+                            <p className="supporting">
+                              Choose the next item in your pacing sequence or add a manual class.
+                            </p>
+                          </div>
+                        </div>
+                        <fieldset className="replacement-choice-group">
+                          <legend>Replacement</legend>
+                          <label className="check">
+                            <input
+                              type="radio"
+                              name="replacement-mode"
+                              checked={lessonReplacement.mode === "next"}
+                              onChange={() => setLessonReplacement((current) => current
+                                ? { ...current, mode: "next" }
+                                : current)}
+                            />
+                            Use the next pacing lesson and move the remaining sequence forward
+                          </label>
+                          <label className="check">
+                            <input
+                              type="radio"
+                              name="replacement-mode"
+                              checked={lessonReplacement.mode === "manual"}
+                              onChange={() => setLessonReplacement((current) => current
+                                ? { ...current, mode: "manual" }
+                                : current)}
+                            />
+                            Add a manual class
+                          </label>
+                        </fieldset>
+                        {lessonReplacement.mode === "manual" ? (
+                          <div className="form-grid">
+                            <label>
+                              Unit / topic
+                              <input
+                                required
+                                value={lessonReplacement.unitTitle}
+                                maxLength={300}
+                                onChange={(event) => setLessonReplacement((current) => current
+                                  ? { ...current, unitTitle: event.target.value }
+                                  : current)}
+                              />
+                            </label>
+                            <label>
+                              Lesson / focus
+                              <input
+                                required
+                                value={lessonReplacement.lessonTitle}
+                                maxLength={1000}
+                                onChange={(event) => setLessonReplacement((current) => current
+                                  ? { ...current, lessonTitle: event.target.value }
+                                  : current)}
+                              />
+                            </label>
+                            <label className="full-width">
+                              Learning target(s) — one per line
+                              <textarea
+                                rows={3}
+                                maxLength={20000}
+                                value={lessonReplacement.learningTargets}
+                                onChange={(event) => setLessonReplacement((current) => current
+                                  ? { ...current, learningTargets: event.target.value }
+                                  : current)}
+                              />
+                            </label>
+                            <label className="full-width">
+                              Assessment / check
+                              <textarea
+                                rows={2}
+                                maxLength={2000}
+                                value={lessonReplacement.assessment}
+                                onChange={(event) => setLessonReplacement((current) => current
+                                  ? { ...current, assessment: event.target.value }
+                                  : current)}
+                              />
+                            </label>
+                            <fieldset className="full-width replacement-choice-group">
+                              <legend>What should happen to the original curriculum lesson?</legend>
+                              <label className="check">
+                                <input
+                                  type="radio"
+                                  name="original-disposition"
+                                  checked={lessonReplacement.originalDisposition === "skip"}
+                                  onChange={() => setLessonReplacement((current) => current
+                                    ? { ...current, originalDisposition: "skip" }
+                                    : current)}
+                                />
+                                Replace and skip the original
+                              </label>
+                              <label className="check">
+                                <input
+                                  type="radio"
+                                  name="original-disposition"
+                                  checked={lessonReplacement.originalDisposition === "postpone"}
+                                  onChange={() => setLessonReplacement((current) => current
+                                    ? { ...current, originalDisposition: "postpone" }
+                                    : current)}
+                                />
+                                Insert the manual class and postpone the original
+                              </label>
+                            </fieldset>
+                          </div>
+                        ) : null}
+                        <div className="boundary-notice">
+                          Professional planning content only. Do not enter student names, IDs,
+                          grades, IEP/504 information, or identifiable student work.
+                        </div>
+                        <div className="button-row">
+                          <button
+                            type="button"
+                            className="primary"
+                            disabled={busy || (lessonReplacement.mode === "manual" && (
+                              !lessonReplacement.unitTitle.trim() || !lessonReplacement.lessonTitle.trim()
+                            ))}
+                            onClick={() => void replacePlannedLesson()}
+                          >
+                            Apply replacement
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary"
+                            disabled={busy}
+                            onClick={() => setLessonReplacement(null)}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </section>
+                    ) : null}
                     <div className="action-bar">
                       <div>
                         <strong>{plan.length} scheduled lesson{plan.length === 1 ? "" : "s"}</strong>

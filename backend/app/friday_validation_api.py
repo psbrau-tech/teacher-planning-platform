@@ -23,7 +23,7 @@ router = APIRouter(prefix="/api/v1/friday-validations", tags=["planning"])
 
 class FridayLessonValidationWrite(BaseModel):
     scheduled_lesson_id: UUID
-    curriculum_lesson_id: UUID
+    curriculum_lesson_id: UUID | None
     lesson_date: date
     sequence: int = Field(ge=1)
     status: LessonStatus
@@ -41,7 +41,7 @@ class FridayValidationWrite(BaseModel):
 
 class FridayLessonValidationRead(BaseModel):
     scheduled_lesson_id: UUID
-    curriculum_lesson_id: UUID
+    curriculum_lesson_id: UUID | None
     lesson_date: date
     sequence: int
     status: LessonStatus

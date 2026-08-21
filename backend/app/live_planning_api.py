@@ -5,7 +5,7 @@ from typing import Annotated, Any, NoReturn, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .auth import AuthenticatedTeacher, require_teacher
 from .carry_forward import lessons_for_planning_history
@@ -27,7 +27,7 @@ class WeeklyPlanGenerate(BaseModel):
 
 class PlannedLessonRead(BaseModel):
     scheduled_lesson_id: UUID
-    curriculum_lesson_id: UUID
+    curriculum_lesson_id: UUID | None
     unit_title: str
     lesson_title: str
     lesson_date: date
@@ -35,6 +35,11 @@ class PlannedLessonRead(BaseModel):
     planned_minutes: int
     segment_number: int
     status: str = "planned"
+    source_type: str = "curriculum"
+    manual_learning_targets: list[str] = Field(default_factory=list)
+    manual_assessment: str | None = None
+    replaced_curriculum_lesson_id: UUID | None = None
+    replacement_disposition: str | None = None
 
 
 JsonRecord = dict[str, Any]
@@ -398,6 +403,64 @@ def _load_scheduled_history(
         raise HTTPException(status_code=503, detail="Pilot pacing history is invalid") from error
 
 
+def _load_postponed_lessons(
+    client: SupabaseRestClient,
+    *,
+    assignment_id: UUID,
+    before_week: date,
+    lessons: list[CurriculumLesson],
+) -> list[CurriculumLesson]:
+    """Restore manual replacements whose displaced curriculum lesson was postponed."""
+    try:
+        rows = _records(
+            client.request(
+                "GET",
+                "scheduled_lessons",
+                params={
+                    "teaching_assignment_id": f"eq.{assignment_id}",
+                    "source_type": "eq.manual",
+                    "replacement_disposition": "eq.postpone",
+                    "school_date": f"lt.{before_week.isoformat()}",
+                    "select": "replaced_lesson_id,school_date",
+                    "order": "school_date.asc",
+                },
+            )
+        )
+        scheduled = _records(
+            client.request(
+                "GET",
+                "scheduled_lessons",
+                params={
+                    "teaching_assignment_id": f"eq.{assignment_id}",
+                    "school_date": f"lt.{before_week.isoformat()}",
+                    "lesson_id": "not.is.null",
+                    "select": "lesson_id,school_date",
+                },
+            )
+        )
+    except SupabaseRestError as error:
+        _raise_data_error(error, "Postponed lesson history load")
+
+    latest_postpone: dict[str, date] = {}
+    for row in rows:
+        lesson_id = row.get("replaced_lesson_id")
+        if isinstance(lesson_id, str):
+            latest_postpone[lesson_id] = date.fromisoformat(_text(row, "school_date"))
+    already_rescheduled = {
+        _text(row, "lesson_id")
+        for row in scheduled
+        if _text(row, "lesson_id") in latest_postpone
+        and date.fromisoformat(_text(row, "school_date"))
+        > latest_postpone[_text(row, "lesson_id")]
+    }
+    by_id = {str(lesson.id): lesson for lesson in lessons}
+    return [
+        by_id[lesson_id]
+        for lesson_id in latest_postpone
+        if lesson_id not in already_rescheduled and lesson_id in by_id
+    ]
+
+
 def _lesson_lookup(lessons: list[CurriculumLesson]) -> dict[UUID, CurriculumLesson]:
     return {lesson.id: lesson for lesson in lessons}
 
@@ -421,7 +484,9 @@ def _read_persisted_plan(
                     "and": _date_range_filter("school_date", week_start, week_end),
                     "select": (
                         "id,lesson_id,school_date,segment_index,planned_minutes,"
-                        "sequence_position"
+                        "sequence_position,source_type,manual_unit_title,manual_lesson_title,"
+                        "manual_learning_targets,manual_assessment,replaced_lesson_id,"
+                        "replacement_disposition"
                     ),
                     "order": "school_date.asc,sequence_position.asc,segment_index.asc",
                 },
@@ -432,8 +497,40 @@ def _read_persisted_plan(
 
     planned: list[PlannedLessonRead] = []
     for row in rows:
-        lesson_id = UUID(_text(row, "lesson_id"))
         sequence = _sequence_position(row)
+        source_type = row.get("source_type")
+        if source_type == "manual":
+            planned.append(
+                PlannedLessonRead(
+                    scheduled_lesson_id=UUID(_text(row, "id")),
+                    curriculum_lesson_id=None,
+                    unit_title=_text(row, "manual_unit_title"),
+                    lesson_title=_text(row, "manual_lesson_title"),
+                    lesson_date=date.fromisoformat(_text(row, "school_date")),
+                    sequence=sequence,
+                    planned_minutes=_int(row, "planned_minutes"),
+                    segment_number=_int(row, "segment_index"),
+                    source_type="manual",
+                    manual_learning_targets=_string_list(row.get("manual_learning_targets")),
+                    manual_assessment=(
+                        row.get("manual_assessment")
+                        if isinstance(row.get("manual_assessment"), str)
+                        else None
+                    ),
+                    replaced_curriculum_lesson_id=(
+                        UUID(value)
+                        if isinstance((value := row.get("replaced_lesson_id")), str)
+                        else None
+                    ),
+                    replacement_disposition=(
+                        row.get("replacement_disposition")
+                        if isinstance(row.get("replacement_disposition"), str)
+                        else None
+                    ),
+                )
+            )
+            continue
+        lesson_id = UUID(_text(row, "lesson_id"))
         lesson = lookup.get(lesson_id)
         if lesson is None:
             lesson = _load_historical_lesson(
@@ -466,6 +563,31 @@ def _require_curriculum(curriculum_id: str | None) -> str:
             ),
         )
     return curriculum_id
+
+
+def _week_has_teacher_override(
+    client: SupabaseRestClient,
+    *,
+    assignment_id: UUID,
+    week_start: date,
+) -> bool:
+    try:
+        rows = _records(
+            client.request(
+                "GET",
+                "scheduled_lessons",
+                params={
+                    "teaching_assignment_id": f"eq.{assignment_id}",
+                    "and": _date_range_filter("school_date", week_start, week_start + timedelta(days=4)),
+                    "is_teacher_override": "eq.true",
+                    "select": "id",
+                    "limit": "1",
+                },
+            )
+        )
+    except SupabaseRestError as error:
+        _raise_data_error(error, "Weekly override load")
+    return bool(rows)
 
 
 @router.get("", response_model=list[PlannedLessonRead])
@@ -512,6 +634,17 @@ def generate_weekly_plan(
 
     curriculum_id = _require_curriculum(assignment.curriculum_id)
     lessons = _load_curriculum_lessons(client, curriculum_id)
+    if _week_has_teacher_override(
+        client,
+        assignment_id=payload.assignment_id,
+        week_start=payload.week_start,
+    ):
+        return _read_persisted_plan(
+            client,
+            assignment_id=payload.assignment_id,
+            week_start=payload.week_start,
+            lessons=lessons,
+        )
     validation_history = _load_validation_history(
         client,
         assignment_id=payload.assignment_id,
@@ -528,6 +661,14 @@ def generate_weekly_plan(
         scheduled_history=scheduled_history,
         target_week_start=payload.week_start,
     )
+    postponed = _load_postponed_lessons(
+        client,
+        assignment_id=payload.assignment_id,
+        before_week=payload.week_start,
+        lessons=lessons,
+    )
+    postponed_ids = {lesson.id for lesson in postponed}
+    queue = postponed + [lesson for lesson in queue if lesson.id not in postponed_ids]
     exceptions = _load_exceptions(
         client,
         assignment_id=payload.assignment_id,

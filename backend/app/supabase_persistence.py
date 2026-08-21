@@ -554,7 +554,11 @@ def _serialize_validation(result: FridayValidationResult) -> dict[str, object]:
             {
                 "scheduled_lesson_id": str(record.scheduled_lesson_id),
                 "assignment_id": str(record.assignment_id),
-                "curriculum_lesson_id": str(record.curriculum_lesson_id),
+                "curriculum_lesson_id": (
+                    str(record.curriculum_lesson_id)
+                    if record.curriculum_lesson_id is not None
+                    else None
+                ),
                 "date": record.date.isoformat(),
                 "sequence": record.sequence,
                 "status": record.status.value,
@@ -606,7 +610,11 @@ def _parse_validation(payload: object) -> FridayValidationResult:
             ValidatedLessonRecord(
                 scheduled_lesson_id=UUID(_required_text(record, "scheduled_lesson_id")),
                 assignment_id=UUID(_required_text(record, "assignment_id")),
-                curriculum_lesson_id=UUID(_required_text(record, "curriculum_lesson_id")),
+                curriculum_lesson_id=(
+                    UUID(value)
+                    if isinstance((value := record.get("curriculum_lesson_id")), str)
+                    else None
+                ),
                 date=_parse_date(record.get("date"), key="date"),
                 sequence=_required_int(record, "sequence"),
                 status=LessonStatus(_required_text(record, "status")),

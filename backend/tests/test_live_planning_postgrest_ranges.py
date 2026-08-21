@@ -24,4 +24,5 @@ def test_live_planning_has_no_column_level_and_range_filters() -> None:
     ).read_text(encoding="utf-8")
 
     assert "and(gte." not in source
-    assert source.count('"and": _date_range_filter') == 4
+    assert source.count('"and": _date_range_filter') == 5
+    assert '"is_teacher_override": "eq.true"' in source
