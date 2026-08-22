@@ -230,7 +230,7 @@ def _load_existing_alabama_sources(
                     "select": (
                         "id,source_key,family,authority,title,edition,landing_url,document_url,"
                         "document_format,parser_key,catalog_category_key,catalog_category_name,"
-                        "catalog_category_type,discovery_status,is_active"
+                        "catalog_category_type,source_kind,discovery_status,is_active"
                     ),
                     "order": "source_key.asc",
                 },
@@ -246,10 +246,12 @@ def _load_existing_alabama_sources(
 def _is_alabama_source(record: JsonRecord) -> bool:
     family = record.get("family")
     authority = record.get("authority")
+    source_kind = record.get("source_kind")
     return (
         isinstance(family, str)
         and family.startswith("alabama_")
         and authority == "Alabama State Department of Education"
+        and source_kind != "proficiency_scale"
     )
 
 
