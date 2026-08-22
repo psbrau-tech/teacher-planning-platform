@@ -374,6 +374,7 @@ def test_scheduled_tasks_are_isolated_from_interactive_web_credentials() -> None
     assert "- !Ref SesIdentityArn" in scheduled
     assert "identity/notifications@planner.guidedscholar.ai" in scheduled
     assert "identity/planner.guidedscholar.ai" in scheduled
+    assert "configuration-set/my-first-configuration-set" in scheduled
     assert "ses:FromAddress: notifications@planner.guidedscholar.ai" in scheduled
 
 
