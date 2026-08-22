@@ -361,6 +361,7 @@ Resources:
               - !Ref SesIdentityArn
               - !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/notifications@planner.guidedscholar.ai
               - !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/planner.guidedscholar.ai
+              - !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:configuration-set/my-first-configuration-set
             Condition:
               StringEquals:
                 ses:FromAddress: notifications@planner.guidedscholar.ai
