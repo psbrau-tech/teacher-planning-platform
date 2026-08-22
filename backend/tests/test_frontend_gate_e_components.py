@@ -126,6 +126,17 @@ def test_weekly_plan_uses_live_standards_without_repeating_primary_mapping() -> 
     assert "CanonicalStandardsPanel" not in schedule
 
 
+def test_catalog_discovery_evidence_is_inline_accessible_and_explains_empty_error_runs() -> None:
+    source = STANDARDS_ADMIN.read_text(encoding="utf-8")
+
+    assert 'aria-expanded={expanded}' in source
+    assert 'aria-controls={evidenceId}' in source
+    assert '"Loading evidence…"' in source
+    assert '"Hide evidence"' in source
+    assert '"Show evidence"' in source
+    assert "No item evidence was recorded for this incomplete run." in source
+
+
 def test_weekly_plan_and_friday_closeout_are_progressive() -> None:
     shell = SHELL.read_text(encoding="utf-8")
 
