@@ -33,7 +33,7 @@ def test_cloudformation_keeps_ses_fail_closed_until_both_values_are_supplied() -
     assert "Condition: UseSesNotifications" in source
 
 
-def test_task_role_ses_permission_is_single_action_and_identity_scoped() -> None:
+def test_task_role_ses_permission_is_single_action_and_sender_scoped() -> None:
     source = TEMPLATE.read_text(encoding="utf-8")
     policy = source.split("SesSendPolicy:", maxsplit=1)[1].split(
         "TaskDefinition:", maxsplit=1
@@ -41,7 +41,9 @@ def test_task_role_ses_permission_is_single_action_and_identity_scoped() -> None
 
     assert "Type: AWS::IAM::Policy" in policy
     assert "Action: ses:SendEmail" in policy
-    assert "Resource: !Ref SesIdentityArn" in policy
+    assert "identity/notifications@planner.guidedscholar.ai" in policy
+    assert "identity/planner.guidedscholar.ai" in policy
+    assert "ses:FromAddress: notifications@planner.guidedscholar.ai" in policy
     assert "ses:SendRawEmail" not in policy
     assert "Resource: '*'" not in policy
     assert "access-key" not in source.lower()
