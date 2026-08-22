@@ -113,7 +113,13 @@ Resources:
             Statement:
               - Effect: Allow
                 Action: ses:SendEmail
-                Resource: !Ref SesIdentityArn
+                Resource:
+                  - !Ref SesIdentityArn
+                  - !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/notifications@planner.guidedscholar.ai
+                  - !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/planner.guidedscholar.ai
+                Condition:
+                  StringEquals:
+                    ses:FromAddress: notifications@planner.guidedscholar.ai
 
   TeacherReminderTaskDefinition:
     Type: AWS::ECS::TaskDefinition
