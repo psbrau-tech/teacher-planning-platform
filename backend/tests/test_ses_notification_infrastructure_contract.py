@@ -44,6 +44,7 @@ def test_task_role_ses_permission_is_single_action_and_sender_scoped() -> None:
     assert "- !Ref SesIdentityArn" in policy
     assert "identity/notifications@planner.guidedscholar.ai" in policy
     assert "identity/planner.guidedscholar.ai" in policy
+    assert "configuration-set/my-first-configuration-set" in policy
     assert "ses:FromAddress: notifications@planner.guidedscholar.ai" in policy
     assert "ses:SendRawEmail" not in policy
     assert "Resource: '*'" not in policy
