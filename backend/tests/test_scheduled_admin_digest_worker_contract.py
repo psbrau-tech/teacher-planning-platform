@@ -371,6 +371,7 @@ def test_scheduled_tasks_are_isolated_from_interactive_web_credentials() -> None
     assert "TPP_SUPABASE_SERVICE_ROLE_KEY" not in main
     assert "ReadonlyRootFilesystem: true" in scheduled
     assert "Action: ses:SendEmail" in scheduled
+    assert "- !Ref SesIdentityArn" in scheduled
     assert "identity/notifications@planner.guidedscholar.ai" in scheduled
     assert "identity/planner.guidedscholar.ai" in scheduled
     assert "ses:FromAddress: notifications@planner.guidedscholar.ai" in scheduled
