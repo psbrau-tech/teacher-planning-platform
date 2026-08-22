@@ -56,6 +56,7 @@ def _existing(
     document_url: str,
     family: str = "alabama_academic",
     category_type: str = "academic_subject",
+    source_kind: str = "course_of_study",
 ) -> dict[str, object]:
     return {
         "id": str(source_id),
@@ -71,6 +72,7 @@ def _existing(
         "catalog_category_key": category_key,
         "catalog_category_name": category_name,
         "catalog_category_type": category_type,
+        "source_kind": source_kind,
         "discovery_status": "approved",
         "is_active": True,
     }
@@ -205,6 +207,53 @@ def test_compare_catalog_ignores_non_alabama_supplemental_issuer() -> None:
     }
 
     assert compare_catalog((army,), ()) == ()
+
+
+def test_reconciliation_does_not_mark_separately_monitored_proficiency_sources_missing() -> None:
+    ela = _discovered(
+        "alabama_academic_english_language_arts",
+        category_key="english_language_arts",
+        category_name="English Language Arts",
+        title="2021 Alabama Course of Study: English Language Arts",
+        edition="2021",
+        document_url="https://www.alabamaachieves.org/files/ela.pdf",
+    )
+    proficiency = _existing(
+        uuid4(),
+        "alabama_ela_proficiency_grade_6",
+        category_key="ela_proficiency_grade_6",
+        category_name="Grade 6 ELA Proficiency Scale",
+        title="Grade 6 ELA Proficiency Scale",
+        edition="2025",
+        document_url="https://www.alabamaachieves.org/files/grade-6-proficiency.pdf",
+        source_kind="proficiency_scale",
+    )
+    client = FakeClient(
+        [
+            _existing(
+                ELA_ID,
+                ela.source_key,
+                category_key=ela.category_key,
+                category_name=ela.category_name,
+                title=ela.title,
+                edition=ela.edition,
+                document_url=ela.document_url,
+            ),
+            proficiency,
+        ]
+    )
+
+    result = reconcile_and_record_catalog(client, (ela,), trigger_kind="manual")
+
+    assert result.missing_count == 0
+    evidence_call = next(
+        call
+        for call in client.calls
+        if call[0] == "POST" and call[1] == "standard_catalog_discovery_items"
+    )
+    evidence = evidence_call[3]
+    assert isinstance(evidence, list)
+    assert [item["source_key"] for item in evidence] == [ela.source_key]
 
 
 def test_catalog_hash_is_stable_across_discovery_order() -> None:
